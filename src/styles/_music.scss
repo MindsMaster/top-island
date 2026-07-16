@@ -1,0 +1,158 @@
+/* === 面板2: 音乐 === */
+.music-panel {
+  gap: 8px;
+  perspective: 600px;
+}
+.large-artwork {
+  width: 80px; height: 80px; border-radius: 8px;
+  background: rgba(var(--ink), 0.08);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform, filter;
+}
+.large-artwork i {
+  font-size: 28px; color: rgba(var(--ink), 0.45);
+}
+.large-info {
+  text-align: center; width: 100%; overflow: hidden;
+}
+.large-title {
+  font-size: 15px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.large-artist {
+  font-size: 12px; color: rgba(var(--ink), 0.45);
+  margin-top: 2px;
+}
+.large-controls {
+  display: flex; align-items: center; justify-content: center;
+  gap: 20px;
+}
+.ctrl-btn-lg {
+  background: none; border: none; color: rgba(var(--ink), 0.65);
+  width: 36px; height: 36px; border-radius: 50%;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; transition: all 0.2s;
+  -webkit-app-region: no-drag;
+}
+.ctrl-btn-lg:hover {
+  color: var(--island-text); background: rgba(var(--ink), 0.08);
+}
+.play-btn-lg {
+  width: 44px; height: 44px;
+  background: rgba(var(--ink), 0.1);
+  color: var(--island-text); font-size: 16px;
+}
+.play-btn-lg:hover {
+  background: rgba(var(--ink), 0.18); transform: scale(1.06);
+}
+.large-vol {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 0 20px;
+}
+.vol-icon-lg {
+  font-size: 10px; color: rgba(var(--ink), 0.35); flex-shrink: 0;
+}
+.vol-slider-lg {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 3px; border-radius: 2px;
+  background: rgba(var(--ink), 0.12);
+  outline: none; cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.vol-slider-lg::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--island-text); cursor: pointer;
+}
+
+.large-artwork img,
+.artwork-wrap img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  -webkit-user-drag: none;
+}
+
+.large-progress {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 0 14px;
+}
+.large-progress.disabled {
+  opacity: 0.4;
+}
+.progress-time {
+  font-size: 10px; color: rgba(var(--ink), 0.45);
+  flex-shrink: 0; min-width: 30px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.progress-slider-lg {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 3px; border-radius: 2px;
+  background: rgba(var(--ink), 0.12);
+  outline: none; cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+/* 只读态（源不支持 seek，如网易云）：显示进度但不响应拖动 */
+.progress-slider-lg.readonly {
+  pointer-events: none;
+}
+.progress-slider-lg::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--island-text); cursor: pointer;
+}
+.progress-slider-lg.readonly::-webkit-slider-thumb {
+  width: 9px; height: 9px;
+  background: rgba(var(--ink), 0.7);
+}
+
+/* 歌词滚动视窗（卡拉OK式：3 行高，当前行居中高亮） */
+.large-lyrics {
+  width: 100%;
+  height: 72px; /* 3 * .lyric-line height */
+  overflow: hidden;
+  position: relative;
+  padding: 0 16px;
+  /* 上下边缘渐隐，突出当前行 */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 32%,
+    #000 68%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 32%, #000 68%, transparent 100%);
+}
+.lyrics-scroll {
+  transition: transform 0.45s cubic-bezier(0.25, 0.1, 0.25, 1);
+  will-change: transform;
+}
+/* 限定在 .large-lyrics 内：.lyric-line 与 quick 药丸歌词同名，
+   不限定会把这里非当前行的淡色泄漏过去致药丸发灰 */
+.large-lyrics .lyric-line {
+  height: 24px;
+  line-height: 24px;
+  font-size: 12.5px;
+  text-align: center;
+  color: rgba(var(--ink), 0.32);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.3s ease, font-size 0.3s ease, font-weight 0.3s ease;
+}
+.large-lyrics .lyric-line.active {
+  color: var(--island-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.ctrl-btn-sm, .ctrl-btn-lg, .vol-slider-lg {
+  -webkit-app-region: no-drag;
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}

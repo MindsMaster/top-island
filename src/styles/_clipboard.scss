@@ -1,0 +1,130 @@
+/* === 面板7: 剪切板 === */
+.clipboard-panel {
+  gap: 4px;
+  justify-content: flex-start !important;
+  padding-top: 8px;
+}
+.clip-header {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 0 10px;
+}
+.clip-icon { font-size: 14px; color: rgba(255,200,120,0.7); }
+.clip-title { flex: 1; font-size: 14px; font-weight: 600; }
+.clip-clear-btn {
+  background: none; border: none;
+  color: rgba(var(--ink), 0.3);
+  font-size: 10px; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.clip-refresh-btn {
+  background: none; border: none;
+  color: rgba(var(--ink), 0.35);
+  font-size: 10px; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+  margin-left: auto;
+}
+.clip-refresh-btn:hover { color: var(--accent); background: rgba(100,150,255,0.1); }
+.clip-clear-btn:hover { color: var(--danger); background: rgba(255,107,107,0.1); }
+.clip-search-bar {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; padding: 0 10px;
+}
+.clip-search-icon {
+  font-size: 10px; color: rgba(var(--ink), 0.3);
+  flex-shrink: 0;
+}
+.clip-search-input {
+  flex: 1; background: rgba(var(--ink), 0.06);
+  border: 1px solid rgba(var(--ink), 0.08);
+  color: var(--island-text); font-size: 11px;
+  padding: 4px 8px; border-radius: 6px;
+  outline: none; font-family: inherit;
+  -webkit-app-region: no-drag;
+}
+.clip-search-input:focus {
+  border-color: rgba(var(--ink), 0.2);
+  background: rgba(var(--ink), 0.08);
+}
+.clip-list {
+  flex: 1; width: 100%;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 4px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--ink), 0.2) transparent;
+}
+.clip-list::-webkit-scrollbar { width: 4px; }
+.clip-list::-webkit-scrollbar-thumb { background: rgba(var(--ink), 0.2); border-radius: 4px; }
+.clip-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 6px; height: 100%; min-height: 60px;
+  color: rgba(var(--ink), 0.3);
+}
+.clip-empty i { font-size: 22px; }
+.clip-empty span { font-size: 11px; text-align: center; }
+.clip-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 7px 6px; border-radius: 8px;
+  transition: background 0.2s;
+  margin-bottom: 2px;
+}
+.clip-row:hover { background: rgba(var(--ink), 0.04); }
+.clip-type-icon {
+  flex-shrink: 0; width: 22px; height: 22px;
+  border-radius: 5px; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; background: rgba(var(--ink), 0.06);
+  color: rgba(var(--ink), 0.4);
+}
+.clip-type-icon.type-url { color: var(--accent); background: rgba(100,150,255,0.12); }
+.clip-type-icon.type-email { color: #ffb86c; background: rgba(255,184,108,0.12); }
+.clip-type-icon.type-phone { color: var(--success); background: rgba(111,255,123,0.12); }
+.clip-type-icon.type-image { color: #ff79c6; background: rgba(255,121,198,0.12); }
+.clip-type-icon.type-json { color: #f1fa8c; background: rgba(241,250,140,0.12); }
+.clip-content {
+  flex: 1; min-width: 0; cursor: pointer;
+}
+.clip-content:active .clip-text { opacity: 0.7; }
+.clip-text {
+  font-size: 11px; font-weight: 500;
+  word-break: break-all; line-height: 1.4;
+  color: rgba(var(--ink), 0.8);
+}
+.clip-meta {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 3px;
+}
+.clip-time {
+  font-size: 9px; color: rgba(var(--ink), 0.3);
+}
+.clip-source {
+  font-size: 8px; padding: 1px 5px; border-radius: 3px;
+  background: rgba(180,130,255,0.2);
+  color: rgba(200,180,255,0.9);
+  font-weight: 600;
+}
+.clip-actions {
+  display: flex; gap: 2px; flex-shrink: 0;
+  align-items: center;
+}
+.clip-act-btn {
+  background: none; border: none;
+  color: rgba(var(--ink), 0.3);
+  font-size: 10px; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.clip-act-btn:hover { background: rgba(var(--ink), 0.08); color: var(--island-text); }
+.clip-act-btn.open:hover { color: var(--accent); background: rgba(100,150,255,0.15); }
+.clip-act-btn.email:hover { color: #ffb86c; background: rgba(255,184,108,0.15); }
+.clip-act-btn.pin.active { color: var(--warn); }
+.clip-act-btn.pin:hover { color: var(--warn); background: rgba(255,200,80,0.12); }
+.clip-act-btn.del:hover { color: var(--danger); background: rgba(255,107,107,0.12); }
+.clip-act-btn.copy:hover { color: var(--success); background: rgba(111,255,123,0.1); }

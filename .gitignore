@@ -1,0 +1,16 @@
+node_modules/
+dist/
+release/
+.archive/
+native/**/bin/
+native/**/obj/
+native/**/target/
+resources/topisland-winbridge.exe*
+resources/ti-wxkey.exe*
+resources/*.old
+*.log
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.tgz

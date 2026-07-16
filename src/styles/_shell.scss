@@ -1,0 +1,382 @@
+/* --- Still 静止态 --- */
+.still-content {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+}
+.still-time {
+  font-size: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* --- Quick 悬停态 --- */
+#island.quick {
+  width: 310px;
+  justify-content: flex-start;
+  padding: 0 8px;
+}
+.quick-content {
+  display: flex; align-items: center;
+  width: 100%; height: 40px;
+  gap: 2px;
+}
+
+.quick-weather {
+  display: flex; align-items: center; gap: 4px;
+  flex-shrink: 0; font-size: 12px; color: rgba(var(--ink), 0.7);
+}
+.quick-weather i { font-size: 14px; }
+.quick-weather-city {
+  font-size: 9px;
+  color: rgba(var(--ink), 0.35);
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-time {
+  font-size: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+.music-full {
+  gap: 8px;
+  padding: 0 4px;
+}
+.music-full .artwork-wrap {
+  flex-shrink: 0;
+}
+.music-full .marquee-box {
+  flex: 1;
+}
+
+/* 上滑隐藏态：滑到顶缘只留细边（露出高度可设置），悬停/点击唤出 */
+#island.hidden {
+  transform: translateX(-50%) translateY(var(--island-hidden-shift, -34px));
+  box-shadow: none;
+}
+#island.hidden:hover {
+  transform: translateX(-50%) translateY(var(--island-hidden-shift-hover, -30px));
+}
+
+.music-full .lyric-box {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+.music-full .lyric-line {
+  font-size: 13px; font-weight: 500;
+  color: var(--island-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  width: 100%; text-align: center;
+  animation: lyric-in 0.35s ease;
+}
+@keyframes lyric-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Quick 左边：封面 + 跑马灯（已废弃，保留兼容） */
+.quick-left {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1; min-width: 0; overflow: hidden;
+}
+.artwork-wrap {
+  width: 24px; height: 24px; border-radius: 4px;
+  background: rgba(var(--ink), 0.08);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; overflow: hidden;
+}
+.artwork-wrap i {
+  font-size: 12px; color: rgba(var(--ink), 0.6);
+}
+
+.marquee-box {
+  flex: 1; min-width: 0; height: 40px; line-height: 40px;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent 0%, black 10px, black calc(100% - 10px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 10px, black calc(100% - 10px), transparent 100%);
+}
+.marquee-track {
+  display: flex; white-space: nowrap;
+  height: 40px; line-height: 40px;
+}
+.marquee-item {
+  font-size: 13px; font-weight: 500;
+  white-space: nowrap; pointer-events: none;
+  flex-shrink: 0;
+}
+
+.quick-date {
+  font-size: 11px; font-weight: 400;
+  color: rgba(var(--ink), 0.5);
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.quick-settings-btn {
+  background: none; border: none;
+  color: rgba(var(--ink), 0.35);
+  font-size: 12px; cursor: pointer;
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.quick-settings-btn:hover {
+  color: var(--island-text);
+  background: rgba(var(--ink), 0.1);
+}
+
+.quick-theme-btn {
+  background: none; border: none;
+  color: rgba(var(--ink), 0.35);
+  font-size: 13px; cursor: pointer;
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.quick-theme-btn:hover {
+  color: var(--warn);
+  background: rgba(255,200,80,0.1);
+}
+
+.quick-close-btn {
+  background: none; border: none;
+  color: rgba(var(--ink), 0.35);
+  font-size: 14px; cursor: pointer;
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.quick-close-btn:hover {
+  color: var(--danger);
+  background: rgba(255,107,107,0.12);
+}
+
+.quick-right {
+  display: flex; align-items: center; flex-shrink: 0;
+  gap: 2px;
+  margin-left: auto;
+}
+.ctrl-btn-sm {
+  background: none; border: none; color: var(--island-text);
+  width: 30px; height: 30px; border-radius: 50%;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; transition: background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.ctrl-btn-sm:hover { background: rgba(var(--ink), 0.12); }
+
+/* --- Large 展开态 --- */
+#island.large {
+  width: 380px; height: 360px;
+  border-radius: 30px;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 16px 0 0 0;
+  cursor: default;
+}
+
+.panels-wrapper {
+  width: 100%; flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.panel {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  /* 只过渡合成器友好的 transform/opacity；blur 动画开销过大已移除 */
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, opacity;
+  contain: layout style paint;
+  padding: 0 20px 10px;
+}
+
+/* 拖拽期间关闭过渡，保证跟手 */
+.panels-wrapper.dragging .panel {
+  transition: none;
+}
+
+.panel-indicator {
+  display: flex; gap: 2px;
+  padding: 4px 0 10px;
+  justify-content: center;
+  align-items: center;
+}
+.panel-indicator-sep {
+  width: 1px; height: 14px;
+  background: rgba(var(--ink), 0.15);
+  margin: 0 5px;
+  flex-shrink: 0;
+}
+.panel-nav-btn {
+  width: 28px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; border: none;
+  background: transparent;
+  color: rgba(var(--ink), 0.25);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.panel-nav-btn:hover {
+  color: rgba(var(--ink), 0.6);
+  background: rgba(var(--ink), 0.06);
+}
+.panel-nav-btn.active {
+  color: var(--island-text);
+  background: rgba(var(--ink), 0.12);
+}
+
+/* === 提醒态（覆盖在 still/quick 上） === */
+.alert-content {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; height: 100%;
+  padding: 0 14px;
+  font-size: 13px; font-weight: 500;
+  color: var(--island-text);
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  overflow: hidden;
+  z-index: 20;
+}
+.alert-content i {
+  font-size: 14px; flex-shrink: 0;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+.alert-text {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.alert-close {
+  font-size: 11px; opacity: 0.55;
+  flex-shrink: 0;
+}
+.alert-close:hover { opacity: 1; }
+.alert-action-btn {
+  flex-shrink: 0;
+  padding: 4px 10px; border-radius: 8px;
+  border: 1px solid rgba(var(--ink), 0.25);
+  background: rgba(var(--ink), 0.1);
+  color: var(--island-text); font-size: 11px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alert-action-btn:hover {
+  background: rgba(var(--ink), 0.2);
+  border-color: rgba(var(--ink), 0.45);
+}
+.alert-action-btn.secondary {
+  background: none;
+  border-color: rgba(var(--ink), 0.18);
+  color: rgba(var(--ink), 0.65);
+}
+#island.has-alert {
+  width: 320px !important;
+  background: linear-gradient(135deg, #1a1a1a, #2c0a30) !important;
+  border: 1px solid rgba(255, 200, 80, 0.4);
+}
+html[data-scheme='light'] #island.has-alert {
+  background: linear-gradient(135deg, #f5f0ff, #fff0f0) !important;
+  border: 1px solid rgba(200, 160, 80, 0.35);
+}
+/* 大视图下告警为顶部浮动条 */
+#island.large .alert-content {
+  position: absolute; top: 8px; left: 10px; right: 10px;
+  width: auto; height: auto;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(40,40,40,0.95), rgba(60,10,60,0.95));
+  border: 1px solid rgba(255,200,80,0.35);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  cursor: default;
+}
+#island.large.has-alert {
+  width: 380px !important;
+  background: inherit !important;
+  border: inherit !important;
+}
+html[data-scheme='light'] #island.large .alert-content {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(250, 236, 250, 0.95));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* === 持久任务提醒（日历触发） === */
+.reminder-content {
+  display: flex; flex-direction: column; gap: 4px;
+  width: 100%; height: 100%;
+  padding: 4px 12px;
+  color: var(--island-text);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+.reminder-top {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+}
+.reminder-icon {
+  font-size: 13px; flex-shrink: 0;
+  color: #b8a0ff;
+  filter: drop-shadow(0 0 6px rgba(160,120,255,0.5));
+}
+.reminder-text {
+  flex: 1; min-width: 0;
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.reminder-hint {
+  font-size: 10px; color: rgba(var(--ink), 0.3);
+  text-align: center;
+}
+.reminder-done-btn {
+  flex-shrink: 0;
+  background: rgba(111, 255, 123, 0.18);
+  border: 1px solid rgba(111, 255, 123, 0.3);
+  color: var(--success);
+  font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s, transform 0.15s;
+  -webkit-app-region: no-drag;
+}
+.reminder-done-btn:hover {
+  background: rgba(111, 255, 123, 0.3);
+  transform: scale(1.05);
+}
+.reminder-done-btn:active { transform: scale(0.95); }
+#island.show-reminder {
+  width: 310px !important;
+  height: 64px !important;
+  background: linear-gradient(135deg, #1a1a20, #251a35) !important;
+  border: 1px solid rgba(150, 120, 255, 0.35);
+}
+html[data-scheme='light'] #island.show-reminder {
+  background: linear-gradient(135deg, #f6f4ff, #ece4ff) !important;
+  border: 1px solid rgba(120, 90, 220, 0.3);
+}
+

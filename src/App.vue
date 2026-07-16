@@ -1,0 +1,463 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { api } from './api';
+import { useI18n } from './i18n';
+import { useClock } from './composables/useClock';
+import { THEMES, useSettings } from './composables/useSettings';
+import { useMusic } from './composables/useMusic';
+import { useTasks } from './composables/useTasks';
+import { useAlarm } from './composables/useAlarm';
+import { useClipboard } from './composables/useClipboard';
+import { useNotifications } from './composables/useNotifications';
+import { useWeather } from './composables/useWeather';
+import { useAlert } from './composables/useAlert';
+import { useIslandMode } from './composables/useIslandMode';
+import { usePanelSwipe } from './composables/usePanelSwipe';
+import { panels, CALENDAR_PANEL_INDEX, ALARM_PANEL_INDEX } from './panels';
+import MusicMarquee from './components/MusicMarquee.vue';
+
+const { t, initI18n } = useI18n();
+const { currentTime, currentDate, startClock } = useClock();
+const { theme, notifications, initSettings, toggleTheme } = useSettings();
+const themeIcon = computed(() => THEMES.find((tm) => tm.id === theme.value)?.icon ?? 'fa-moon');
+const music = useMusic();
+const tasksApi = useTasks();
+const alarm = useAlarm();
+const clip = useClipboard();
+const notify = useNotifications();
+const weather = useWeather();
+const alert = useAlert();
+
+/** 点击提示条的动作按钮：执行后立即消费收起（固定时长只是不点时的兜底） */
+function onAlertAction(handler: (() => void) | null) {
+  handler?.();
+  alert.dismiss();
+}
+
+const islandEl = ref<HTMLElement | null>(null);
+
+const hideDragging = ref(false);
+const hideDragOffset = ref(0);
+
+const island = useIslandMode({
+  keepInteractive: () =>
+    tasksApi.activeReminderTask.value !== null ||
+    alarm.keepInteractive.value ||
+    hideDragging.value ||
+    notify.hoveringPopup.value,
+  getRect: () => islandEl.value?.getBoundingClientRect() ?? null,
+});
+
+const swipe = usePanelSwipe({
+  panelCount: panels.length,
+  isEnabled: () => island.mode.value === 'large',
+  getContainerWidth: () => islandEl.value?.offsetWidth ?? 420,
+});
+
+const isQuickView = computed(() => island.mode.value === 'quick');
+const isLargeView = computed(() => island.mode.value === 'large');
+
+const LYRIC_MIN_WIDTH = 190;
+const LYRIC_MAX_WIDTH = 800;
+/** 歌词文本以外的固定占位：岛 padding + 封面 + 间距 */
+const LYRIC_FIXED_WIDTH = 72;
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+
+function measureLyricWidth(text: string): number {
+  if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+  if (!measureCtx) return 0;
+  measureCtx.font = "500 13px 'OpenRunde', -apple-system, 'Segoe UI', Roboto, sans-serif";
+  return measureCtx.measureText(text).width;
+}
+
+const islandStyle = computed(() => {
+  const style: Record<string, string> = {};
+  if (island.mode.value === 'still' && showMusicQuick.value && music.currentLyric.value) {
+    const w = Math.round(
+      Math.min(
+        LYRIC_MAX_WIDTH,
+        Math.max(LYRIC_MIN_WIDTH, measureLyricWidth(music.currentLyric.value) + LYRIC_FIXED_WIDTH)
+      )
+    );
+    style.width = w + 'px';
+  }
+  // 上滑手势跟手位移（拖动期间关闭过渡保证跟手）
+  if (hideDragging.value && hideDragOffset.value < 0) {
+    style.transform = `translateX(-50%) translateY(${hideDragOffset.value}px)`;
+    style.transition = 'none';
+  }
+  return style;
+});
+const showMusicQuick = computed(
+  () => music.hasMusic.value && music.isPlaying.value && island.mode.value === 'still'
+);
+const showReminderInQuick = computed(
+  () => tasksApi.activeReminderTask.value !== null && island.mode.value !== 'large'
+);
+const showAlarmInQuick = computed(() => alarm.countdown.running && island.mode.value !== 'large');
+
+let hideStartX = 0;
+let hideStartY = 0;
+let suppressClickAfterHide = false;
+
+function onIslandPointerDown(e: PointerEvent) {
+  swipe.onPointerDown(e, islandEl.value);
+  if ((e.target as HTMLElement).closest('button, input, select, textarea, .alert-content')) return;
+  if (island.mode.value !== 'large' && !island.isHidden.value) {
+    hideStartX = e.clientX;
+    hideStartY = e.clientY;
+    hideDragging.value = true;
+    hideDragOffset.value = 0;
+    islandEl.value?.setPointerCapture?.(e.pointerId);
+  }
+}
+
+function onIslandPointerMove(e: PointerEvent) {
+  swipe.onPointerMove(e);
+  if (hideDragging.value) {
+    hideDragOffset.value = Math.max(-44, Math.min(0, e.clientY - hideStartY));
+  }
+}
+
+function endHideGesture(e: PointerEvent, apply: boolean) {
+  if (!hideDragging.value) return;
+  hideDragging.value = false;
+  hideDragOffset.value = 0;
+  islandEl.value?.releasePointerCapture?.(e.pointerId);
+  if (!apply) return;
+  const dx = e.clientX - hideStartX;
+  const dy = e.clientY - hideStartY;
+  if (dy < -24 && Math.abs(dy) > Math.abs(dx)) {
+    island.hide();
+    suppressClickAfterHide = true;
+  }
+}
+
+function onIslandPointerUp(e: PointerEvent) {
+  swipe.onPointerUp(e);
+  endHideGesture(e, true);
+}
+
+function onIslandPointerCancel(e: PointerEvent) {
+  endHideGesture(e, false);
+}
+
+function onIslandMouseLeave() {
+  // 拖动中指针离开元素属于正常路径，不触发形态收起
+  if (hideDragging.value) return;
+  island.onLeave();
+}
+
+function onIslandClick(e: MouseEvent) {
+  if (suppressClickAfterHide) {
+    suppressClickAfterHide = false;
+    return;
+  }
+  if (island.isHidden.value) {
+    // 点击顶部细边立即唤出
+    island.isHidden.value = false;
+    return;
+  }
+  const target = e.target as HTMLElement;
+  if (target.closest('button') || target.closest('input') || target.closest('select')) return;
+  if (swipe.consumeSuppressedClick()) return;
+  if (island.expand()) {
+    if (tasksApi.activeReminderTask.value) {
+      swipe.switchPanel(CALENDAR_PANEL_INDEX);
+    } else if (alarm.countdown.running) {
+      swipe.switchPanel(ALARM_PANEL_INDEX);
+    }
+  }
+}
+
+function onDocMouseDown(e: MouseEvent) {
+  if (island.mode.value === 'large' && !islandEl.value?.contains(e.target as Node)) {
+    island.collapse();
+  }
+}
+
+function onWindowBlur() {
+  // 岛窗口已是顶部小窗：点击窗外（游戏/其他应用）不再经过 shield，
+  // 由窗口失焦兜底收起大视图
+  if (island.mode.value === 'large') island.collapse();
+}
+
+function onContainerLeave() {
+  if (island.mode.value !== 'large' && island.isHovered.value) island.onLeave();
+}
+
+function onContainerMouseDown(e: MouseEvent) {
+  if (island.mode.value === 'large' && e.target === e.currentTarget) island.collapse();
+}
+
+function onFocusOut() {
+  setTimeout(() => {
+    const tag = document.activeElement?.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !island.isHovered.value) {
+      island.collapse();
+    }
+  }, 100);
+}
+
+onMounted(async () => {
+  await initI18n();
+  await initSettings();
+  await Promise.all([
+    tasksApi.initTasks(),
+    alarm.initAlarm(),
+    clip.initClipboard(),
+    notify.initNotifications(),
+  ]);
+
+  startClock();
+  music.startMusicPoll();
+  weather.initWeather();
+  tasksApi.startReminderTimer();
+  clip.startClipboardWatch();
+  clip.readCurrent();
+
+  document.addEventListener('mousedown', onDocMouseDown);
+  window.addEventListener('focusout', onFocusOut);
+  window.addEventListener('blur', onWindowBlur);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocMouseDown);
+  window.removeEventListener('focusout', onFocusOut);
+  window.removeEventListener('blur', onWindowBlur);
+  music.stopMusicPoll();
+});
+
+function closeWindow() {
+  api.closeWindow();
+}
+</script>
+
+<template>
+  <div v-if="isLargeView" class="large-dismiss-shield" @mousedown="island.collapse()"></div>
+  <div id="island-container" @mouseleave="onContainerLeave" @mousedown="onContainerMouseDown">
+    <div
+      id="island"
+      ref="islandEl"
+      :class="{
+        quick: isQuickView || showMusicQuick || alert.active.value,
+        large: isLargeView,
+        'has-alert': alert.active.value,
+        'show-reminder': showReminderInQuick,
+        'has-alarm': showAlarmInQuick,
+        hidden: island.isHidden.value,
+      }"
+      :style="islandStyle"
+      @mouseenter="island.onEnter()"
+      @mouseleave="onIslandMouseLeave"
+      @click="onIslandClick"
+      @pointerdown="onIslandPointerDown"
+      @pointermove="onIslandPointerMove"
+      @pointerup="onIslandPointerUp"
+      @pointercancel="onIslandPointerCancel"
+      @wheel.passive="swipe.onWheel"
+    >
+      <div
+        v-if="alert.active.value"
+        class="alert-content"
+        @click.stop="alert.actionHandler.value ? null : alert.dismiss()"
+      >
+        <i :class="'fa-solid ' + alert.icon.value"></i>
+        <span class="alert-text">{{ alert.text.value }}</span>
+        <button
+          v-if="alert.secondLabel.value"
+          class="alert-action-btn secondary"
+          @click.stop="onAlertAction(alert.secondHandler.value)"
+        >
+          {{ alert.secondLabel.value }}
+        </button>
+        <button
+          v-if="alert.actionLabel.value"
+          class="alert-action-btn"
+          @click.stop="onAlertAction(alert.actionHandler.value)"
+        >
+          {{ alert.actionLabel.value }}
+        </button>
+        <i
+          v-if="alert.dismissible.value"
+          class="fa-solid fa-xmark alert-close"
+          @click.stop="alert.dismiss()"
+        ></i>
+      </div>
+
+      <template v-if="!isLargeView">
+        <div v-if="showReminderInQuick && !alert.active.value" class="reminder-content">
+          <div class="reminder-top">
+            <i class="fa-solid fa-clock reminder-icon"></i>
+            <span class="reminder-text">{{ tasksApi.activeReminderTask.value!.text }}</span>
+            <button class="reminder-done-btn" @click.stop="tasksApi.completeReminderTask()">
+              <i class="fa-solid fa-check"></i>
+            </button>
+          </div>
+          <div class="reminder-hint">{{ t('reminderHint') }}</div>
+        </div>
+
+        <div v-if="showAlarmInQuick && !alert.active.value && !showReminderInQuick" class="alarm-quick">
+          <svg class="alarm-quick-ring" viewBox="0 0 32 32" width="32" height="32">
+            <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(128,128,128,0.2)" stroke-width="2.5" />
+            <circle
+              cx="16"
+              cy="16"
+              r="13"
+              fill="none"
+              stroke="var(--accent)"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              :stroke-dasharray="2 * Math.PI * 13"
+              :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarm.progress.value)"
+              transform="rotate(-90 16 16)"
+            />
+          </svg>
+          <span class="alarm-quick-time">{{ alarm.displayRemain.value }}</span>
+          <button class="alarm-quick-stop" @click.stop="alarm.cancelCountdown()">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div
+          v-if="
+            island.mode.value === 'still' &&
+            !showMusicQuick &&
+            !alert.active.value &&
+            !showReminderInQuick &&
+            !showAlarmInQuick
+          "
+          class="still-content"
+        >
+          <span class="still-time">{{ currentTime || '--:--' }}</span>
+        </div>
+
+        <div
+          v-if="
+            isQuickView && !showMusicQuick && !alert.active.value && !showReminderInQuick && !showAlarmInQuick
+          "
+          class="quick-content"
+        >
+          <div v-if="weather.temp.value !== null" class="quick-weather">
+            <i :class="'fa-solid ' + weather.icon.value"></i>
+            <span>{{ weather.temp.value }}°</span>
+            <span class="quick-weather-city">{{ weather.city.value }}</span>
+          </div>
+          <span class="quick-time">{{ currentTime }}</span>
+          <span class="quick-date">{{ currentDate }}</span>
+          <div class="quick-right">
+            <button class="quick-settings-btn" :title="t('openSettings')" @click.stop="api.openSettings()">
+              <i class="fa-solid fa-gear"></i>
+            </button>
+            <button class="quick-theme-btn" :title="t('themeCycle')" @click.stop="toggleTheme">
+              <i :class="'fa-solid ' + themeIcon"></i>
+            </button>
+            <button class="quick-close-btn" :title="t('closeIsland')" @click.stop="closeWindow">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="showMusicQuick && music.hasMusic.value && !alert.active.value"
+          class="quick-content music-full"
+        >
+          <div class="artwork-wrap">
+            <img v-if="music.artworkUrl.value" :src="music.artworkUrl.value" alt="" draggable="false" />
+            <i v-else class="fa-solid fa-music"></i>
+          </div>
+          <div v-if="music.currentLyric.value" class="lyric-box">
+            <span :key="music.currentLyric.value" class="lyric-line">{{ music.currentLyric.value }}</span>
+          </div>
+          <MusicMarquee
+            v-else
+            :text="music.marqueeText.value"
+            :active="music.isPlaying.value && island.mode.value === 'still'"
+          />
+        </div>
+      </template>
+
+      <template v-if="isLargeView">
+        <div class="panels-wrapper" :class="{ dragging: swipe.isDragging.value }">
+          <div
+            v-for="(p, i) in panels"
+            :key="p.id"
+            class="panel"
+            :class="p.id + '-panel'"
+            :style="swipe.panelStyle(i)"
+          >
+            <component :is="p.component" />
+          </div>
+        </div>
+
+        <div class="panel-indicator">
+          <button
+            v-for="(p, i) in panels"
+            :key="p.id"
+            class="panel-nav-btn"
+            :class="{ active: swipe.activePanel.value === i }"
+            :title="t(p.titleKey)"
+            @click.stop="swipe.switchPanel(i)"
+          >
+            <i :class="'fa-solid ' + p.icon"></i>
+          </button>
+          <div class="panel-indicator-sep"></div>
+          <button class="panel-nav-btn" :title="t('openSettings')" @click.stop="api.openSettings()">
+            <i class="fa-solid fa-gear"></i>
+          </button>
+        </div>
+      </template>
+    </div>
+
+    <TransitionGroup v-if="!isLargeView" name="npop" tag="div" class="notify-stack">
+      <div
+        v-for="card in notify.visiblePopups.value"
+        :key="card.key"
+        class="notify-card"
+        @mouseenter="notify.setPopupHover(card.key)"
+        @mouseleave="notify.setPopupHover(null)"
+        @click.stop="notify.activatePopup(card)"
+      >
+        <div
+          class="notify-avatar"
+          :class="{ 'notify-blur': notifications.privacy.enabled && notifications.privacy.blurAvatar }"
+        >
+          <img
+            v-if="notify.images.value[card.entry.key]"
+            :src="notify.images.value[card.entry.key]"
+            alt=""
+            draggable="false"
+          />
+          <span v-else class="notify-avatar-fallback">{{ (card.entry.app || '?').slice(0, 1) }}</span>
+        </div>
+        <div class="notify-body">
+          <div class="notify-meta">
+            <span class="notify-app">{{ card.entry.app }}</span>
+            <span class="notify-time">{{ notify.formatTime(card.entry.arrival) }}</span>
+          </div>
+          <div
+            v-if="card.entry.title"
+            class="notify-title"
+            :class="{ 'notify-blur': notifications.privacy.enabled && notifications.privacy.blurName }"
+          >
+            {{ card.entry.title }}
+          </div>
+          <div
+            v-if="notifications.privacy.enabled && notifications.privacy.replaceBody"
+            class="notify-text notify-text-private"
+          >
+            {{ notifications.privacy.bodyText || t('notifyPrivateBody') }}
+          </div>
+          <div v-else-if="card.entry.body" class="notify-text">{{ card.entry.body }}</div>
+        </div>
+        <button class="notify-close" @click.stop="notify.closePopup(card.key)">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div v-if="notify.foldedCount.value > 0" key="__fold" class="notify-fold">
+        还有 {{ notify.foldedCount.value }} 条消息
+      </div>
+    </TransitionGroup>
+  </div>
+</template>

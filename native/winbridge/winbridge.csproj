@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>topisland-winbridge</AssemblyName>
+    <RootNamespace>TopIsland.WinBridge</RootNamespace>
+    <Version>0.2.0</Version>
+    <AssemblyTitle>Top Island Windows Bridge (SMTC / Notifications)</AssemblyTitle>
+    <Product>Top Island</Product>
+    <Deterministic>true</Deterministic>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.22621.755" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+</Project>
