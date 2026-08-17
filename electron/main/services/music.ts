@@ -8,6 +8,7 @@ import {
   thumbnailWindows,
 } from './music/windows';
 import { fetchLyrics, fetchLyrics163ById } from './lyrics';
+import { lyricsSupported } from './media-sources';
 import { pollExternalPosition } from './position';
 
 interface ArtworkCache {
@@ -114,12 +115,9 @@ export async function pollMusicState(): Promise<MusicState> {
       }
 
       // SMTC 无时间轴的源（网易云等）：外部位置源补真实进度；
-      // 源能给出 songId 时歌词/时长按 ID 精确获取，否则按曲目名搜索
+      // 源能给出 songId 时歌词/时长按 ID 精确获取
       let lyricsKey = key;
-      let fetcher: LyricsFetch = async () => {
-        const data = await fetchLyrics(title, artist);
-        return data ? { data, byId: false } : null;
-      };
+      let byIdFetcher: LyricsFetch | null = null;
       if (!result.durationMs) {
         const ext = await pollExternalPosition(source);
         if (ext) {
@@ -131,7 +129,7 @@ export async function pollMusicState(): Promise<MusicState> {
           if (ext.songId) {
             const songId = ext.songId;
             lyricsKey = `163:${songId}`;
-            fetcher = async () => {
+            byIdFetcher = async () => {
               const byId = await fetchLyrics163ById(songId);
               if (byId) return { data: byId, byId: true };
               const searched = await fetchLyrics(title, artist);
@@ -141,9 +139,15 @@ export async function pollMusicState(): Promise<MusicState> {
         }
       }
 
+      const searchFetcher: LyricsFetch = async () => {
+        const data = await fetchLyrics(title, artist);
+        return data ? { data, byId: false } : null;
+      };
+      const fetcher = byIdFetcher ?? (lyricsSupported(source) ? searchFetcher : null);
+
       if (lyricsKey !== lastLyricsKey) {
         lastLyricsKey = lyricsKey;
-        void fetchLyricsFor(lyricsKey, fetcher);
+        if (fetcher) void fetchLyricsFor(lyricsKey, fetcher);
       }
       if (lyricsCache && lyricsCache.trackKey === lyricsKey) {
         if (lyricsCache.data.lines.length > 0) result.lyricsId = lyricsKey;
