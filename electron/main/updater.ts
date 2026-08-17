@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import { IpcChannels } from '../../shared/ipc';
@@ -41,6 +42,43 @@ function todayKey() {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
+function updaterCacheDir() {
+  const root = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return path.join(root, 'top-island-updater');
+}
+
+function setupVersionFromName(fileName: string): string | null {
+  const m = /^TopIsland-Setup-(.+)\.exe$/i.exec(fileName);
+  return m?.[1] ?? null;
+}
+
+function snapshotStamp(version: string): string | null {
+  const m = /^\d+\.\d+\.\d+-(\d{14})-SNAPSHOT$/i.exec(version);
+  return m?.[1] ?? null;
+}
+
+/** pending 里是已装上的包（或更旧的残留）才清掉；未安装的新包必须留着。installer.exe 留给下次差分。 */
+function prunePendingIfAlreadyInstalled() {
+  const pending = path.join(updaterCacheDir(), 'pending');
+  const infoPath = path.join(pending, 'update-info.json');
+  try {
+    if (!fs.existsSync(infoPath)) return;
+    const info = JSON.parse(fs.readFileSync(infoPath, 'utf8')) as { fileName?: string };
+    const pendingVer = info.fileName ? setupVersionFromName(info.fileName) : null;
+    if (!pendingVer) return;
+    const current = app.getVersion();
+    if (pendingVer === current) {
+      fs.rmSync(pending, { recursive: true, force: true });
+      return;
+    }
+    const a = snapshotStamp(pendingVer);
+    const b = snapshotStamp(current);
+    if (a && b && a <= b) fs.rmSync(pending, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+}
+
 function checkForUpdates(force: boolean) {
   if (downloadedVersion) return;
   const day = todayKey();
@@ -79,7 +117,13 @@ export function startAutoUpdate() {
   const snapshot = isSnapshotVersion(app.getVersion());
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.disableWebInstaller = true;
   autoUpdater.allowPrerelease = snapshot;
+  autoUpdater.setFeedURL({
+    provider: 'generic',
+    url: 'https://repo.azuramc.cc/repository/raw-public/top-island/',
+    useMultipleRangeRequest: false,
+  });
   autoUpdater.channel = snapshot ? 'snapshot' : 'latest';
 
   autoUpdater.on('update-available', (info) => {
@@ -97,6 +141,7 @@ export function startAutoUpdate() {
     last = { status: 'error', message: err.message };
   });
 
+  prunePendingIfAlreadyInstalled();
   checkForUpdates(true);
   setInterval(() => checkForUpdates(false), HOUR_MS);
   powerMonitor.on('resume', () => checkForUpdates(false));

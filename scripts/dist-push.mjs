@@ -82,13 +82,17 @@ function run(cmd, args) {
   execFileSync(cmd, args, { cwd: ROOT, stdio: 'inherit' });
 }
 
-async function upload(repo, destName, filePath, { user, password }) {
+function authHeader({ user, password }) {
+  return 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
+}
+
+async function upload(repo, destName, filePath, auth) {
   const url = `https://repo.azuramc.cc/repository/${repo}/top-island/${destName}`;
   const body = fs.readFileSync(filePath);
   const res = await fetch(url, {
     method: 'PUT',
     headers: {
-      Authorization: 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64'),
+      Authorization: authHeader(auth),
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(body.length),
     },
@@ -126,6 +130,7 @@ const builderArgs = [
   `-c.publish.channel=${channel}`,
   `-c.publish.provider=generic`,
   `-c.publish.url=${PUBLIC_URL}`,
+  `-c.publish.useMultipleRangeRequest=false`,
 ];
 if (hash) builderArgs.push(`-c.extraMetadata.gitHash=${hash}`);
 run(process.execPath, builderArgs);

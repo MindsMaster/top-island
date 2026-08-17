@@ -82,7 +82,8 @@
     "detectUpdateChannel": false,
     "publish": {
       "provider": "generic",
-      "url": "https://repo.azuramc.cc/repository/raw-public/top-island/"
+      "url": "https://repo.azuramc.cc/repository/raw-public/top-island/",
+      "useMultipleRangeRequest": false
     },
     "win": {
       "icon": "build/icon.png",
