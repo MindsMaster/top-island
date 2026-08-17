@@ -1,6 +1,6 @@
 {
   "name": "top-island",
-  "version": "0.0.1",
+  "version": "0.0.1-SNAPSHOT",
   "description": "Top Island",
   "main": "dist/main.js",
   "author": {
@@ -12,7 +12,7 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "dist:dir": "node scripts/build.mjs && electron-builder --dir",
     "dist": "node scripts/build.mjs && electron-builder --win",
-    "dist:portable": "node scripts/build.mjs && electron-builder --win portable",
+    "dist:push": "node scripts/dist-push.mjs",
     "native:build": "node scripts/build-native.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -21,6 +21,7 @@
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.7.2",
     "better-sqlite3-multiple-ciphers": "^12.11.1",
+    "electron-updater": "^6.8.9",
     "vue": "^3.5.13"
   },
   "devDependencies": {
@@ -78,15 +79,15 @@
         ]
       }
     ],
+    "detectUpdateChannel": false,
+    "publish": {
+      "provider": "generic",
+      "url": "https://repo.azuramc.cc/repository/raw-public/top-island/"
+    },
     "win": {
       "icon": "build/icon.png",
+      "verifyUpdateCodeSignature": false,
       "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        },
         {
           "target": "nsis",
           "arch": [
@@ -95,12 +96,9 @@
         }
       ]
     },
-    "portable": {
-      "artifactName": "${productName}-${version}-portable.exe"
-    },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
       "createDesktopShortcut": true,
       "artifactName": "${productName}-Setup-${version}.exe"
     }
