@@ -45,14 +45,16 @@ function handleIncoming(items: NotificationItem[]) {
   }
 }
 
-/**
- * 开机自启：默认开启（settings 缺 autoLaunch 字段时视为 true）。仅打包版写
- * 注册表 Run 项；dev 下跳过，否则注册的是 electron.exe。
- */
+/** 开机自启：仅打包版写 HKCU Run；dev 下跳过，否则会登记 electron.exe。 */
 export function syncAutoLaunch(settings?: AppSettings | null) {
   if (!app.isPackaged) return;
   const openAtLogin = settings?.autoLaunch !== false;
-  app.setLoginItemSettings({ openAtLogin });
+  app.setLoginItemSettings({
+    openAtLogin,
+    enabled: openAtLogin,
+    path: process.execPath,
+    args: [],
+  });
 }
 
 /** 按当前设置启停消息托管 + 横幅接管（幂等，设置变更与启动时调用） */
