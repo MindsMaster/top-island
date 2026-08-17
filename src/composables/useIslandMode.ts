@@ -4,11 +4,10 @@ import { api } from '../api';
 export type IslandMode = 'still' | 'quick' | 'large';
 
 interface IslandModeOptions {
-  /**
-   * 岛面是否有需要保持可交互的内容（任务提醒、运行中的倒计时等）。
-   * 为 true 时 still 模式也不穿透鼠标，且悬停不切 quick 形态。
-   */
+  /** 窗口是否捕获鼠标（不穿透） */
   keepInteractive: () => boolean;
+  /** 悬停时是否维持当前内容形态（不切 quick） */
+  holdMode?: () => boolean;
   /** 岛主体元素包围盒；悬停看门狗据此兜底校验光标是否真的还在岛上 */
   getRect?: () => DOMRect | null;
 }
@@ -37,13 +36,15 @@ export function useIslandMode(options: IslandModeOptions) {
   let revealTimer: number | null = null;
   let watchdogTimer: number | null = null;
 
+  const holdMode = options.holdMode ?? options.keepInteractive;
+
   watchEffect(() => {
     const interactive = mode.value !== 'still' || isHovered.value || options.keepInteractive();
     api.setIgnoreMouseEvents(!interactive).catch(() => {});
   });
 
   async function watchdogCheck() {
-    if (!isHovered.value || mode.value === 'large' || options.keepInteractive()) return;
+    if (!isHovered.value || mode.value === 'large') return;
     const rect = options.getRect?.();
     if (!rect) return;
     try {
@@ -80,7 +81,7 @@ export function useIslandMode(options: IslandModeOptions) {
       }
       return;
     }
-    if (mode.value === 'large' || options.keepInteractive()) return;
+    if (mode.value === 'large' || holdMode()) return;
     mode.value = 'quick';
   }
 
@@ -90,7 +91,7 @@ export function useIslandMode(options: IslandModeOptions) {
       clearTimeout(revealTimer);
       revealTimer = null;
     }
-    if (mode.value === 'large' || options.keepInteractive()) return;
+    if (mode.value === 'large' || holdMode()) return;
     mode.value = 'still';
   }
 

@@ -40,11 +40,9 @@ const hideDragging = ref(false);
 const hideDragOffset = ref(0);
 
 const island = useIslandMode({
-  keepInteractive: () =>
-    tasksApi.activeReminderTask.value !== null ||
-    alarm.keepInteractive.value ||
-    hideDragging.value ||
-    notify.hoveringPopup.value,
+  keepInteractive: () => hideDragging.value || notify.hoveringPopup.value,
+  holdMode: () =>
+    tasksApi.activeReminderTask.value !== null || alarm.keepInteractive.value || hideDragging.value,
   getRect: () => islandEl.value?.getBoundingClientRect() ?? null,
 });
 
@@ -410,7 +408,12 @@ function closeWindow() {
       </template>
     </div>
 
-    <TransitionGroup v-if="!isLargeView" name="npop" tag="div" class="notify-stack">
+    <TransitionGroup
+      name="npop"
+      tag="div"
+      class="notify-stack"
+      :class="{ 'dock-hidden': isLargeView || island.isHidden.value }"
+    >
       <div
         v-for="card in notify.visiblePopups.value"
         :key="card.key"
