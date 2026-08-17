@@ -94,6 +94,39 @@ const showReminderInQuick = computed(
   () => tasksApi.activeReminderTask.value !== null && island.mode.value !== 'large'
 );
 const showAlarmInQuick = computed(() => alarm.countdown.running && island.mode.value !== 'large');
+const capsuleBusy = computed(() => showMusicQuick.value || showReminderInQuick.value);
+const alarmInCapsule = computed(() => showAlarmInQuick.value && !capsuleBusy.value);
+const alarmMini = computed(
+  () =>
+    alarm.countdown.running && island.mode.value !== 'large' && (capsuleBusy.value || island.isHidden.value)
+);
+watch(alarmMini, (mini) => {
+  if (!mini) miniHover.value = false;
+});
+
+function onMiniClick() {
+  if (island.isHidden.value) {
+    island.isHidden.value = false;
+    return;
+  }
+  if (island.expand()) swipe.switchPanel(ALARM_PANEL_INDEX);
+}
+
+const islandWidth = ref(170);
+let islandRO: ResizeObserver | null = null;
+const MINI_GAP = 10;
+const alarmMiniStyle = computed(() => {
+  const style: Record<string, string> = {
+    left: `calc(50% + ${Math.round(islandWidth.value / 2) + MINI_GAP}px)`,
+  };
+  if (hideDragging.value && hideDragOffset.value < 0) {
+    style.translate = `0 ${hideDragOffset.value}px`;
+    style.transition = 'none';
+  } else if (island.isHidden.value) {
+    style.translate = `0 var(--island-hidden-shift, -34px)`;
+  }
+  return style;
+});
 
 let hideStartX = 0;
 let hideStartY = 0;
@@ -218,12 +251,22 @@ onMounted(async () => {
   document.addEventListener('mousedown', onDocMouseDown);
   window.addEventListener('focusout', onFocusOut);
   window.addEventListener('blur', onWindowBlur);
+
+  if (islandEl.value) {
+    islandRO = new ResizeObserver(() => {
+      const w = islandEl.value?.offsetWidth;
+      if (w) islandWidth.value = w;
+    });
+    islandRO.observe(islandEl.value);
+  }
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onDocMouseDown);
   window.removeEventListener('focusout', onFocusOut);
   window.removeEventListener('blur', onWindowBlur);
+  islandRO?.disconnect();
+  islandRO = null;
   music.stopMusicPoll();
 });
 
@@ -243,7 +286,7 @@ function closeWindow() {
         large: isLargeView,
         'has-alert': alert.active.value,
         'show-reminder': showReminderInQuick,
-        'has-alarm': showAlarmInQuick,
+        'has-alarm': alarmInCapsule,
         hidden: island.isHidden.value,
       }"
       :style="islandStyle"
@@ -296,27 +339,29 @@ function closeWindow() {
           <div class="reminder-hint">{{ t('reminderHint') }}</div>
         </div>
 
-        <div v-if="showAlarmInQuick && !alert.active.value && !showReminderInQuick" class="alarm-quick">
-          <svg class="alarm-quick-ring" viewBox="0 0 32 32" width="32" height="32">
-            <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(128,128,128,0.2)" stroke-width="2.5" />
-            <circle
-              cx="16"
-              cy="16"
-              r="13"
-              fill="none"
-              stroke="var(--accent)"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              :stroke-dasharray="2 * Math.PI * 13"
-              :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarm.progress.value)"
-              transform="rotate(-90 16 16)"
-            />
-          </svg>
-          <span class="alarm-quick-time">{{ alarm.displayRemain.value }}</span>
-          <button class="alarm-quick-stop" @click.stop="alarm.cancelCountdown()">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
+        <Transition name="capfade">
+          <div v-if="alarmInCapsule && !alert.active.value" class="alarm-quick">
+            <svg class="alarm-quick-ring" viewBox="0 0 32 32" width="30" height="30">
+              <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(128,128,128,0.28)" stroke-width="3.5" />
+              <circle
+                cx="16"
+                cy="16"
+                r="13"
+                fill="none"
+                stroke="var(--accent)"
+                stroke-width="3.5"
+                stroke-linecap="round"
+                :stroke-dasharray="2 * Math.PI * 13"
+                :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarm.progress.value)"
+                transform="rotate(-90 16 16)"
+              />
+            </svg>
+            <span class="alarm-quick-time">{{ alarm.displayRemain.value }}</span>
+            <button class="alarm-quick-stop" @click.stop="alarm.cancelCountdown()">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </Transition>
 
         <div
           v-if="
@@ -324,7 +369,7 @@ function closeWindow() {
             !showMusicQuick &&
             !alert.active.value &&
             !showReminderInQuick &&
-            !showAlarmInQuick
+            !alarmInCapsule
           "
           class="still-content"
         >
@@ -333,7 +378,7 @@ function closeWindow() {
 
         <div
           v-if="
-            isQuickView && !showMusicQuick && !alert.active.value && !showReminderInQuick && !showAlarmInQuick
+            isQuickView && !showMusicQuick && !alert.active.value && !showReminderInQuick && !alarmInCapsule
           "
           class="quick-content"
         >
@@ -358,7 +403,7 @@ function closeWindow() {
         </div>
 
         <div
-          v-if="showMusicQuick && music.hasMusic.value && !alert.active.value"
+          v-if="showMusicQuick && music.hasMusic.value && !alert.active.value && !showReminderInQuick"
           class="quick-content music-full"
         >
           <div class="artwork-wrap">
@@ -462,5 +507,41 @@ function closeWindow() {
         还有 {{ notify.foldedCount.value }} 条消息
       </div>
     </TransitionGroup>
+
+    <Transition name="capfade">
+      <div
+        v-if="alarmMini"
+        class="alarm-mini"
+        role="button"
+        :style="alarmMiniStyle"
+        @mouseenter="miniHover = true"
+        @mouseleave="miniHover = false"
+        @click.stop="onMiniClick"
+      >
+        <svg class="alarm-quick-ring" viewBox="0 0 32 32" width="18" height="18">
+          <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(128,128,128,0.28)" stroke-width="4" />
+          <circle
+            cx="16"
+            cy="16"
+            r="13"
+            fill="none"
+            stroke="var(--accent)"
+            stroke-width="4"
+            stroke-linecap="round"
+            :stroke-dasharray="2 * Math.PI * 13"
+            :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarm.progress.value)"
+            transform="rotate(-90 16 16)"
+          />
+        </svg>
+        <div class="alarm-mini-pop">
+          <div class="alarm-mini-pop-card">
+            <span class="alarm-mini-time">{{ alarm.displayRemain.value }}</span>
+            <button class="alarm-mini-stop" @click.stop="alarm.cancelCountdown()">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
