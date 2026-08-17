@@ -106,6 +106,14 @@ const zhCN: Messages = {
   customColorAccent: '强调色',
   settingsLanguage: '语言',
   settingsAutoLaunch: '开机自启动',
+  settingsVersion: '版本',
+  settingsCheckUpdate: '检查更新',
+  settingsUpdateChecking: '正在检查…',
+  settingsUpdateLatest: '已是最新',
+  settingsUpdateAvailable: '发现 {0}，正在下载…',
+  settingsUpdateDownloaded: '{0} 已就绪，重启后更新',
+  settingsUpdateError: '检查失败',
+  settingsUpdateDev: '开发模式：点检查更新可预览提示，不会真装',
   settingsDisplayMonitor: '显示器',
   displayPrimary: '主显示器',
   settingsIslandScale: '岛大小',
@@ -197,6 +205,8 @@ const zhCN: Messages = {
   timeHoursAgo: '小时前',
   alertOpenWeb: '打开网页',
   alertCompose: '撰写邮件',
+  updateReady: '新版本 {0} 已就绪，重启后更新',
+  updateRestart: '重启',
 };
 
 export default zhCN;

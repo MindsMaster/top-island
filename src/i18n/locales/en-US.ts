@@ -106,6 +106,14 @@ const enUS: Messages = {
   customColorAccent: 'Accent',
   settingsLanguage: 'Language',
   settingsAutoLaunch: 'Launch at startup',
+  settingsVersion: 'Version',
+  settingsCheckUpdate: 'Check for updates',
+  settingsUpdateChecking: 'Checking…',
+  settingsUpdateLatest: 'Up to date',
+  settingsUpdateAvailable: '{0} found, downloading…',
+  settingsUpdateDownloaded: '{0} ready, restart to update',
+  settingsUpdateError: 'Check failed',
+  settingsUpdateDev: 'Dev: Check for updates previews the prompt; nothing is installed',
   settingsDisplayMonitor: 'Monitor',
   displayPrimary: 'Primary',
   settingsIslandScale: 'Island size',
@@ -201,6 +209,8 @@ const enUS: Messages = {
   timeHoursAgo: 'h ago',
   alertOpenWeb: 'Open',
   alertCompose: 'Compose',
+  updateReady: 'Version {0} is ready. Restart to update.',
+  updateRestart: 'Restart',
 };
 
 export default enUS;

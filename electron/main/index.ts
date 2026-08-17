@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import { registerIpc, syncAutoLaunch, syncNotifications } from './ipc';
+import { registerUpdateIpc, startAutoUpdate } from './updater';
 import type { AppSettings } from '../../shared/ipc';
 import { createIslandWindow } from './window';
 import { createTray } from './tray';
@@ -21,12 +22,14 @@ if (!gotLock) {
 } else {
   app.whenReady().then(() => {
     registerIpc();
+    registerUpdateIpc();
     createIslandWindow();
     createTray();
     startJankMonitor();
     syncNotifications();
     // 首次运行 settings 无 autoLaunch 字段 -> 默认开启并写入自启
     syncAutoLaunch(store.get('settings') as AppSettings | undefined);
+    startAutoUpdate();
   });
 
   app.on('window-all-closed', () => {

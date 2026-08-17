@@ -2,10 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IpcChannels } from '../../shared/ipc';
 import type {
   AppSettings,
+  AppVersionInfo,
   IslandApi,
   MusicAction,
   MusicState,
   NotificationItem,
+  UpdateCheckResult,
   WeatherQueryOptions,
 } from '../../shared/ipc';
 
@@ -27,6 +29,11 @@ ipcRenderer.on(IpcChannels.notifyIncoming, (_e, items: NotificationItem[]) => {
 let clipboardChangedCb: (() => void) | null = null;
 ipcRenderer.on(IpcChannels.clipboardChanged, () => {
   clipboardChangedCb?.();
+});
+
+let updateDownloadedCb: ((info: { version: string }) => void) | null = null;
+ipcRenderer.on(IpcChannels.updateDownloaded, (_e, info: { version: string }) => {
+  updateDownloadedCb?.(info);
 });
 
 const api: IslandApi = {
@@ -77,6 +84,12 @@ const api: IslandApi = {
   notifyImage: (src: string) => ipcRenderer.invoke(IpcChannels.notifyImage, src),
   wechatAcquireKey: () => ipcRenderer.invoke(IpcChannels.wechatAcquireKey),
   wechatHasKey: () => ipcRenderer.invoke(IpcChannels.wechatHasKey),
+  getVersion: () => ipcRenderer.invoke(IpcChannels.appGetVersion) as Promise<AppVersionInfo>,
+  checkUpdate: () => ipcRenderer.invoke(IpcChannels.updateCheck) as Promise<UpdateCheckResult>,
+  installUpdate: () => ipcRenderer.invoke(IpcChannels.updateInstall),
+  onUpdateDownloaded: (cb: (info: { version: string }) => void) => {
+    updateDownloadedCb = cb;
+  },
 };
 
 contextBridge.exposeInMainWorld('islandAPI', api);

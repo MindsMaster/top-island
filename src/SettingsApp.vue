@@ -5,7 +5,7 @@ import { useI18n } from './i18n';
 import { hexLuminance, THEMES, useSettings } from './composables/useSettings';
 import SettingSelect from './components/SettingSelect.vue';
 import ColorPicker from './components/ColorPicker.vue';
-import type { DiagnosticsToggles, DisplayInfo, LangPref, ThemeId } from '../shared/ipc';
+import type { DiagnosticsToggles, DisplayInfo, LangPref, ThemeId, UpdateCheckResult } from '../shared/ipc';
 
 const { t, initI18n } = useI18n();
 const {
@@ -119,9 +119,39 @@ function onPeekInput(e: Event) {
 const wechatHasKey = ref(false);
 const wechatAcquiring = ref(false);
 const wechatMsg = ref('');
+const appVersionLabel = ref('');
+const updateBusy = ref(false);
+const updateMsg = ref('');
+const updateCanInstall = ref(false);
 
 async function refreshWechatKey() {
   wechatHasKey.value = await api.wechatHasKey().catch(() => false);
+}
+
+function applyUpdateResult(r: UpdateCheckResult) {
+  updateCanInstall.value = r.status === 'downloaded';
+  if (r.status === 'dev') updateMsg.value = t('settingsUpdateDev');
+  else if (r.status === 'not-available') updateMsg.value = t('settingsUpdateLatest');
+  else if (r.status === 'available') updateMsg.value = t('settingsUpdateAvailable', r.version ?? '');
+  else if (r.status === 'downloaded') updateMsg.value = t('settingsUpdateDownloaded', r.version ?? '');
+  else if (r.status === 'error') updateMsg.value = r.message || t('settingsUpdateError');
+  else updateMsg.value = '';
+}
+
+async function checkForUpdate() {
+  if (updateCanInstall.value) {
+    void api.installUpdate();
+    return;
+  }
+  updateBusy.value = true;
+  updateMsg.value = t('settingsUpdateChecking');
+  try {
+    applyUpdateResult(await api.checkUpdate());
+  } catch (e) {
+    applyUpdateResult({ status: 'error', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    updateBusy.value = false;
+  }
 }
 
 async function acquireWechatKey() {
@@ -168,6 +198,9 @@ onMounted(async () => {
   document.addEventListener('mousedown', onDocMouseDownPicker);
   displays.value = await api.displaysList().catch(() => []);
   await refreshWechatKey();
+  const ver = await api.getVersion().catch(() => ({ version: '', gitHash: '', packaged: true }));
+  appVersionLabel.value = ver.gitHash ? `${ver.version} (${ver.gitHash})` : ver.version;
+  if (!ver.packaged) updateMsg.value = t('settingsUpdateDev');
 });
 </script>
 
@@ -204,6 +237,22 @@ onMounted(async () => {
               <span class="setting-toggle-knob"></span>
             </button>
           </div>
+          <div class="setting-row">
+            <div class="setting-label">{{ t('settingsVersion') }} · {{ appVersionLabel }}</div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">{{ t('settingsCheckUpdate') }}</div>
+            <button class="setting-action-btn" :disabled="updateBusy" @click="checkForUpdate">
+              <i
+                class="fa-solid"
+                :class="
+                  updateBusy ? 'fa-spinner fa-spin' : updateCanInstall ? 'fa-rotate' : 'fa-cloud-arrow-down'
+                "
+              ></i>
+              {{ updateCanInstall ? t('updateRestart') : t('settingsCheckUpdate') }}
+            </button>
+          </div>
+          <div v-if="updateMsg" class="setting-hint">{{ updateMsg }}</div>
           <div class="setting-row">
             <div class="setting-label">{{ t('settingsLanguage') }}</div>
             <SettingSelect

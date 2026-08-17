@@ -223,7 +223,26 @@ export const IpcChannels = {
   notifyImage: 'notify:image',
   wechatAcquireKey: 'wechat:acquire-key',
   wechatHasKey: 'wechat:has-key',
+  appGetVersion: 'app:get-version',
+  updateCheck: 'update:check',
+  updateInstall: 'update:install',
+  /** 主进程 -> 岛：更新已下载（payload: { version }） */
+  updateDownloaded: 'update:downloaded',
 } as const;
+
+export interface AppVersionInfo {
+  version: string;
+  gitHash: string;
+  packaged: boolean;
+}
+
+export type UpdateCheckStatus = 'dev' | 'checking' | 'available' | 'not-available' | 'downloaded' | 'error';
+
+export interface UpdateCheckResult {
+  status: UpdateCheckStatus;
+  version?: string;
+  message?: string;
+}
 
 /** preload 通过 contextBridge 暴露给渲染层的 API 形状 */
 export interface IslandApi {
@@ -288,4 +307,8 @@ export interface IslandApi {
   wechatAcquireKey(): Promise<{ ok: boolean; wxid?: string; error?: string }>;
   /** 是否已有可用的微信密钥缓存 */
   wechatHasKey(): Promise<boolean>;
+  getVersion(): Promise<AppVersionInfo>;
+  checkUpdate(): Promise<UpdateCheckResult>;
+  installUpdate(): Promise<void>;
+  onUpdateDownloaded(cb: (info: { version: string }) => void): void;
 }

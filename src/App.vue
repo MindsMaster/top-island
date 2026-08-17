@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api } from './api';
 import { useI18n } from './i18n';
 import { useClock } from './composables/useClock';
@@ -38,9 +38,10 @@ const islandEl = ref<HTMLElement | null>(null);
 
 const hideDragging = ref(false);
 const hideDragOffset = ref(0);
+const miniHover = ref(false);
 
 const island = useIslandMode({
-  keepInteractive: () => hideDragging.value || notify.hoveringPopup.value,
+  keepInteractive: () => hideDragging.value || notify.hoveringPopup.value || miniHover.value,
   holdMode: () =>
     tasksApi.activeReminderTask.value !== null || alarm.keepInteractive.value || hideDragging.value,
   getRect: () => islandEl.value?.getBoundingClientRect() ?? null,
@@ -251,6 +252,19 @@ onMounted(async () => {
   document.addEventListener('mousedown', onDocMouseDown);
   window.addEventListener('focusout', onFocusOut);
   window.addEventListener('blur', onWindowBlur);
+
+  api.onUpdateDownloaded((info) => {
+    alert.show({
+      icon: 'fa-arrow-up',
+      text: t('updateReady', info.version),
+      duration: 0,
+      dismissible: true,
+      actionLabel: t('updateRestart'),
+      actionHandler: () => {
+        void api.installUpdate();
+      },
+    });
+  });
 
   if (islandEl.value) {
     islandRO = new ResizeObserver(() => {
