@@ -97,10 +97,15 @@
       ]
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "artifactName": "${productName}-Setup-${version}.exe"
+      "createStartMenuShortcut": true,
+      "include": "build/installer.nsh",
+      "artifactName": "${productName}-Setup-${version}.exe",
+      "uninstallDisplayName": "${productName}"
     }
   },
   "private": true
