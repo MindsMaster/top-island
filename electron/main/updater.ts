@@ -1,10 +1,9 @@
-import { app, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import { IpcChannels } from '../../shared/ipc';
 import type { AppVersionInfo, UpdateCheckResult } from '../../shared/ipc';
-import { getIslandWindow } from './window';
 
 function isSnapshotVersion(version: string): boolean {
   return /SNAPSHOT$/i.test(version);
@@ -31,13 +30,34 @@ function fakeDevVersion(): string {
   return `${v}-devsim`;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+
 let last: UpdateCheckResult = { status: 'checking' };
 let downloadedVersion: string | null = null;
+let lastCheckDay = '';
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function checkForUpdates(force: boolean) {
+  if (downloadedVersion) return;
+  const day = todayKey();
+  if (!force && day === lastCheckDay) return;
+  void autoUpdater
+    .checkForUpdates()
+    .then(() => {
+      lastCheckDay = day;
+    })
+    .catch((err: Error) => {
+      last = { status: 'error', message: err.message };
+    });
+}
 
 function broadcastDownloaded(version: string) {
-  const win = getIslandWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(IpcChannels.updateDownloaded, { version });
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(IpcChannels.updateDownloaded, { version });
   }
 }
 
@@ -77,9 +97,9 @@ export function startAutoUpdate() {
     last = { status: 'error', message: err.message };
   });
 
-  void autoUpdater.checkForUpdates().catch((err: Error) => {
-    last = { status: 'error', message: err.message };
-  });
+  checkForUpdates(true);
+  setInterval(() => checkForUpdates(false), HOUR_MS);
+  powerMonitor.on('resume', () => checkForUpdates(false));
 }
 
 export function registerUpdateIpc() {
@@ -89,11 +109,15 @@ export function registerUpdateIpc() {
     packaged: app.isPackaged,
   }));
 
+  ipcMain.handle(IpcChannels.updateStatus, (): UpdateCheckResult => last);
+
   ipcMain.handle(IpcChannels.updateCheck, async (): Promise<UpdateCheckResult> => {
     if (!app.isPackaged) return simulateDevUpdate();
     if (downloadedVersion) return { status: 'downloaded', version: downloadedVersion };
+    if (last.status === 'available') return last;
     try {
       const r = await autoUpdater.checkForUpdates();
+      lastCheckDay = todayKey();
       if (downloadedVersion) return { status: 'downloaded', version: downloadedVersion };
       const next = r?.updateInfo?.version;
       if (next && next !== app.getVersion()) {
@@ -117,6 +141,6 @@ export function registerUpdateIpc() {
       });
       return;
     }
-    autoUpdater.quitAndInstall(false, true);
+    autoUpdater.quitAndInstall(true, true);
   });
 }

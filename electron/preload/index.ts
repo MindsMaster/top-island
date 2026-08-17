@@ -85,6 +85,7 @@ const api: IslandApi = {
   wechatAcquireKey: () => ipcRenderer.invoke(IpcChannels.wechatAcquireKey),
   wechatHasKey: () => ipcRenderer.invoke(IpcChannels.wechatHasKey),
   getVersion: () => ipcRenderer.invoke(IpcChannels.appGetVersion) as Promise<AppVersionInfo>,
+  getUpdateStatus: () => ipcRenderer.invoke(IpcChannels.updateStatus) as Promise<UpdateCheckResult>,
   checkUpdate: () => ipcRenderer.invoke(IpcChannels.updateCheck) as Promise<UpdateCheckResult>,
   installUpdate: () => ipcRenderer.invoke(IpcChannels.updateInstall),
   onUpdateDownloaded: (cb: (info: { version: string }) => void) => {

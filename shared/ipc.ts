@@ -224,9 +224,10 @@ export const IpcChannels = {
   wechatAcquireKey: 'wechat:acquire-key',
   wechatHasKey: 'wechat:has-key',
   appGetVersion: 'app:get-version',
+  updateStatus: 'update:status',
   updateCheck: 'update:check',
   updateInstall: 'update:install',
-  /** 主进程 -> 岛：更新已下载（payload: { version }） */
+  /** 主进程 -> 所有窗口：更新已下载（payload: { version }） */
   updateDownloaded: 'update:downloaded',
 } as const;
 
@@ -308,6 +309,7 @@ export interface IslandApi {
   /** 是否已有可用的微信密钥缓存 */
   wechatHasKey(): Promise<boolean>;
   getVersion(): Promise<AppVersionInfo>;
+  getUpdateStatus(): Promise<UpdateCheckResult>;
   checkUpdate(): Promise<UpdateCheckResult>;
   installUpdate(): Promise<void>;
   onUpdateDownloaded(cb: (info: { version: string }) => void): void;

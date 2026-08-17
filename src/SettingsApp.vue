@@ -131,6 +131,7 @@ async function refreshWechatKey() {
 function applyUpdateResult(r: UpdateCheckResult) {
   updateCanInstall.value = r.status === 'downloaded';
   if (r.status === 'dev') updateMsg.value = t('settingsUpdateDev');
+  else if (r.status === 'checking') updateMsg.value = t('settingsUpdateChecking');
   else if (r.status === 'not-available') updateMsg.value = t('settingsUpdateLatest');
   else if (r.status === 'available') updateMsg.value = t('settingsUpdateAvailable', r.version ?? '');
   else if (r.status === 'downloaded') updateMsg.value = t('settingsUpdateDownloaded', r.version ?? '');
@@ -200,7 +201,8 @@ onMounted(async () => {
   await refreshWechatKey();
   const ver = await api.getVersion().catch(() => ({ version: '', gitHash: '', packaged: true }));
   appVersionLabel.value = ver.gitHash ? `${ver.version} (${ver.gitHash})` : ver.version;
-  if (!ver.packaged) updateMsg.value = t('settingsUpdateDev');
+  api.onUpdateDownloaded((info) => applyUpdateResult({ status: 'downloaded', version: info.version }));
+  applyUpdateResult(await api.getUpdateStatus().catch(() => ({ status: ver.packaged ? 'checking' : 'dev' })));
 });
 </script>
 
