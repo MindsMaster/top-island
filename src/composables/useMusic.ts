@@ -179,6 +179,21 @@ function togglePlay() {
   lastPlayAction = Date.now();
 }
 
+function pauseIfPlaying(): boolean {
+  if (!isPlaying.value) return false;
+  control('pause');
+  isPlaying.value = false;
+  lastPlayAction = Date.now();
+  return true;
+}
+
+function resumePlay() {
+  if (isPlaying.value) return;
+  control('play');
+  isPlaying.value = true;
+  lastPlayAction = Date.now();
+}
+
 function skipTrack(dir: number) {
   control(dir > 0 ? 'next' : 'prev');
   setTimeout(poll, 400);
@@ -252,6 +267,8 @@ export function useMusic() {
     startMusicPoll,
     stopMusicPoll,
     togglePlay,
+    pauseIfPlaying,
+    resumePlay,
     skipTrack,
     seek,
   };

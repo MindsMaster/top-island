@@ -10,7 +10,10 @@ import { disposeClipboard } from './services/clipboard';
 import { store } from './store';
 import { startJankMonitor } from './diag';
 
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch(
+  'disable-features',
+  'CalculateNativeWinOcclusion,MediaSessionService,HardwareMediaKeyHandling'
+);
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

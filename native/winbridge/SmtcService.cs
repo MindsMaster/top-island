@@ -249,12 +249,19 @@ namespace TopIsland.WinBridge
         /// 2. GetCurrentSession() —— 系统认定的当前媒体会话
         /// 3. 第一个正在播放的会话，再退到第一个会话（罕见兜底）
         /// </summary>
+        private static bool IsSelfSession(string appId)
+        {
+            if (string.IsNullOrEmpty(appId)) return false;
+            var id = appId.ToLowerInvariant();
+            return id.Contains("topisland") || id.Contains("electron.exe");
+        }
+
         private GlobalSystemMediaTransportControlsSession GetTargetSessionLocked(string preferApp)
         {
             var manager = ManagerLocked();
             if (manager == null) return null;
 
-            if (!string.IsNullOrEmpty(preferApp))
+            if (!string.IsNullOrEmpty(preferApp) && !IsSelfSession(preferApp))
             {
                 foreach (var s in manager.GetSessions())
                 {
@@ -264,13 +271,19 @@ namespace TopIsland.WinBridge
             }
 
             var current = manager.GetCurrentSession();
-            if (current != null) return current;
+            if (current != null)
+            {
+                var curApp = "";
+                try { curApp = current.SourceAppUserModelId ?? ""; } catch { }
+                if (!IsSelfSession(curApp)) return current;
+            }
 
             GlobalSystemMediaTransportControlsSession first = null;
             foreach (var s in manager.GetSessions())
             {
                 try
                 {
+                    if (IsSelfSession(s.SourceAppUserModelId)) continue;
                     if (first == null) first = s;
                     if (s.GetPlaybackInfo().PlaybackStatus ==
                         GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
@@ -407,6 +420,8 @@ namespace TopIsland.WinBridge
             }
             catch { }
             if (ok) return;
+
+            if (app.Length == 0) app = _lastApp;
 
             if (AppCommandMap.TryGetValue(action, out var cmd) && app.Length > 0 && SendAppCommand(app, cmd))
                 return;

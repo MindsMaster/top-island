@@ -124,11 +124,7 @@ let snoozeTimer: number | null = null;
 
 function fire(kind: 'alarm' | 'countdown', label: string) {
   ringing.value = { kind, label };
-  // 正在放歌则先暂停（压系统音量会连闹铃一起压小，暂停/恢复最可靠）
-  if (music.isPlaying.value) {
-    musicPausedByRing = true;
-    music.togglePlay();
-  }
+  musicPausedByRing = music.pauseIfPlaying();
   void playRingSound();
   alert.show({
     icon: 'fa-bell',
@@ -166,7 +162,7 @@ function stopRinging() {
   alert.dismiss();
   if (musicPausedByRing) {
     musicPausedByRing = false;
-    music.togglePlay();
+    music.resumePlay();
   }
 }
 
