@@ -49,6 +49,8 @@ pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult
         .map_err(|e| AppError::new(format!("error.io: 序列化设置: {e}")))?;
     infra::persist::set("settings", value)?;
     infra::autolaunch::sync(settings.auto_launch)?;
+    // 缩放/落屏变化即时生效（Electron 的 applyWindowLayout 语义）
+    infra::layout::apply_island_layout(&app, &settings.island)?;
     services::music::sync(&app, &settings);
     services::notify::sync(&app, &settings);
     services::wechat::sync(&app, &settings);
@@ -133,6 +135,11 @@ pub async fn shell_open_external(url: String) -> AppResult<()> {
 
 #[tauri::command]
 pub fn settings_open(app: AppHandle) -> AppResult<()> {
+    let layout = infra::persist::get("settings")
+        .map(AppSettings::from_value)
+        .unwrap_or_default()
+        .island;
+    infra::layout::apply_settings_layout(&app, &layout)?;
     let win = app.get_webview_window("settings").ok_or("error.io: 设置窗不存在")?;
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;

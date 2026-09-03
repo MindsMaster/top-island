@@ -195,8 +195,18 @@ function applyTheme() {
 
 async function initSettings() {
   if (loaded) return;
+  let saved: Partial<AppSettings> | null = null;
+  try {
+    saved = await api.storeGet<Partial<AppSettings>>('settings');
+  } catch {
+    // 后端 store 还没就绪（webview 可能先于 setup 加载）：稍后重试，
+    // 不标记 loaded，否则主题会永远停在默认值
+    window.setTimeout(() => {
+      void initSettings();
+    }, 500);
+    return;
+  }
   loaded = true;
-  const saved = await api.storeGet<Partial<AppSettings>>('settings');
   // 首次运行：跟随系统亮暗偏好选默认主题（黑/白仅是第一默认值）
   if (!saved?.theme) {
     theme.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';

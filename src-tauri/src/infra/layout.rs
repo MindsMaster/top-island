@@ -6,6 +6,28 @@ use crate::error::AppResult;
 
 const ISLAND_BASE_W: f64 = 900.0;
 const ISLAND_BASE_H: f64 = 440.0;
+const SETTINGS_BASE_W: f64 = 480.0;
+const SETTINGS_BASE_H: f64 = 420.0;
+/// 设置窗距所在屏顶部的基准偏移（随缩放等比放大）
+const SETTINGS_OFFSET_Y: f64 = 64.0;
+
+fn resolve_monitor(
+    win: &tauri::WebviewWindow,
+    display_id: &str,
+) -> AppResult<Option<tauri::Monitor>> {
+    let monitor = if display_id != "primary" {
+        win.available_monitors()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|m| m.name().map(|n| n.as_str()) == Some(display_id))
+    } else {
+        None
+    };
+    match monitor {
+        Some(m) => Ok(Some(m)),
+        None => win.primary_monitor().map_err(|e| crate::error::AppError::from(e.to_string())),
+    }
+}
 
 /// 按设置（缩放/所在显示器）摆放岛窗：顶部居中
 pub fn apply_island_layout(app: &tauri::AppHandle, layout: &IslandLayout) -> AppResult<()> {
@@ -13,20 +35,7 @@ pub fn apply_island_layout(app: &tauri::AppHandle, layout: &IslandLayout) -> App
         .get_webview_window("island")
         .ok_or("error.io: 岛窗不存在")?;
     let scale = (layout.scale / 100.0).clamp(0.45, 3.0);
-
-    let monitor = if layout.display_id != "primary" {
-        win.available_monitors()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .find(|m| m.name().map(|n| n.as_str()) == Some(layout.display_id.as_str()))
-    } else {
-        None
-    };
-    let monitor = match monitor {
-        Some(m) => Some(m),
-        None => win.primary_monitor().map_err(|e| e.to_string())?,
-    };
-    let Some(monitor) = monitor else {
+    let Some(monitor) = resolve_monitor(&win, &layout.display_id)? else {
         return Err("error.io: 找不到显示器".into());
     };
 
@@ -38,6 +47,28 @@ pub fn apply_island_layout(app: &tauri::AppHandle, layout: &IslandLayout) -> App
     let x = origin.x + (area.width as i32 - w as i32) / 2;
     win.set_size(PhysicalSize::new(w, h)).map_err(|e| e.to_string())?;
     win.set_position(PhysicalPosition::new(x, origin.y)).map_err(|e| e.to_string())?;
+
+    apply_settings_layout(app, layout)
+}
+
+/// 设置窗跟随岛所在屏与缩放：顶部居中 + 64px 基准偏移
+pub fn apply_settings_layout(app: &tauri::AppHandle, layout: &IslandLayout) -> AppResult<()> {
+    let Some(win) = app.get_webview_window("settings") else {
+        return Ok(());
+    };
+    let scale = (layout.scale / 100.0).clamp(0.45, 3.0);
+    let Some(monitor) = resolve_monitor(&win, &layout.display_id)? else {
+        return Ok(());
+    };
+    let area = monitor.size();
+    let origin = monitor.position();
+    let dpi = monitor.scale_factor();
+    let w = (SETTINGS_BASE_W * scale * dpi) as u32;
+    let h = (SETTINGS_BASE_H * scale * dpi) as u32;
+    let x = origin.x + (area.width as i32 - w as i32) / 2;
+    let y = origin.y + (SETTINGS_OFFSET_Y * scale * dpi) as i32;
+    win.set_size(PhysicalSize::new(w, h)).map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
     Ok(())
 }
 

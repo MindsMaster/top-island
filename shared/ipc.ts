@@ -272,6 +272,8 @@ export interface IslandApi {
   getCursorPoint(): Promise<{ x: number; y: number }>;
   /** 订阅 Rust 钩子判定的光标进出热区（穿透态下唯一可靠的悬停来源） */
   onIslandHover(cb: (inside: boolean) => void): void;
+  /** 窗口移动/缩放/DPI 变化（热区物理坐标变了，需要重报） */
+  onWindowGeometryChanged(cb: () => void): void;
   /** 打开（或聚焦已打开的）设置窗口 */
   openSettings(): Promise<void>;
   /** 持久化设置并广播给其他窗口 */

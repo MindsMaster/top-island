@@ -26,17 +26,28 @@ fn read_json(path: &std::path::Path) -> Option<serde_json::Map<String, serde_jso
     }
 }
 
-pub fn init() -> AppResult<()> {
+fn load() -> AppResult<Store> {
     let path = crate::infra::paths::data_dir()?.join("store.json");
     let bak = path.with_file_name("store.json.bak");
     let data = read_json(&path).or_else(|| read_json(&bak)).unwrap_or_default();
-    STORE
-        .set(Store { path, data: Mutex::new(data) })
-        .map_err(|_| AppError::new("error.io: store 重复初始化"))
+    Ok(Store { path, data: Mutex::new(data) })
 }
 
+/// 首次运行显式初始化（可选——访问方走惰性初始化，窗口先于 setup 加载也不炸）
+pub fn init() -> AppResult<()> {
+    let _ = store();
+    Ok(())
+}
+
+// 窗口是 conf 声明的，webview 加载可能早于 setup 跑完 persist::init，
+// 惰性初始化保证任何时刻调 store 命令都拿得到数据
 fn store() -> &'static Store {
-    STORE.get().expect("store 未初始化")
+    STORE.get_or_init(|| {
+        load().unwrap_or_else(|e| {
+            eprintln!("[persist] store 初始化失败，退化为内存空库: {e}");
+            Store { path: PathBuf::new(), data: Mutex::new(serde_json::Map::new()) }
+        })
+    })
 }
 
 fn lock() -> MutexGuard<'static, serde_json::Map<String, serde_json::Value>> {
@@ -45,6 +56,10 @@ fn lock() -> MutexGuard<'static, serde_json::Map<String, serde_json::Value>> {
 
 fn flush(guard: &serde_json::Map<String, serde_json::Value>) -> AppResult<()> {
     let path = &store().path;
+    if path.as_os_str().is_empty() {
+        // 内存退化模式：不写盘（数据目录都建不出来时，写也必败）
+        return Ok(());
+    }
     let tmp = path.with_file_name("store.json.tmp");
     let bak = path.with_file_name("store.json.bak");
     let text = serde_json::to_string(guard).map_err(|e| AppError::new(format!("error.io: 序列化 store: {e}")))?;

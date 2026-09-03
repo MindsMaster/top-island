@@ -112,98 +112,111 @@ fn push_state(app: &AppHandle) {
 }
 
 pub fn poll_state() -> MusicState {
-    let mut inner = lock_inner();
+    // spawn_*_fetch 入口要再抢 INNER，持锁调用会自死锁（std Mutex 不可重入），
+    // 先在锁内记下要抓什么，出锁后再 spawn
+    let mut need_artwork: Option<String> = None;
+    let mut need_lyrics: Option<(String, String, String, Option<String>)> = None;
     let mut result = MusicState::default();
 
-    let Some(smtc) = inner.client.query() else {
-        inner.last_track_key.clear();
-        inner.last_lyrics_key.clear();
-        return result;
-    };
-    let title = smtc.title;
-    let artist = smtc.artist;
-    let source = smtc.app;
-    if title.is_empty() && source.is_empty() {
-        inner.last_track_key.clear();
-        inner.last_lyrics_key.clear();
-        return result;
-    }
-
-    result.is_playing = smtc.playing;
-    let track = if !title.is_empty() {
-        title.clone()
-    } else {
-        // 无标题的源退化为来源标识（对齐 Electron：取 AUMID 最后一段或末尾 30 字符）
-        let tail = if source.contains('.') {
-            source.rsplit('.').next().unwrap_or(&source).to_string()
-        } else {
-            source.chars().rev().take(30).collect::<Vec<_>>().into_iter().rev().collect()
+    {
+        let mut inner = lock_inner();
+        let Some(smtc) = inner.client.query() else {
+            inner.last_track_key.clear();
+            inner.last_lyrics_key.clear();
+            return result;
         };
-        format!("SMTC: {tail}")
-    };
-    result.track = Some(track);
-    if !artist.is_empty() {
-        result.artist = Some(artist.clone());
-    }
-    result.source_app_id = Some(source.clone());
-    result.position_ms = Some(smtc.position_ms);
-    result.duration_ms = Some(smtc.duration_ms);
-    result.seek_supported = Some(smtc.seek_supported);
-
-    let key = track_key_of(&title, &artist, &source);
-    if key != inner.last_track_key {
-        inner.last_track_key = key.clone();
-        spawn_artwork_fetch(key.clone());
-    }
-    if let Some(art) = &inner.artwork {
-        if art.track_key == key {
-            result.artwork_hash = Some(art.hash.clone());
+        let title = smtc.title;
+        let artist = smtc.artist;
+        let source = smtc.app;
+        if title.is_empty() && source.is_empty() {
+            inner.last_track_key.clear();
+            inner.last_lyrics_key.clear();
+            return result;
         }
-    }
 
-    // SMTC 无时间轴的源（网易云等）：外部位置源补真实进度；
-    // 源能给出 songId 时歌词/时长按 ID 精确获取
-    let mut lyrics_key = key.clone();
-    let mut by_id_song: Option<String> = None;
-    if result.duration_ms == Some(0) {
-        if let Some(ext) = inner.elog.poll_if_matches(&source) {
-            result.position_ms = Some(ext.position_ms);
-            // 网易云 SMTC PlaybackStatus 冻结/滞后不可信，播放态以 elog 为准
-            // （否则 UI 播放/暂停按钮显示反相，点按发出错误动词成为无操作）
-            result.is_playing = ext.playing;
-            if ext.duration_ms > 0 {
-                result.duration_ms = Some(ext.duration_ms);
-            }
-            if let Some(song_id) = ext.song_id {
-                lyrics_key = format!("163:{song_id}");
-                by_id_song = Some(song_id);
+        result.is_playing = smtc.playing;
+        let track = if !title.is_empty() {
+            title.clone()
+        } else {
+            // 无标题的源退化为来源标识（对齐 Electron：取 AUMID 最后一段或末尾 30 字符）
+            let tail = if source.contains('.') {
+                source.rsplit('.').next().unwrap_or(&source).to_string()
+            } else {
+                source.chars().rev().take(30).collect::<Vec<_>>().into_iter().rev().collect()
+            };
+            format!("SMTC: {tail}")
+        };
+        result.track = Some(track);
+        if !artist.is_empty() {
+            result.artist = Some(artist.clone());
+        }
+        result.source_app_id = Some(source.clone());
+        result.position_ms = Some(smtc.position_ms);
+        result.duration_ms = Some(smtc.duration_ms);
+        result.seek_supported = Some(smtc.seek_supported);
+
+        let key = track_key_of(&title, &artist, &source);
+        if key != inner.last_track_key {
+            inner.last_track_key = key.clone();
+            need_artwork = Some(key.clone());
+        }
+        if let Some(art) = &inner.artwork {
+            if art.track_key == key {
+                result.artwork_hash = Some(art.hash.clone());
             }
         }
-    }
 
-    if lyrics_key != inner.last_lyrics_key {
-        inner.last_lyrics_key = lyrics_key.clone();
-        // 只对已知音乐播放器查歌词（songId 精确获取不受白名单限制——能给出
-        // songId 说明外部位置源已确认是网易云）
-        if by_id_song.is_some() || media_sources::lyrics_supported(&source) {
-            spawn_lyrics_fetch(lyrics_key.clone(), title.clone(), artist.clone(), by_id_song);
-        }
-    }
-    if let Some(cache) = &inner.lyrics {
-        if cache.track_key == lyrics_key {
-            if !cache.data.lines.is_empty() {
-                result.lyrics_id = Some(lyrics_key.clone());
-            }
-            if result.duration_ms == Some(0) && cache.data.duration_ms > 0 {
-                // 按 ID 取得的时长是权威值，与外部位置源构成完整时间轴（渲染层可回同步）；
-                // 搜索得到的时长可能是错误版本，仅作估算展示
-                if cache.by_id {
-                    result.duration_ms = Some(cache.data.duration_ms);
-                } else {
-                    result.estimated_duration_ms = Some(cache.data.duration_ms);
+        // SMTC 无时间轴的源（网易云等）：外部位置源补真实进度；
+        // 源能给出 songId 时歌词/时长按 ID 精确获取
+        let mut lyrics_key = key.clone();
+        let mut by_id_song: Option<String> = None;
+        if result.duration_ms == Some(0) {
+            if let Some(ext) = inner.elog.poll_if_matches(&source) {
+                result.position_ms = Some(ext.position_ms);
+                // 网易云 SMTC PlaybackStatus 冻结/滞后不可信，播放态以 elog 为准
+                // （否则 UI 播放/暂停按钮显示反相，点按发出错误动词成为无操作）
+                result.is_playing = ext.playing;
+                if ext.duration_ms > 0 {
+                    result.duration_ms = Some(ext.duration_ms);
+                }
+                if let Some(song_id) = ext.song_id {
+                    lyrics_key = format!("163:{song_id}");
+                    by_id_song = Some(song_id);
                 }
             }
         }
+
+        if lyrics_key != inner.last_lyrics_key {
+            inner.last_lyrics_key = lyrics_key.clone();
+            // 只对已知音乐播放器查歌词（songId 精确获取不受白名单限制——能给出
+            // songId 说明外部位置源已确认是网易云）
+            if by_id_song.is_some() || media_sources::lyrics_supported(&source) {
+                need_lyrics = Some((lyrics_key.clone(), title.clone(), artist.clone(), by_id_song));
+            }
+        }
+        if let Some(cache) = &inner.lyrics {
+            if cache.track_key == lyrics_key {
+                if !cache.data.lines.is_empty() {
+                    result.lyrics_id = Some(lyrics_key.clone());
+                }
+                if result.duration_ms == Some(0) && cache.data.duration_ms > 0 {
+                    // 按 ID 取得的时长是权威值，与外部位置源构成完整时间轴（渲染层可回同步）；
+                    // 搜索得到的时长可能是错误版本，仅作估算展示
+                    if cache.by_id {
+                        result.duration_ms = Some(cache.data.duration_ms);
+                    } else {
+                        result.estimated_duration_ms = Some(cache.data.duration_ms);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(key) = need_artwork {
+        spawn_artwork_fetch(key);
+    }
+    if let Some((key, title, artist, song_id)) = need_lyrics {
+        spawn_lyrics_fetch(key, title, artist, song_id);
     }
     result
 }

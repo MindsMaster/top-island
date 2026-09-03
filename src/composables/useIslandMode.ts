@@ -49,6 +49,9 @@ export function useIslandMode(options: IslandModeOptions) {
     reportRect();
   });
 
+  // 窗口移动/缩放/DPI 变化会改变热区的物理坐标，DOM 矩形本身不变，需要重报
+  api.onWindowGeometryChanged(reportRect);
+
   api.onIslandHover((inside) => {
     if (inside) onEnter();
     else onLeave();

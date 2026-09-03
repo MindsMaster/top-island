@@ -26,6 +26,11 @@ export const api: IslandApi = {
   onIslandHover: (cb) => {
     void listen<boolean>('island-hover', (e) => cb(e.payload));
   },
+  onWindowGeometryChanged: (cb) => {
+    void listen('tauri://move', () => cb());
+    void listen('tauri://resize', () => cb());
+    void listen('tauri://scale-change', () => cb());
+  },
   openSettings: () => invoke('settings_open'),
   settingsUpdate: (settings: AppSettings) => invoke('settings_update', { settings }),
   onSettingsChanged: (cb) => {
