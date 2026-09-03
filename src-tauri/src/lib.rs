@@ -93,6 +93,10 @@ pub fn run() {
             win.set_ignore_cursor_events(true)?;
             init_input(app.handle());
             infra::tray::build(app.handle())?;
+
+            services::music::sync(app.handle(), &settings);
+            services::notify::sync(app.handle(), &settings);
+            services::wechat::sync(app.handle(), &settings);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -108,9 +112,27 @@ pub fn run() {
             ipc::app_get_version,
             ipc::displays_list,
             ipc::shell_open_external,
+            ipc::window_close,
+            ipc::window_close_self,
+            ipc::window_get_cursor_point,
+            ipc::music::music_poll,
+            ipc::music::music_control,
+            ipc::music::music_seek,
+            ipc::music::music_artwork,
+            ipc::music::music_lyrics,
+            ipc::notify::notify_activate_toast,
+            ipc::notify::notify_image,
+            ipc::clipboard::clipboard_read_text,
+            ipc::clipboard::clipboard_write_text,
+            ipc::clipboard::clipboard_has_image,
+            ipc::clipboard::clipboard_read_file_paths,
+            ipc::clipboard::clipboard_sequence_number,
+            ipc::alarm::alarm_sound_list,
+            ipc::alarm::alarm_sound_data,
+            ipc::alarm::alarm_sound_pick,
+            ipc::wechat::wechat_acquire_key,
+            ipc::wechat::wechat_has_key,
             ipc::smtc_now,
-            ipc::notify_recent,
-            ipc::notify_activate,
             ipc::set_panel_open,
         ])
         .run(tauri::generate_context!())

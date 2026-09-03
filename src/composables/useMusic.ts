@@ -4,7 +4,8 @@ import { useSettings } from './useSettings';
 import type { LyricLine, MusicAction, MusicState } from '../../shared/ipc';
 
 /**
- * 不确定的偏差 个人测试补偿400延迟
+ * QQ 音乐的 SMTC 时间轴上报比实际播放落后约 400ms（个人实测经验值，来源不明、
+ * 无法从协议侧修正）。匹配当前歌词行时把进度往后补 400ms，否则歌词始终慢半拍。
  */
 function builtinLyricOffset(sourceAppId: string): number {
   return sourceAppId.toLowerCase().includes('qqmusic') ? 400 : 0;

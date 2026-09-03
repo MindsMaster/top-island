@@ -1,4 +1,7 @@
 pub mod activate;
+pub mod banner;
+pub mod clipboard;
+pub mod coreaudio;
 pub mod error;
 pub mod input;
 pub mod smtc;

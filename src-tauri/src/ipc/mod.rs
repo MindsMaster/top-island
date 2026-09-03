@@ -42,13 +42,16 @@ pub async fn store_clear(app: AppHandle) -> AppResult<()> {
 
 // ---- settings ----
 
-/// 持久化设置并广播给其他窗口，附带同步自启等副作用
+/// 持久化设置并广播给其他窗口，附带同步自启与各域生命周期
 #[tauri::command]
 pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult<()> {
     let value = serde_json::to_value(&settings)
         .map_err(|e| AppError::new(format!("error.io: 序列化设置: {e}")))?;
     infra::persist::set("settings", value)?;
     infra::autolaunch::sync(settings.auto_launch)?;
+    services::music::sync(&app, &settings);
+    services::notify::sync(&app, &settings);
+    services::wechat::sync(&app, &settings);
     let _ = app.emit("settings:changed", &settings);
     Ok(())
 }
@@ -136,22 +139,38 @@ pub fn settings_open(app: AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-// ---- spike 保留：等 Phase 2 的音乐/通知域落地后替换 ----
+// ---- window ----
+
+/// 退出整个应用
+#[tauri::command]
+pub fn window_close(app: AppHandle) {
+    app.exit(0);
+}
+
+/// 关闭调用方所在窗口：设置窗只隐藏（conf 声明的窗口关掉就没了，重开靠 show）
+#[tauri::command]
+pub fn window_close_self(window: tauri::WebviewWindow) {
+    if window.label() == "settings" {
+        let _ = window.hide();
+    } else {
+        let _ = window.close();
+    }
+}
+
+/// 全局光标位置（相对调用方窗口内容区）。
+/// 悬停看门狗用：mouseleave 不触发时的兜底校验。
+#[tauri::command]
+pub fn window_get_cursor_point(window: tauri::WebviewWindow) -> AppResult<(i32, i32)> {
+    let (x, y) = island_windows::input::cursor_position();
+    let origin = window.inner_position().map_err(|e| e.to_string())?;
+    Ok((x - origin.x, y - origin.y))
+}
+
+// ---- spike 保留：Phase 4 前端切换后随 spike-ui 一起删除 ----
 
 #[tauri::command]
 pub async fn smtc_now() -> AppResult<Option<island_windows::NowPlaying>> {
     off_thread(|| island_windows::now_playing().map_err(AppError::from)).await
-}
-
-#[tauri::command]
-pub async fn notify_recent(limit: Option<i64>) -> AppResult<Vec<island_windows::ToastRow>> {
-    off_thread(move || island_windows::recent_toasts(limit.unwrap_or(5)).map_err(AppError::from))
-        .await
-}
-
-#[tauri::command]
-pub async fn notify_activate(aumid: String) -> AppResult<String> {
-    off_thread(move || island_windows::activate::activate(&aumid).map_err(AppError::from)).await
 }
 
 #[tauri::command]

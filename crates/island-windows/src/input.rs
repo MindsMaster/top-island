@@ -64,11 +64,17 @@ pub fn set_hover_rect(rect: Rect) {
 }
 
 fn cursor_inside(rect: &Rect) -> bool {
+    let (x, y) = cursor_position();
+    rect.contains(POINT { x, y })
+}
+
+/// 全局光标的物理屏幕坐标；失败返回 (0, 0)
+pub fn cursor_position() -> (i32, i32) {
     let mut pt = POINT::default();
     if unsafe { GetCursorPos(&mut pt) }.is_ok() {
-        rect.contains(pt)
+        (pt.x, pt.y)
     } else {
-        false
+        (0, 0)
     }
 }
 

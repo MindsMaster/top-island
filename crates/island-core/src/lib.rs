@@ -4,7 +4,7 @@ pub mod settings;
 pub mod weather;
 
 pub use music::{LyricLine, LyricsData, MusicAction, MusicArtwork, MusicState};
-pub use notify::NotificationItem;
+pub use notify::{parse_toast_payload, NotificationItem, ToastPayload};
 pub use settings::{
     AppSettings, CustomTheme, DiagnosticsToggles, IslandLayout, LangPref, NotificationsConfig,
     NotificationsPrivacy, ThemeId,
