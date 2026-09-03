@@ -1,6 +1,8 @@
 node_modules/
 dist/
 release/
+src-tauri/target/
+src-tauri/gen/
 .archive/
 native/**/bin/
 native/**/obj/
@@ -16,3 +18,5 @@ Thumbs.db
 *.tgz
 build/*.png
 build/*.ico
+docs/
+.claude/

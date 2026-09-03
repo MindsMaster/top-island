@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "spike window permissions",
+  "windows": ["island"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close"
+  ]
+}
