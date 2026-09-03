@@ -1,72 +1,118 @@
-mod input;
-mod notify;
-mod smtc;
+pub mod error;
+mod infra;
+mod ipc;
+mod services;
 
-use tauri::Manager;
-use windows::Win32::Foundation::RECT;
+use std::sync::Mutex;
 
-#[tauri::command]
-async fn smtc_now() -> Result<Option<smtc::NowPlaying>, String> {
-    tauri::async_runtime::spawn_blocking(smtc::now_playing)
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.message())
+use tauri::{AppHandle, Emitter, Manager};
+
+use island_core::AppSettings;
+use island_windows::{InputHandlers, Rect};
+
+/// 岛窗悬停热区：面板收起时只有胶囊一条，展开后放大到整窗
+struct HotRegion {
+    left: i32,
+    top: i32,
+    right: i32,
+    cap_h: i32,
+    full_h: i32,
 }
 
-#[tauri::command]
-async fn notify_recent(limit: Option<i64>) -> Result<Vec<notify::ToastRow>, String> {
-    let limit = limit.unwrap_or(5);
-    tauri::async_runtime::spawn_blocking(move || notify::recent_toasts(limit))
-        .await
-        .map_err(|e| e.to_string())?
+static HOT: Mutex<Option<HotRegion>> = Mutex::new(None);
+
+pub fn set_panel_hot(open: bool) {
+    let guard = HOT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(h) = guard.as_ref() {
+        let height = if open { h.full_h } else { h.cap_h };
+        island_windows::input::set_hover_rect(Rect {
+            left: h.left,
+            top: h.top,
+            right: h.right,
+            bottom: h.top + height,
+        });
+    }
 }
 
-#[tauri::command]
-async fn notify_activate(aumid: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || notify::activate(&aumid))
-        .await
-        .map_err(|e| e.to_string())?
-}
+fn init_input(app: &AppHandle) {
+    let Some(win) = app.get_webview_window("island") else { return };
+    let (Ok(pos), Ok(size), Ok(dpi)) =
+        (win.outer_position(), win.outer_size(), win.scale_factor())
+    else {
+        return;
+    };
+    let cap_h = (72.0 * dpi) as i32;
+    let region = Rect {
+        left: pos.x,
+        top: pos.y,
+        right: pos.x + size.width as i32,
+        bottom: pos.y + cap_h,
+    };
+    *HOT.lock().unwrap_or_else(|e| e.into_inner()) = Some(HotRegion {
+        left: region.left,
+        top: region.top,
+        right: region.right,
+        cap_h,
+        full_h: size.height as i32,
+    });
 
-#[tauri::command]
-fn set_panel_open(open: bool) {
-    input::set_panel_open(open);
+    let hover_app = app.clone();
+    let clip_app = app.clone();
+    island_windows::start_input(InputHandlers {
+        hover_rect: Some(region),
+        on_hover: Some(Box::new(move |inside| {
+            if let Some(win) = hover_app.get_webview_window("island") {
+                let _ = win.set_ignore_cursor_events(!inside);
+                let _ = hover_app.emit("island-hover", inside);
+            }
+        })),
+        on_clipboard: Some(Box::new(move || {
+            let _ = clip_app.emit("clipboard:changed", ());
+        })),
+    });
 }
 
 pub fn run() {
     tauri::Builder::default()
-        .setup(|app| {
-            let win = app.get_webview_window("island").expect("island window");
-
-            if let Some(mon) = win.primary_monitor()? {
-                let area = mon.size();
-                let origin = mon.position();
-                let size = win.outer_size()?;
-                let x = origin.x + (area.width as i32 - size.width as i32) / 2;
-                win.set_position(tauri::PhysicalPosition::new(x, origin.y))?;
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(win) = app.get_webview_window("island") {
+                let _ = win.set_focus();
             }
+        }))
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            infra::persist::init()?;
 
+            let settings = infra::persist::get("settings")
+                .map(AppSettings::from_value)
+                .unwrap_or_default();
+            infra::layout::apply_island_layout(app.handle(), &settings.island)?;
+            infra::autolaunch::sync(settings.auto_launch)?;
+
+            let win = app.get_webview_window("island").expect("island window");
             win.set_ignore_cursor_events(true)?;
-
-            let pos = win.outer_position()?;
-            let scale = win.scale_factor()?;
-            let size = win.outer_size()?;
-            let rect = RECT {
-                left: pos.x,
-                top: pos.y,
-                right: pos.x + size.width as i32,
-                bottom: pos.y + size.height as i32,
-            };
-            let cap_h = (72.0 * scale) as i32;
-            input::start(app.handle().clone(), rect, cap_h, size.height as i32);
+            init_input(app.handle());
+            infra::tray::build(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            smtc_now,
-            notify_recent,
-            notify_activate,
-            set_panel_open
+            ipc::store_get,
+            ipc::store_set,
+            ipc::store_clear,
+            ipc::settings_update,
+            ipc::settings_open,
+            ipc::weather_ip_city,
+            ipc::weather_geocode,
+            ipc::weather_query,
+            ipc::app_get_locale,
+            ipc::app_get_version,
+            ipc::displays_list,
+            ipc::shell_open_external,
+            ipc::smtc_now,
+            ipc::notify_recent,
+            ipc::notify_activate,
+            ipc::set_panel_open,
         ])
         .run(tauri::generate_context!())
-        .expect("island spike run");
+        .expect("top island run");
 }

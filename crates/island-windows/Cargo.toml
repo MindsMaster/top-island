@@ -1,0 +1,26 @@
+[package]
+name = "island-windows"
+description = "Windows integration: SMTC, notification center, clipboard, global input hooks."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+windows = { version = "0.58", features = [
+    "Media_Control",
+    "Foundation",
+    "Foundation_Collections",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[lints]
+workspace = true

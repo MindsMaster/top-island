@@ -1,0 +1,12 @@
+[package]
+name = "island-core"
+description = "Domain types shared across the island: settings, music, notifications. No system APIs."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

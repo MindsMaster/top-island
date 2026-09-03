@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "island-spike",
+  "productName": "TopIsland",
   "version": "0.0.1",
-  "identifier": "cc.azuramc.topisland.spike",
+  "identifier": "cc.azuramc.topisland",
   "build": {
     "frontendDist": "../spike-ui"
   },
@@ -11,7 +11,20 @@
     "windows": [
       {
         "label": "island",
-        "title": "island-spike",
+        "title": "Top Island",
+        "width": 900,
+        "height": 440,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "visible": true
+      },
+      {
+        "label": "settings",
+        "title": "Top Island 设置",
         "width": 480,
         "height": 420,
         "decorations": false,
@@ -20,7 +33,7 @@
         "skipTaskbar": true,
         "resizable": false,
         "shadow": false,
-        "visible": true
+        "visible": false
       }
     ],
     "security": {
@@ -28,6 +41,7 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": false,
+    "icon": ["icons/icon.ico"]
   }
 }
