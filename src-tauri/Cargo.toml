@@ -14,6 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [dependencies]
 island-core = { path = "../crates/island-core" }
 island-windows = { path = "../crates/island-windows" }
+island-wechat = { path = "../crates/island-wechat" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"

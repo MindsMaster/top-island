@@ -6,6 +6,12 @@ use island_core::{AppSettings, IpCityInfo};
 use crate::error::{AppError, AppResult};
 use crate::{infra, services};
 
+pub mod alarm;
+pub mod clipboard;
+pub mod music;
+pub mod notify;
+pub mod wechat;
+
 /// 耗时命令统一走阻塞线程池，不堵 Tauri UI 线程
 async fn off_thread<T: Send + 'static>(
     f: impl FnOnce() -> AppResult<T> + Send + 'static,
