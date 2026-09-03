@@ -8,13 +8,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let sep = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
-    let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![&open, &sep, &quit];
     #[cfg(debug_assertions)]
-    let devtools = MenuItem::with_id(app, "devtools", "打开开发者工具", true, None::<&str>)?;
-    #[cfg(debug_assertions)]
-    items.insert(0, &devtools);
-
-    let menu = Menu::with_items(app, &items)?;
+    let menu = {
+        let devtools = MenuItem::with_id(app, "devtools", "打开开发者工具", true, None::<&str>)?;
+        Menu::with_items(app, &[&devtools, &open, &sep, &quit])?
+    };
+    #[cfg(not(debug_assertions))]
+    let menu = Menu::with_items(app, &[&open, &sep, &quit])?;
     let mut builder = TrayIconBuilder::new().menu(&menu).tooltip("Top Island");
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());

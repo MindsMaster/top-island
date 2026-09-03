@@ -197,35 +197,21 @@ pub fn window_set_hot_rect(window: tauri::WebviewWindow, rect: Option<HotRect>) 
     Ok(())
 }
 
-// ---- update：Phase 5 换 tauri-plugin-updater，现在是让前端能跑的桩 ----
+// ---- update ----
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateCheckResult {
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
+#[tauri::command]
+pub async fn update_status() -> AppResult<services::update::UpdateStatus> {
+    Ok(services::update::status())
 }
 
 #[tauri::command]
-pub async fn update_status() -> AppResult<UpdateCheckResult> {
-    Ok(UpdateCheckResult {
-        status: "not-available".into(),
-        version: None,
-        message: Some("自更新尚未接入（Phase 5）".into()),
-    })
+pub async fn update_check(app: AppHandle) -> AppResult<services::update::UpdateStatus> {
+    Ok(services::update::check(app, true).await)
 }
 
 #[tauri::command]
-pub async fn update_check() -> AppResult<UpdateCheckResult> {
-    update_status().await
-}
-
-#[tauri::command]
-pub async fn update_install() -> AppResult<()> {
-    Err(AppError::new("error.unsupported: 自更新尚未接入（Phase 5）"))
+pub async fn update_install(app: AppHandle) -> AppResult<()> {
+    services::update::install(&app)
 }
 
 /// 在资源管理器里打开数据目录（诊断入口；Electron 版是定位日志文件，

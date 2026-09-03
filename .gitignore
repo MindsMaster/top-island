@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+release-feed/
 /target/
 src-tauri/target/
 src-tauri/gen/

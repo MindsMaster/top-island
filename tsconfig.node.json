@@ -9,5 +9,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts", "shared/**/*.ts"]
+  "include": ["shared/**/*.ts"]
 }

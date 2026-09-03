@@ -47,6 +47,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             infra::persist::init()?;
 
@@ -64,6 +65,7 @@ pub fn run() {
             services::music::sync(app.handle(), &settings);
             services::notify::sync(app.handle(), &settings);
             services::wechat::sync(app.handle(), &settings);
+            services::update::start(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/island-core", "crates/island-windows", "crates/island-wechat", "src-tauri"]
+members = ["crates/island-core", "crates/island-windows", "crates/island-wechat", "src-tauri", "xtask"]
 
 [workspace.package]
 version = "0.0.1"

@@ -26,7 +26,9 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_System_Registry",
+    "Win32_System_SystemInformation",
 ] }
+tauri-plugin-updater = "2.11.0"
 
 [lints]
 workspace = true
