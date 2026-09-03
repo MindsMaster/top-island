@@ -11,7 +11,6 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-use crate::error::{Result, WinError};
 
 /// 应用注册的 toast activator CLSID（HKCU 优先，其次 HKLM）
 fn custom_activator(aumid: &str) -> Option<String> {
@@ -176,13 +175,4 @@ pub fn activate_toast(aumid: &str, launch: &str, atype: &str) -> String {
     }
     eprintln!("[notify] shell:AppsFolder 兜底失败({aumid})");
     "failed".into()
-}
-
-/// spike 期保留的一参版本：不带深链参数直接激活应用。
-/// 新代码用 activate_toast；本函数等 spike 命令退役后删除。
-pub fn activate(aumid: &str) -> Result<String> {
-    if aumid.is_empty() {
-        return Err(WinError::api("激活应用", "aumid 为空"));
-    }
-    Ok(activate_toast(aumid, "", ""))
 }

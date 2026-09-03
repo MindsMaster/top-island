@@ -8,7 +8,10 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:tauri": "tauri dev",
     "build": "node scripts/build.mjs",
+    "build:renderer": "vite build",
+    "build:tauri": "tauri build",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "dist:dir": "node scripts/build.mjs && electron-builder --dir",
     "dist": "node scripts/build.mjs && electron-builder --win",
@@ -20,12 +23,14 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.7.2",
+    "@tauri-apps/api": "^2",
     "better-sqlite3-multiple-ciphers": "^12.11.1",
     "electron-updater": "^6.8.9",
     "vue": "^3.5.13"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
+    "@tauri-apps/cli": "^2",
     "@types/node": "^22.10.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/eslint-config-prettier": "^10.2.0",

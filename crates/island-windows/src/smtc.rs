@@ -667,26 +667,3 @@ fn watch_loop(on_change: impl Fn()) {
         on_change();
     }
 }
-
-// ---- spike 保留：ipc::smtc_now 仍在用，等 Phase 4 前端切换后随旧命令一起删 ----
-
-#[derive(Debug, Clone, Serialize)]
-pub struct NowPlaying {
-    pub app_id: String,
-    pub title: String,
-    pub artist: String,
-    pub status: String,
-}
-
-pub fn now_playing() -> Result<Option<NowPlaying>> {
-    let mut client = SmtcClient::new();
-    let Some(info) = client.query() else {
-        return Ok(None);
-    };
-    Ok(Some(NowPlaying {
-        app_id: info.app,
-        title: info.title,
-        artist: info.artist,
-        status: if info.playing { "Playing".into() } else { "Paused".into() },
-    }))
-}

@@ -4,7 +4,9 @@
   "version": "0.0.1",
   "identifier": "cc.azuramc.topisland",
   "build": {
-    "frontendDist": "../spike-ui"
+    "frontendDist": "../dist/renderer",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm vite"
   },
   "app": {
     "withGlobalTauri": true,
@@ -25,6 +27,7 @@
       {
         "label": "settings",
         "title": "Top Island 设置",
+        "url": "index.html#settings",
         "width": 480,
         "height": 420,
         "decorations": false,

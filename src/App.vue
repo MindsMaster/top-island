@@ -35,6 +35,7 @@ function onAlertAction(handler: (() => void) | null) {
 }
 
 const islandEl = ref<HTMLElement | null>(null);
+const containerEl = ref<HTMLElement | null>(null);
 
 const hideDragging = ref(false);
 const hideDragOffset = ref(0);
@@ -44,7 +45,8 @@ const island = useIslandMode({
   keepInteractive: () => hideDragging.value || notify.hoveringPopup.value || miniHover.value,
   holdMode: () =>
     tasksApi.activeReminderTask.value !== null || alarm.keepInteractive.value || hideDragging.value,
-  getRect: () => islandEl.value?.getBoundingClientRect() ?? null,
+  // 热区含通知栈：悬停通知卡片时岛不收起、可点击
+  getRect: () => containerEl.value?.getBoundingClientRect() ?? null,
 });
 
 const swipe = usePanelSwipe({
@@ -270,9 +272,12 @@ onMounted(async () => {
     islandRO = new ResizeObserver(() => {
       const w = islandEl.value?.offsetWidth;
       if (w) islandWidth.value = w;
+      island.reportRect();
     });
     islandRO.observe(islandEl.value);
+    if (containerEl.value) islandRO.observe(containerEl.value);
   }
+  island.reportRect();
 });
 
 onBeforeUnmount(() => {
@@ -291,7 +296,7 @@ function closeWindow() {
 
 <template>
   <div v-if="isLargeView" class="large-dismiss-shield" @mousedown="island.collapse()"></div>
-  <div id="island-container" @mouseleave="onContainerLeave" @mousedown="onContainerMouseDown">
+  <div id="island-container" ref="containerEl" @mouseleave="onContainerLeave" @mousedown="onContainerMouseDown">
     <div
       id="island"
       ref="islandEl"

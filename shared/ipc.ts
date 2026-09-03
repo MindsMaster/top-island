@@ -245,9 +245,22 @@ export interface UpdateCheckResult {
   message?: string;
 }
 
-/** preload 通过 contextBridge 暴露给渲染层的 API 形状 */
+/** 岛窗交互热区（CSS 像素，相对窗口内容区）；null = 全程可交互（拖动等手势期间） */
+export interface HotRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** preload 通过 contextBridge 暴露给渲染层的 API 形状（Tauri 版由 src/api.ts 用 invoke/listen 实现同一形状） */
 export interface IslandApi {
-  setIgnoreMouseEvents(ignore: boolean): Promise<void>;
+  /**
+   * 上报岛窗交互热区。WebView2 没有 setIgnoreMouseEvents(forward:) 等价物，
+   * 穿透由 Rust 侧 WH_MOUSE_LL 钩子按热区切换；热区外穿透、热区内可交互。
+   * 传 null 表示全程可交互（hide 拖动、通知卡片悬停等 keepInteractive 场景）。
+   */
+  setHotRect(rect: HotRect | null): Promise<void>;
   closeWindow(): Promise<void>;
   /** 仅关闭调用方所在窗口（设置窗等辅助窗口用；closeWindow 是退出整个应用） */
   closeSelf(): Promise<void>;
@@ -257,6 +270,8 @@ export interface IslandApi {
    * 不触发，需要不依赖事件的兜底校验。
    */
   getCursorPoint(): Promise<{ x: number; y: number }>;
+  /** 订阅 Rust 钩子判定的光标进出热区（穿透态下唯一可靠的悬停来源） */
+  onIslandHover(cb: (inside: boolean) => void): void;
   /** 打开（或聚焦已打开的）设置窗口 */
   openSettings(): Promise<void>;
   /** 持久化设置并广播给其他窗口 */

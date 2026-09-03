@@ -166,14 +166,73 @@ pub fn window_get_cursor_point(window: tauri::WebviewWindow) -> AppResult<(i32, 
     Ok((x - origin.x, y - origin.y))
 }
 
-// ---- spike 保留：Phase 4 前端切换后随 spike-ui 一起删除 ----
-
-#[tauri::command]
-pub async fn smtc_now() -> AppResult<Option<island_windows::NowPlaying>> {
-    off_thread(|| island_windows::now_playing().map_err(AppError::from)).await
+/// 岛窗交互热区（CSS 像素，相对窗口内容区）；None = 全程可交互（拖动等手势期间）
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HotRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[tauri::command]
-pub fn set_panel_open(open: bool) {
-    crate::set_panel_hot(open);
+pub fn window_set_hot_rect(window: tauri::WebviewWindow, rect: Option<HotRect>) -> AppResult<()> {
+    match rect {
+        None => {
+            island_windows::input::set_hover_rect(None);
+            window.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
+        }
+        Some(r) => {
+            let dpi = window.scale_factor().map_err(|e| e.to_string())?;
+            let origin = window.outer_position().map_err(|e| e.to_string())?;
+            island_windows::input::set_hover_rect(Some(island_windows::Rect {
+                left: origin.x + (r.x * dpi) as i32,
+                top: origin.y + (r.y * dpi) as i32,
+                right: origin.x + ((r.x + r.width) * dpi) as i32,
+                bottom: origin.y + ((r.y + r.height) * dpi) as i32,
+            }));
+        }
+    }
+    Ok(())
+}
+
+// ---- update：Phase 5 换 tauri-plugin-updater，现在是让前端能跑的桩 ----
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheckResult {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[tauri::command]
+pub async fn update_status() -> AppResult<UpdateCheckResult> {
+    Ok(UpdateCheckResult {
+        status: "not-available".into(),
+        version: None,
+        message: Some("自更新尚未接入（Phase 5）".into()),
+    })
+}
+
+#[tauri::command]
+pub async fn update_check() -> AppResult<UpdateCheckResult> {
+    update_status().await
+}
+
+#[tauri::command]
+pub async fn update_install() -> AppResult<()> {
+    Err(AppError::new("error.unsupported: 自更新尚未接入（Phase 5）"))
+}
+
+/// 在资源管理器里打开数据目录（诊断入口；Electron 版是定位日志文件，
+/// Rust 版日志走 eprintln 还没有日志文件，先定位到数据目录）
+#[tauri::command]
+pub async fn diag_reveal() -> AppResult<()> {
+    let dir = infra::paths::data_dir()?;
+    tauri_plugin_opener::open_path(&dir, None::<&str>)
+        .map_err(|e| AppError::new(format!("error.io: {e}")))
 }

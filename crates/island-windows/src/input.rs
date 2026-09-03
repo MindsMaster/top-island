@@ -42,7 +42,8 @@ impl std::fmt::Debug for InputHandlers {
 }
 
 struct HoverState {
-    rect: Rect,
+    /// None = 全程可交互（拖动等手势期间），钩子不再切换穿透
+    rect: Option<Rect>,
     inside: bool,
     on_change: Box<dyn Fn(bool) + Send>,
 }
@@ -50,15 +51,18 @@ struct HoverState {
 static HOVER: Mutex<Option<HoverState>> = Mutex::new(None);
 static CLIPBOARD_CB: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
 
-/// 面板展开/收起或窗口移动时更新悬停热区
-pub fn set_hover_rect(rect: Rect) {
+/// 更新悬停热区；None 表示全程可交互（面板展开/窗口移动时同步调用）
+pub fn set_hover_rect(rect: Option<Rect>) {
     let mut guard = HOVER.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(st) = guard.as_mut() {
-        let was_inside = st.inside;
         st.rect = rect;
-        if was_inside && !cursor_inside(&st.rect) {
-            st.inside = false;
-            (st.on_change)(false);
+        let inside = match &st.rect {
+            None => true,
+            Some(r) => cursor_inside(r),
+        };
+        if inside != st.inside {
+            st.inside = inside;
+            (st.on_change)(inside);
         }
     }
 }
@@ -84,7 +88,10 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
             let pt = (*(lparam.0 as *const MSLLHOOKSTRUCT)).pt;
             let mut guard = HOVER.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(st) = guard.as_mut() {
-                let inside = st.rect.contains(pt);
+                let inside = match &st.rect {
+                    None => true,
+                    Some(r) => r.contains(pt),
+                };
                 if inside != st.inside {
                     st.inside = inside;
                     (st.on_change)(inside);
@@ -112,7 +119,7 @@ unsafe extern "system" fn clip_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lp
 pub fn start_input(handlers: InputHandlers) {
     if let (Some(rect), Some(on_hover)) = (handlers.hover_rect, handlers.on_hover) {
         *HOVER.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some(HoverState { rect, inside: false, on_change: on_hover });
+            Some(HoverState { rect: Some(rect), inside: false, on_change: on_hover });
     }
     if let Some(cb) = handlers.on_clipboard {
         *CLIPBOARD_CB.lock().unwrap_or_else(|e| e.into_inner()) = Some(cb);

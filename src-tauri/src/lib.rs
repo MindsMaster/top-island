@@ -3,36 +3,10 @@ mod infra;
 mod ipc;
 mod services;
 
-use std::sync::Mutex;
-
 use tauri::{AppHandle, Emitter, Manager};
 
 use island_core::AppSettings;
 use island_windows::{InputHandlers, Rect};
-
-/// 岛窗悬停热区：面板收起时只有胶囊一条，展开后放大到整窗
-struct HotRegion {
-    left: i32,
-    top: i32,
-    right: i32,
-    cap_h: i32,
-    full_h: i32,
-}
-
-static HOT: Mutex<Option<HotRegion>> = Mutex::new(None);
-
-pub fn set_panel_hot(open: bool) {
-    let guard = HOT.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(h) = guard.as_ref() {
-        let height = if open { h.full_h } else { h.cap_h };
-        island_windows::input::set_hover_rect(Rect {
-            left: h.left,
-            top: h.top,
-            right: h.right,
-            bottom: h.top + height,
-        });
-    }
-}
 
 fn init_input(app: &AppHandle) {
     let Some(win) = app.get_webview_window("island") else { return };
@@ -41,20 +15,13 @@ fn init_input(app: &AppHandle) {
     else {
         return;
     };
-    let cap_h = (72.0 * dpi) as i32;
+    // 前端挂载前先用胶囊高度当初始热区，挂载后由 window_set_hot_rect 接管
     let region = Rect {
         left: pos.x,
         top: pos.y,
         right: pos.x + size.width as i32,
-        bottom: pos.y + cap_h,
+        bottom: pos.y + (72.0 * dpi) as i32,
     };
-    *HOT.lock().unwrap_or_else(|e| e.into_inner()) = Some(HotRegion {
-        left: region.left,
-        top: region.top,
-        right: region.right,
-        cap_h,
-        full_h: size.height as i32,
-    });
 
     let hover_app = app.clone();
     let clip_app = app.clone();
@@ -115,6 +82,11 @@ pub fn run() {
             ipc::window_close,
             ipc::window_close_self,
             ipc::window_get_cursor_point,
+            ipc::window_set_hot_rect,
+            ipc::update_status,
+            ipc::update_check,
+            ipc::update_install,
+            ipc::diag_reveal,
             ipc::music::music_poll,
             ipc::music::music_control,
             ipc::music::music_seek,
@@ -132,8 +104,6 @@ pub fn run() {
             ipc::alarm::alarm_sound_pick,
             ipc::wechat::wechat_acquire_key,
             ipc::wechat::wechat_has_key,
-            ipc::smtc_now,
-            ipc::set_panel_open,
         ])
         .run(tauri::generate_context!())
         .expect("top island run");
