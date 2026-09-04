@@ -1,8 +1,8 @@
-import { computed, ref } from 'vue';
+import { reactive } from 'vue';
 import { api } from '../api';
-import { useAlert } from './useAlert';
+import { showAlert } from '../store/alert';
 import { useI18n } from '../i18n';
-import { useSettings } from './useSettings';
+import { settings } from '../store/settings';
 
 export type ClipType = 'url' | 'email' | 'phone' | 'image' | 'audio' | 'video' | 'file' | 'json' | 'text';
 
@@ -15,11 +15,13 @@ export interface ClipItem {
 }
 
 const { t } = useI18n();
-const alert = useAlert();
 
-const history = ref<ClipItem[]>([]);
-const pinned = ref<string[]>([]);
-const search = ref('');
+/** 剪贴板历史。组件模板直读字段，写只走本文件导出的 action */
+export const clipboardState = reactive({
+  history: [] as ClipItem[],
+  pinned: [] as string[],
+  search: '',
+});
 
 let watching = false;
 
@@ -50,29 +52,29 @@ export function firstUrl(text: string): string | null {
   return m ? m[0].replace(/[.,;:!?)\]}'"]+$/, '') : null; // 去掉尾部误粘的标点
 }
 
-async function initClipboard() {
-  history.value = ((await api.storeGet<ClipItem[]>('clipboardHistory')) || []).filter(
+export async function initClipboard() {
+  clipboardState.history = ((await api.storeGet<ClipItem[]>('clipboardHistory')) || []).filter(
     (h) => h && typeof h.text === 'string'
   );
-  history.value.forEach((h) => {
+  clipboardState.history.forEach((h) => {
     if (!h.type) h.type = detectContentType(h.text || '');
   });
-  pinned.value = (await api.storeGet<string[]>('clipboardPinned')) || [];
+  clipboardState.pinned = (await api.storeGet<string[]>('clipboardPinned')) || [];
 }
 
 function save() {
-  api.storeSet('clipboardHistory', JSON.parse(JSON.stringify(history.value)));
+  api.storeSet('clipboardHistory', JSON.parse(JSON.stringify(clipboardState.history)));
 }
 
 function savePinned() {
-  api.storeSet('clipboardPinned', JSON.parse(JSON.stringify(pinned.value)));
+  api.storeSet('clipboardPinned', JSON.parse(JSON.stringify(clipboardState.pinned)));
 }
 
 function alertForItem(item: ClipItem) {
   // 多个链接只弹第一个
   const url = item.type === 'url' ? item.text.trim() : firstUrl(item.text);
   if (url) {
-    alert.show({
+    showAlert({
       icon: 'fa-globe',
       text: url.substring(0, 60) + (url.length > 60 ? '...' : ''),
       actionLabel: t('alertOpenWeb'),
@@ -82,7 +84,7 @@ function alertForItem(item: ClipItem) {
     return;
   }
   if (item.type === 'email') {
-    alert.show({
+    showAlert({
       icon: 'fa-envelope',
       text: item.text.substring(0, 60) + (item.text.length > 60 ? '...' : ''),
       actionLabel: t('alertCompose'),
@@ -92,9 +94,9 @@ function alertForItem(item: ClipItem) {
   }
 }
 
-function addItem(text: string, source: ClipItem['source']) {
+export function addItem(text: string, source: ClipItem['source']) {
   if (!text) return;
-  const latest = history.value[0];
+  const latest = clipboardState.history[0];
   if (latest && latest.text === text) {
     // 内容未变则跳过，不重复落盘；只补历史遗留条目缺失的字段
     let changed = false;
@@ -109,7 +111,7 @@ function addItem(text: string, source: ClipItem['source']) {
     if (changed) save();
     return;
   }
-  history.value = [
+  clipboardState.history = [
     {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       text,
@@ -117,13 +119,13 @@ function addItem(text: string, source: ClipItem['source']) {
       source: source || 'manual',
       type: detectContentType(text),
     },
-    ...history.value,
+    ...clipboardState.history,
   ].slice(0, 100);
   save();
-  if (source === 'system') alertForItem(history.value[0]);
+  if (source === 'system') alertForItem(clipboardState.history[0]);
 }
 
-async function readCurrent() {
+export async function readCurrent() {
   try {
     const filePaths = await api.clipboardReadFilePaths();
     if (filePaths && filePaths.length > 0) {
@@ -144,54 +146,58 @@ async function readCurrent() {
   } catch {}
 }
 
-function startClipboardWatch() {
+export function startClipboardWatch() {
   if (watching) return;
   watching = true;
-  const { diagnostics } = useSettings();
   // 事件驱动：剪贴板变化才读一次（不再轮询）；诊断开关关时忽略。readCurrent 内部去重
   api.onClipboardChanged(() => {
-    if (diagnostics.value.clipboardPoll) void readCurrent();
+    if (settings.diagnostics.clipboardPoll) void readCurrent();
   });
 }
 
-function write(text: string) {
+export function write(text: string) {
   api.clipboardWriteText(text).catch(() => {});
 }
 
-function copy(text: string) {
+export function copy(text: string) {
   write(text);
   addItem(text, 'manual');
 }
 
-function togglePin(id: string) {
-  const idx = pinned.value.indexOf(id);
-  if (idx >= 0) pinned.value.splice(idx, 1);
-  else pinned.value.unshift(id);
+export function togglePin(id: string) {
+  const idx = clipboardState.pinned.indexOf(id);
+  if (idx >= 0) clipboardState.pinned.splice(idx, 1);
+  else clipboardState.pinned.unshift(id);
   savePinned();
 }
 
-function isPinned(id: string) {
-  return pinned.value.includes(id);
+export function isPinned(id: string) {
+  return clipboardState.pinned.includes(id);
 }
 
-function deleteItem(id: string) {
-  history.value = history.value.filter((h) => h.id !== id);
-  pinned.value = pinned.value.filter((pid) => pid !== id);
+export function deleteItem(id: string) {
+  clipboardState.history = clipboardState.history.filter((h) => h.id !== id);
+  clipboardState.pinned = clipboardState.pinned.filter((pid) => pid !== id);
   save();
   savePinned();
-  if (history.value.length === 0) write('');
+  if (clipboardState.history.length === 0) write('');
 }
 
-function clearAll() {
-  history.value = [];
-  pinned.value = [];
-  search.value = '';
+export function clearAll() {
+  clipboardState.history = [];
+  clipboardState.pinned = [];
+  clipboardState.search = '';
   save();
   savePinned();
   write('');
 }
 
-function formatTime(ts: number): string {
+/** 搜索框 v-model 的写入端：模板只读 snap，输入经此回写 */
+export function setSearch(v: string) {
+  clipboardState.search = v;
+}
+
+export function formatTime(ts: number): string {
   const diff = Date.now() - ts;
   if (diff < 60000) return t('timeJustNow');
   if (diff < 3600000) return Math.floor(diff / 60000) + t('timeMinutesAgo');
@@ -209,7 +215,7 @@ function formatTime(ts: number): string {
   );
 }
 
-function typeIcon(type: ClipType): string {
+export function typeIcon(type: ClipType): string {
   const icons: Record<ClipType, string> = {
     url: 'fa-globe',
     email: 'fa-envelope',
@@ -224,39 +230,22 @@ function typeIcon(type: ClipType): string {
   return 'fa-solid ' + (icons[type] || 'fa-align-left');
 }
 
-function canOpenPath(item: ClipItem): boolean {
+export function canOpenPath(item: ClipItem): boolean {
   if (item.type === 'url' || item.type === 'email') return true;
   return /^(https?:\/\/|file:\/\/|\/|[A-Za-z]:[\\/])/.test(item.text.trim());
 }
 
-const filtered = computed(() => {
+/** 纯函数版 filtered：置顶在前 + 搜索过滤。组件里用 computed(() => filterClips(snap.history, snap.pinned, snap.search)) 包出响应式 */
+export function filterClips(
+  history: readonly ClipItem[],
+  pinned: readonly string[],
+  search: string
+): ClipItem[] {
   const all = [
-    ...(pinned.value.map((id) => history.value.find((h) => h.id === id)).filter(Boolean) as ClipItem[]),
-    ...history.value.filter((h) => !pinned.value.includes(h.id)),
+    ...(pinned.map((id) => history.find((h) => h.id === id)).filter(Boolean) as ClipItem[]),
+    ...history.filter((h) => !pinned.includes(h.id)),
   ];
-  if (!search.value) return all;
-  const q = search.value.toLowerCase();
+  if (!search) return all;
+  const q = search.toLowerCase();
   return all.filter((h) => h.text.toLowerCase().includes(q));
-});
-
-export function useClipboard() {
-  return {
-    history,
-    pinned,
-    search,
-    filtered,
-    initClipboard,
-    startClipboardWatch,
-    readCurrent,
-    addItem,
-    copy,
-    write,
-    togglePin,
-    isPinned,
-    deleteItem,
-    clearAll,
-    formatTime,
-    typeIcon,
-    canOpenPath,
-  };
 }

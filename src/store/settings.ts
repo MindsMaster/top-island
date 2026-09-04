@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue';
+import { reactive, toRaw, watch } from 'vue';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 import type {
@@ -6,7 +6,6 @@ import type {
   CustomTheme,
   DiagnosticsToggles,
   IslandLayout,
-  LangPref,
   NotificationsConfig,
   NotificationsPrivacy,
   ThemeId,
@@ -84,6 +83,18 @@ const DEFAULT_NOTIFICATIONS: NotificationsConfig = {
   wechat: false,
 };
 
+/** 全部窗口共享的设置。组件读直接渲染字段（reactive 自动追踪），写也直接改字段——
+ *  subscribe 统一负责持久化+广播+主题应用，加字段只需改默认值和类型 */
+export const settings = reactive<AppSettings>({
+  theme: 'dark',
+  customTheme: { ...DEFAULT_CUSTOM_THEME },
+  island: { ...DEFAULT_ISLAND },
+  lang: 'auto',
+  notifications: { ...DEFAULT_NOTIFICATIONS, privacy: { ...DEFAULT_PRIVACY } },
+  diagnostics: { ...DEFAULT_DIAGNOSTICS },
+  autoLaunch: true,
+});
+
 /** 归一化隐私配置：兼容旧版 privacy:boolean，补全缺省子项 */
 function normalizePrivacy(raw: unknown): NotificationsPrivacy {
   if (typeof raw === 'boolean') return { ...DEFAULT_PRIVACY, enabled: raw };
@@ -92,54 +103,29 @@ function normalizePrivacy(raw: unknown): NotificationsPrivacy {
   return { ...DEFAULT_PRIVACY };
 }
 
-const theme = ref<ThemeId>('dark');
-const customTheme = ref<CustomTheme>({ ...DEFAULT_CUSTOM_THEME });
-const island = ref<IslandLayout>({ ...DEFAULT_ISLAND });
-const lang = ref<LangPref>('auto');
-const notifications = ref<NotificationsConfig>({ ...DEFAULT_NOTIFICATIONS });
-const diagnostics = ref<DiagnosticsToggles>({ ...DEFAULT_DIAGNOSTICS });
-const autoLaunch = ref(true);
-
-const { applyLangPref } = useI18n();
-
-let loaded = false;
-/** 最近一次与外部同步过的设置快照（JSON）；watch 里据此跳过回声写回 */
-let lastSynced = '';
-
-function snapshot(): AppSettings {
-  return {
-    theme: theme.value,
-    customTheme: { ...customTheme.value },
-    island: { ...island.value },
-    lang: lang.value,
-    notifications: { ...notifications.value, privacy: { ...notifications.value.privacy } },
-    diagnostics: { ...diagnostics.value },
-    autoLaunch: autoLaunch.value,
-  };
-}
-
-function apply(s: Partial<AppSettings> | null) {
+/** 远端（其他窗口/持久化）数据灌进 store；缺省字段全部补全 */
+function applyRemote(s: Partial<AppSettings> | null) {
   if (!s) return;
-  if (s.theme && THEMES.some((t) => t.id === s.theme)) theme.value = s.theme;
-  if (s.customTheme) customTheme.value = { ...DEFAULT_CUSTOM_THEME, ...s.customTheme };
-  if (s.island) island.value = { ...DEFAULT_ISLAND, ...s.island };
-  if (s.lang) lang.value = s.lang;
+  if (s.theme && THEMES.some((t) => t.id === s.theme)) settings.theme = s.theme;
+  if (s.customTheme) settings.customTheme = { ...DEFAULT_CUSTOM_THEME, ...s.customTheme };
+  if (s.island) settings.island = { ...DEFAULT_ISLAND, ...s.island };
+  if (s.lang) settings.lang = s.lang;
   if (s.notifications) {
-    notifications.value = {
+    settings.notifications = {
       ...DEFAULT_NOTIFICATIONS,
       ...s.notifications,
       privacy: normalizePrivacy((s.notifications as { privacy?: unknown }).privacy),
     };
   }
-  if (s.diagnostics) diagnostics.value = { ...DEFAULT_DIAGNOSTICS, ...s.diagnostics };
-  if (typeof s.autoLaunch === 'boolean') autoLaunch.value = s.autoLaunch;
+  if (s.diagnostics) settings.diagnostics = { ...DEFAULT_DIAGNOSTICS, ...s.diagnostics };
+  if (typeof s.autoLaunch === 'boolean') settings.autoLaunch = s.autoLaunch;
 }
 
 /** 岛布局 -> CSS 变量（缩放走 zoom；隐藏位移按露出高度换算，岛高 40px） */
 function applyIslandStyle() {
   const root = document.documentElement;
-  root.style.setProperty('--app-scale', String(island.value.scale / 100));
-  const shift = -(40 - island.value.hiddenPeek);
+  root.style.setProperty('--app-scale', String(settings.island.scale / 100));
+  const shift = -(40 - settings.island.hiddenPeek);
   root.style.setProperty('--island-hidden-shift', `${shift}px`);
   root.style.setProperty('--island-hidden-shift-hover', `${shift + 4}px`);
 }
@@ -168,7 +154,7 @@ const CUSTOM_VARS = [
 
 function applyTheme() {
   const root = document.documentElement;
-  const meta = THEMES.find((t) => t.id === theme.value) ?? THEMES[0];
+  const meta = THEMES.find((t) => t.id === settings.theme) ?? THEMES[0];
   root.setAttribute('data-theme', meta.id);
 
   if (meta.id !== 'custom') {
@@ -177,7 +163,7 @@ function applyTheme() {
     return;
   }
 
-  const { a, b, accent } = customTheme.value;
+  const { a, b, accent } = settings.customTheme;
   const light = (hexLuminance(a) + hexLuminance(b)) / 2 > 0.55;
   root.setAttribute('data-scheme', light ? 'light' : 'dark');
   root.style.setProperty('--island-bg', `linear-gradient(135deg, ${a}, ${b})`);
@@ -193,7 +179,14 @@ function applyTheme() {
   root.style.setProperty('--on-accent', hexLuminance(accent) > 0.6 ? '#1a1a1a' : '#fff');
 }
 
-async function initSettings() {
+/** 最近一次与远端同步过的快照（JSON）。远端灌进来的变更会把 lastSynced 一并推进，
+ *  subscribe 里据此跳过回声写回——watch 回调是批处理异步触发的，
+ *  用标志位挡不住异步回调，内容比对才可靠 */
+let lastSynced = '';
+
+let loaded = false;
+
+export async function initSettings() {
   if (loaded) return;
   let saved: Partial<AppSettings> | null = null;
   try {
@@ -209,86 +202,41 @@ async function initSettings() {
   loaded = true;
   // 首次运行：跟随系统亮暗偏好选默认主题（黑/白仅是第一默认值）
   if (!saved?.theme) {
-    theme.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    settings.theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
-  apply(saved);
+  applyRemote(saved);
+  const { applyLangPref } = useI18n();
   applyTheme();
   applyIslandStyle();
-  void applyLangPref(lang.value);
-  lastSynced = JSON.stringify(snapshot());
+  void applyLangPref(settings.lang);
+  lastSynced = JSON.stringify(settings);
 
-  // 本窗口的修改 -> 持久化并广播；与 lastSynced 相同说明来自远端应用，跳过
-  watch([theme, customTheme, island, lang, notifications, diagnostics, autoLaunch], () => {
+  // 本窗口的任何修改 -> 应用副作用 + 持久化并广播；与 lastSynced 相同说明来自远端，跳过
+  watch(settings, () => {
     applyTheme();
     applyIslandStyle();
-    void applyLangPref(lang.value);
-    const json = JSON.stringify(snapshot());
+    void applyLangPref(settings.lang);
+    const json = JSON.stringify(settings);
     if (json === lastSynced) return;
     lastSynced = json;
-    api.settingsUpdate(snapshot()).catch(() => {});
+    api.settingsUpdate(JSON.parse(JSON.stringify(toRaw(settings))) as AppSettings).catch(() => {});
   });
 
-  // 其他窗口的修改 -> 应用到本窗口
+  // 其他窗口的修改 -> 灌进本窗口（subscribe 的副作用部分照跑，持久化被 lastSynced 挡下）
   api.onSettingsChanged((s) => {
-    apply(s);
-    applyTheme();
-    applyIslandStyle();
-    void applyLangPref(lang.value);
-    lastSynced = JSON.stringify(snapshot());
+    applyRemote(s);
+    lastSynced = JSON.stringify(settings);
   });
 }
 
 /** 快捷按钮：按注册顺序循环切换主题 */
-function toggleTheme() {
-  const idx = THEMES.findIndex((t) => t.id === theme.value);
-  theme.value = THEMES[(idx + 1) % THEMES.length].id;
-  applyTheme();
+export function toggleTheme() {
+  const idx = THEMES.findIndex((t) => t.id === settings.theme);
+  settings.theme = THEMES[(idx + 1) % THEMES.length].id;
 }
 
-function setDiagnostic(key: keyof DiagnosticsToggles, on: boolean) {
-  diagnostics.value = { ...diagnostics.value, [key]: on };
-}
-
-/** 改色并即时切到 custom 主题（整体替换以触发 watch） */
-function setCustomColor(part: keyof CustomTheme, hex: string) {
-  customTheme.value = { ...customTheme.value, [part]: hex };
-  if (theme.value !== 'custom') theme.value = 'custom';
-  applyTheme();
-}
-
-/** 整体替换以触发 watch */
-function setIsland(patch: Partial<IslandLayout>) {
-  island.value = { ...island.value, ...patch };
-}
-
-/** 整体替换以触发 watch */
-function setNotifications(patch: Partial<NotificationsConfig>) {
-  notifications.value = { ...notifications.value, ...patch };
-}
-
-/** 整体替换以触发 watch */
-function setPrivacy(patch: Partial<NotificationsPrivacy>) {
-  notifications.value = {
-    ...notifications.value,
-    privacy: { ...notifications.value.privacy, ...patch },
-  };
-}
-
-export function useSettings() {
-  return {
-    theme,
-    customTheme,
-    island,
-    lang,
-    notifications,
-    diagnostics,
-    autoLaunch,
-    initSettings,
-    toggleTheme,
-    setDiagnostic,
-    setCustomColor,
-    setIsland,
-    setNotifications,
-    setPrivacy,
-  };
+/** 改色并即时切到 custom 主题 */
+export function setCustomColor(part: keyof CustomTheme, hex: string) {
+  settings.customTheme[part] = hex;
+  if (settings.theme !== 'custom') settings.theme = 'custom';
 }

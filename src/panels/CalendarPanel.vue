@@ -2,10 +2,10 @@
 import { computed, ref } from 'vue';
 import { useI18n } from '../i18n';
 import { fmtLocalDate, todayLocalStr } from '../composables/useClock';
-import { useTasks } from '../composables/useTasks';
+import { tasksState, addTask, toggleTask, deleteTask, formatTaskTime } from '../store/tasks';
 
 const { t, lang } = useI18n();
-const { tasks, addTask, toggleTask, deleteTask, formatTaskTime } = useTasks();
+const snap = tasksState;
 
 const selectedDate = ref(todayLocalStr());
 const showMonthPicker = ref(false);
@@ -52,7 +52,7 @@ const weekDates = computed(() => {
       date: ds,
       day: dt.getDate(),
       isToday: ds === today,
-      hasTask: tasks.value.some((tk) => !tk.done && tk.due_time && tk.due_time.slice(0, 10) === ds),
+      hasTask: snap.tasks.some((tk) => !tk.done && tk.due_time && tk.due_time.slice(0, 10) === ds),
     });
   }
   return days;
@@ -69,7 +69,7 @@ const selectedDateLabel = computed(() => {
 });
 
 const dayTasks = computed(() =>
-  tasks.value
+  snap.tasks
     .filter((tk) => tk.due_time && tk.due_time.slice(0, 10) === selectedDate.value)
     .sort((a, b) => {
       if (a.all_day && !b.all_day) return -1;
@@ -116,7 +116,7 @@ const monthCalendarDays = computed(() => {
       day: d,
       otherMonth: false,
       isToday: ds === today,
-      hasTask: tasks.value.some((tk) => !tk.done && tk.due_time && tk.due_time.slice(0, 10) === ds),
+      hasTask: snap.tasks.some((tk) => !tk.done && tk.due_time && tk.due_time.slice(0, 10) === ds),
     });
   }
   return days;

@@ -1,53 +1,74 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from '../i18n';
-import { openUrl, useClipboard } from '../composables/useClipboard';
+import {
+  clipboardState,
+  filterClips,
+  setSearch,
+  readCurrent,
+  clearAll,
+  copy,
+  deleteItem,
+  togglePin,
+  isPinned,
+  formatTime,
+  typeIcon,
+  canOpenPath,
+  openUrl,
+} from '../store/clipboard';
 
 const { t } = useI18n();
-const clip = useClipboard();
+const snap = clipboardState;
+const filtered = computed(() => filterClips(snap.history, snap.pinned, snap.search));
+
+function onSearchInput(e: Event) {
+  setSearch((e.target as HTMLInputElement).value);
+}
 </script>
 
 <template>
   <div class="clip-header">
     <i class="fa-solid fa-clipboard-list clip-icon"></i>
     <span class="clip-title">{{ t('clipboardHeader') }}</span>
-    <span class="clip-count">({{ clip.history.value.length }})</span>
-    <button class="clip-refresh-btn" :title="t('clipboardRefresh')" @click.stop="clip.readCurrent()">
+    <span class="clip-count">({{ snap.history.length }})</span>
+    <button class="clip-refresh-btn" :title="t('clipboardRefresh')" @click.stop="readCurrent()">
       <i class="fa-solid fa-rotate"></i>
     </button>
     <button
-      v-if="clip.history.value.length"
+      v-if="snap.history.length"
       class="clip-clear-btn"
       :title="t('clipboardClear')"
-      @click.stop="clip.clearAll()"
+      @click.stop="clearAll()"
     >
       <i class="fa-solid fa-trash"></i>
     </button>
   </div>
-  <div v-if="clip.history.value.length" class="clip-search-bar">
+  <div v-if="snap.history.length" class="clip-search-bar">
     <i class="fa-solid fa-search clip-search-icon"></i>
     <input
-      v-model="clip.search.value"
+      :value="snap.search"
       type="text"
       class="clip-search-input"
       :placeholder="t('clipboardSearch')"
       @click.stop
+      @input="onSearchInput"
     />
   </div>
   <div class="clip-list">
-    <div v-if="!clip.filtered.value.length" class="clip-empty">
+    <div v-if="!filtered.length" class="clip-empty">
       <i class="fa-solid fa-copy"></i>
-      <span>{{ clip.history.value.length ? t('clipboardNoMatch') : t('clipboardEmpty') }}</span>
+      <span>{{ snap.history.length ? t('clipboardNoMatch') : t('clipboardEmpty') }}</span>
     </div>
-    <div v-for="item in clip.filtered.value" :key="item.id" class="clip-row">
+    <div v-for="item in filtered" :key="item.id" class="clip-row">
       <div class="clip-type-icon" :class="'type-' + item.type">
-        <i :class="clip.typeIcon(item.type)"></i>
+        <i :class="typeIcon(item.type)"></i>
       </div>
-      <div class="clip-content" @click.stop="clip.copy(item.text)">
+      <div class="clip-content" @click.stop="copy(item.text)">
         <div class="clip-text">
           {{ (item.text || '').substring(0, 80) }}{{ (item.text || '').length > 80 ? '...' : '' }}
         </div>
         <div class="clip-meta">
-          <span class="clip-time">{{ clip.formatTime(item.time) }}</span>
+          <span class="clip-time">{{ formatTime(item.time) }}</span>
         </div>
       </div>
       <div class="clip-actions">
@@ -60,7 +81,7 @@ const clip = useClipboard();
           <i class="fa-solid fa-arrow-up-right-from-square"></i>
         </button>
         <button
-          v-else-if="['image', 'audio', 'video', 'file'].includes(item.type) && clip.canOpenPath(item)"
+          v-else-if="['image', 'audio', 'video', 'file'].includes(item.type) && canOpenPath(item)"
           class="clip-act-btn open"
           :title="t('clipboardOpen')"
           @click.stop="openUrl(item.text)"
@@ -75,18 +96,18 @@ const clip = useClipboard();
         >
           <i class="fa-solid fa-paper-plane"></i>
         </button>
-        <button class="clip-act-btn copy" :title="t('clipboardCopy')" @click.stop="clip.copy(item.text)">
+        <button class="clip-act-btn copy" :title="t('clipboardCopy')" @click.stop="copy(item.text)">
           <i class="fa-solid fa-copy"></i>
         </button>
         <button
           class="clip-act-btn pin"
-          :class="{ active: clip.isPinned(item.id) }"
+          :class="{ active: isPinned(item.id) }"
           :title="t('clipboardPin')"
-          @click.stop="clip.togglePin(item.id)"
+          @click.stop="togglePin(item.id)"
         >
           <i class="fa-solid fa-thumbtack"></i>
         </button>
-        <button class="clip-act-btn del" :title="t('clipboardDelete')" @click.stop="clip.deleteItem(item.id)">
+        <button class="clip-act-btn del" :title="t('clipboardDelete')" @click.stop="deleteItem(item.id)">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>

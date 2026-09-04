@@ -1,26 +1,28 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useClock } from '../composables/useClock';
-import { useWeather } from '../composables/useWeather';
+import { weatherState, weatherBgClass, weatherDesc, weatherIcon } from '../store/weather';
 
-const { currentTime, currentDate } = useClock();
-const weather = useWeather();
+const { currentTime, currentDate, isNightTime } = useClock();
+const snap = weatherState;
+const icon = computed(() => weatherIcon(snap, isNightTime.value));
+const desc = computed(() => weatherDesc(snap));
+const bgClass = computed(() => weatherBgClass(snap, isNightTime.value));
 </script>
 
 <template>
-  <div class="weather-card" :class="weather.bgClass.value">
+  <div class="weather-card" :class="bgClass">
     <div class="weather-card-city">
       <i class="fa-solid fa-location-dot"></i>
-      <span>{{ weather.city.value || '--' }}</span>
+      <span>{{ snap.city || '--' }}</span>
     </div>
     <div class="weather-card-main">
-      <i class="weather-card-icon" :class="'fa-solid ' + weather.icon.value"></i>
-      <div class="weather-card-temp">
-        {{ weather.temp.value ?? '--' }}<span class="weather-card-unit">°C</span>
-      </div>
+      <i class="weather-card-icon" :class="'fa-solid ' + icon"></i>
+      <div class="weather-card-temp">{{ snap.temp ?? '--' }}<span class="weather-card-unit">°C</span></div>
       <div class="weather-card-side">
-        <div class="weather-card-desc">{{ weather.error.value || weather.desc.value }}</div>
-        <div v-if="weather.tempHi.value !== null" class="weather-card-hilo">
-          {{ weather.tempHi.value }}° / {{ weather.tempLo.value }}°
+        <div class="weather-card-desc">{{ snap.error || desc }}</div>
+        <div v-if="snap.tempHi !== null" class="weather-card-hilo">
+          {{ snap.tempHi }}° / {{ snap.tempLo }}°
         </div>
       </div>
     </div>

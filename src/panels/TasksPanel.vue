@@ -1,52 +1,58 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from '../i18n';
-import { useTasks } from '../composables/useTasks';
-
-const { t } = useI18n();
-const {
-  tasks,
-  newTaskText,
-  showCompleted,
-  pendingTaskCount,
-  completedCount,
-  sortedTasks,
+import {
+  tasksState,
   addTask,
   toggleTask,
   deleteTask,
   formatTaskTime,
-} = useTasks();
+  toggleShowCompleted,
+} from '../store/tasks';
+
+const { t } = useI18n();
+const snap = tasksState;
+
+// 派生数据留在组件：原 composable 的 computed 原样搬来，只把 tasks.value 换成 snap.tasks
+const pendingTaskCount = computed(() => snap.tasks.filter((t) => !t.done).length);
+const completedCount = computed(() => snap.tasks.filter((t) => t.done).length);
+const sortedTasks = computed(() => {
+  const active = snap.tasks.filter((t) => !t.done);
+  const completed = snap.tasks.filter((t) => t.done);
+  return snap.showCompleted ? [...active, ...completed] : active;
+});
 </script>
 
 <template>
   <div class="tasks-header">
     <i class="fa-solid fa-list-check tasks-icon"></i>
     <span class="tasks-title">{{ t('tasksHeader') }}</span>
-    <span v-if="tasks.length" class="tasks-count">{{ pendingTaskCount }}/{{ tasks.length }}</span>
+    <span v-if="snap.tasks.length" class="tasks-count">{{ pendingTaskCount }}/{{ snap.tasks.length }}</span>
     <button
       v-if="completedCount"
       class="tasks-history-toggle"
-      :title="showCompleted ? t('tasksHideCompleted') : t('tasksShowCompleted')"
-      @click.stop="showCompleted = !showCompleted"
+      :title="snap.showCompleted ? t('tasksHideCompleted') : t('tasksShowCompleted')"
+      @click.stop="toggleShowCompleted()"
     >
-      <i :class="showCompleted ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash'"></i>
-      <span v-if="!showCompleted" class="history-badge">{{ completedCount }}</span>
+      <i :class="snap.showCompleted ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash'"></i>
+      <span v-if="!snap.showCompleted" class="history-badge">{{ completedCount }}</span>
     </button>
   </div>
   <div class="tasks-add">
     <input
-      v-model="newTaskText"
+      v-model="tasksState.newTaskText"
       type="text"
       class="tasks-input"
       :placeholder="t('tasksNewPlaceholder')"
       @keydown.enter.stop="addTask()"
       @click.stop
     />
-    <button class="tasks-add-btn" :disabled="!newTaskText.trim()" @click.stop="addTask()">
+    <button class="tasks-add-btn" :disabled="!tasksState.newTaskText.trim()" @click.stop="addTask()">
       <i class="fa-solid fa-plus"></i>
     </button>
   </div>
   <div class="tasks-list">
-    <div v-if="!tasks.length" class="tasks-empty">
+    <div v-if="!snap.tasks.length" class="tasks-empty">
       <i class="fa-solid fa-clipboard"></i>
       <span>{{ t('tasksEmpty') }}</span>
     </div>

@@ -1,7 +1,6 @@
-import { computed, ref } from 'vue';
+import { reactive } from 'vue';
 import { api } from '../api';
 import { useI18n } from '../i18n';
-import { useClock } from './useClock';
 
 const WEATHER_ICONS: Record<number, string> = {
   0: 'fa-sun',
@@ -35,16 +34,23 @@ const NIGHT_WEATHER_ICONS: Record<number, string> = {
 const FALLBACK_CITY = '北京';
 
 const { t, weatherCodeName } = useI18n();
-const { isNightTime } = useClock();
 
-const city = ref('');
-const temp = ref<number | null>(null);
-const tempHi = ref<number | null>(null);
-const tempLo = ref<number | null>(null);
-const code = ref<number | null>(null);
-const loading = ref(false);
-const error = ref<string | null>(null);
+/** 天气域共享状态。组件模板直读字段（reactive 自动追踪）；
+ *  派生数据（desc/icon/bgClass）不放这里，用下面的派生函数包 computed 自取 */
+export const weatherState = reactive({
+  city: '',
+  temp: null as number | null,
+  tempHi: null as number | null,
+  tempLo: null as number | null,
+  code: null as number | null,
+  loading: false,
+  error: null as string | null,
+});
 
+/** 派生函数的入参：直接传 weatherState */
+export type WeatherStateView = Readonly<typeof weatherState>;
+
+// 纯内部簿记，不参与渲染，不进 proxy
 let ipLat: number | null = null;
 let ipLon: number | null = null;
 let refreshTimer: number | null = null;
@@ -53,7 +59,7 @@ async function tryFetchIpCity() {
   try {
     const data = await api.weatherIpCity();
     if (data.city) {
-      city.value = data.city;
+      weatherState.city = data.city;
       if (data.lat != null && data.lon != null) {
         ipLat = data.lat;
         ipLon = data.lon;
@@ -64,10 +70,10 @@ async function tryFetchIpCity() {
   }
 }
 
-async function fetchWeather() {
-  if (loading.value) return;
-  loading.value = true;
-  error.value = null;
+export async function fetchWeather() {
+  if (weatherState.loading) return;
+  weatherState.loading = true;
+  weatherState.error = null;
   try {
     // IP 定位失败过则每轮刷新重试，成功前用兜底城市地理编码
     if (ipLat == null || ipLon == null) await tryFetchIpCity();
@@ -79,64 +85,64 @@ async function fetchWeather() {
     } else {
       const geo = await api.weatherGeocode(FALLBACK_CITY, 'zh');
       if (!geo.results || !geo.results.length) {
-        error.value = t('weatherFetchError');
-        loading.value = false;
+        weatherState.error = t('weatherFetchError');
+        weatherState.loading = false;
         return;
       }
       latitude = geo.results[0].latitude;
       longitude = geo.results[0].longitude;
-      if (!city.value) city.value = FALLBACK_CITY;
+      if (!weatherState.city) weatherState.city = FALLBACK_CITY;
     }
     const data = await api.weatherQuery(latitude, longitude, {
       daily: 'temperature_2m_max,temperature_2m_min',
       forecastDays: 1,
     });
     if (data.current_weather) {
-      temp.value = Math.round(data.current_weather.temperature);
-      code.value = data.current_weather.weathercode;
+      weatherState.temp = Math.round(data.current_weather.temperature);
+      weatherState.code = data.current_weather.weathercode;
     }
     if (data.daily?.temperature_2m_max?.length) {
-      tempHi.value = Math.round(data.daily.temperature_2m_max[0]);
-      tempLo.value = Math.round(data.daily.temperature_2m_min[0]);
+      weatherState.tempHi = Math.round(data.daily.temperature_2m_max[0]);
+      weatherState.tempLo = Math.round(data.daily.temperature_2m_min[0]);
     }
   } catch (e) {
     console.error('[Weather] fetch failed:', e);
-    error.value = t('weatherFetchError');
+    weatherState.error = t('weatherFetchError');
   }
-  loading.value = false;
+  weatherState.loading = false;
 }
 
-async function initWeather() {
+export async function initWeather() {
   await fetchWeather();
   if (refreshTimer === null) {
     refreshTimer = window.setInterval(fetchWeather, 600000);
   }
 }
 
-const desc = computed(() => weatherCodeName(code.value));
+/* ---- 响应式派生：组件里包 computed(fn(state)) 用 ---- */
 
-const icon = computed(() => {
-  if (code.value !== null && isNightTime.value && NIGHT_WEATHER_ICONS[code.value]) {
-    return NIGHT_WEATHER_ICONS[code.value];
+export function weatherDesc(state: WeatherStateView): string {
+  return weatherCodeName(state.code);
+}
+
+/** 天气图标（夜间对晴/少云类换月亮系图标） */
+export function weatherIcon(state: WeatherStateView, isNight: boolean): string {
+  if (state.code !== null && isNight && NIGHT_WEATHER_ICONS[state.code]) {
+    return NIGHT_WEATHER_ICONS[state.code];
   }
-  return (code.value !== null && WEATHER_ICONS[code.value]) || 'fa-cloud';
-});
+  return (state.code !== null && WEATHER_ICONS[state.code]) || 'fa-cloud';
+}
 
 /** 天气背景类（按天气码 + 昼夜） */
-const bgClass = computed(() => {
-  const c = code.value;
-  const night = isNightTime.value;
-  if (c === null) return night ? 'wx-cloudy-night' : 'wx-cloudy';
-  if (c === 0 || c === 1) return night ? 'wx-clear-night' : 'wx-clear';
-  if (c === 2 || c === 3) return night ? 'wx-cloudy-night' : 'wx-cloudy';
+export function weatherBgClass(state: WeatherStateView, isNight: boolean): string {
+  const c = state.code;
+  if (c === null) return isNight ? 'wx-cloudy-night' : 'wx-cloudy';
+  if (c === 0 || c === 1) return isNight ? 'wx-clear-night' : 'wx-clear';
+  if (c === 2 || c === 3) return isNight ? 'wx-cloudy-night' : 'wx-cloudy';
   if (c === 45 || c === 48) return 'wx-fog';
   if (c === 65) return 'wx-rain-heavy';
   if (c >= 51 && c <= 65) return 'wx-rain';
   if (c >= 71 && c <= 75) return 'wx-snow';
   if (c >= 95) return 'wx-thunder';
-  return night ? 'wx-cloudy-night' : 'wx-cloudy';
-});
-
-export function useWeather() {
-  return { city, temp, tempHi, tempLo, code, loading, error, desc, icon, bgClass, initWeather, fetchWeather };
+  return isNight ? 'wx-cloudy-night' : 'wx-cloudy';
 }

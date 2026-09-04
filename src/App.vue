@@ -3,35 +3,58 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api } from './api';
 import { useI18n } from './i18n';
 import { useClock } from './composables/useClock';
-import { THEMES, useSettings } from './composables/useSettings';
-import { useMusic } from './composables/useMusic';
-import { useTasks } from './composables/useTasks';
-import { useAlarm } from './composables/useAlarm';
-import { useClipboard } from './composables/useClipboard';
-import { useNotifications } from './composables/useNotifications';
-import { useWeather } from './composables/useWeather';
-import { useAlert } from './composables/useAlert';
+import { THEMES, initSettings, settings, toggleTheme } from './store/settings';
+import { alertState, dismissAlert, showAlert } from './store/alert';
+import { currentLyric, marqueeText, musicState, startMusicPoll, stopMusicPoll } from './store/music';
+import { completeReminderTask, initTasks, startReminderTimer, tasksState } from './store/tasks';
+import {
+  alarmState,
+  cancelCountdown,
+  displayRemainOf,
+  initAlarm,
+  keepInteractiveOf,
+  progressOf,
+} from './store/alarm';
+import { initClipboard, readCurrent, startClipboardWatch } from './store/clipboard';
+import {
+  MAX_VISIBLE,
+  activatePopup,
+  closePopup,
+  formatTime,
+  initNotifications,
+  notifyState,
+  setPopupHover,
+} from './store/notifications';
+import { initWeather, weatherIcon, weatherState } from './store/weather';
 import { useIslandMode } from './composables/useIslandMode';
 import { usePanelSwipe } from './composables/usePanelSwipe';
 import { panels, CALENDAR_PANEL_INDEX, ALARM_PANEL_INDEX } from './panels';
 import MusicMarquee from './components/MusicMarquee.vue';
 
 const { t, initI18n } = useI18n();
-const { currentTime, currentDate, startClock } = useClock();
-const { theme, notifications, initSettings, toggleTheme } = useSettings();
-const themeIcon = computed(() => THEMES.find((tm) => tm.id === theme.value)?.icon ?? 'fa-moon');
-const music = useMusic();
-const tasksApi = useTasks();
-const alarm = useAlarm();
-const clip = useClipboard();
-const notify = useNotifications();
-const weather = useWeather();
-const alert = useAlert();
+const { currentTime, currentDate, isNightTime, startClock } = useClock();
+const settingsSnap = settings;
+const themeIcon = computed(() => THEMES.find((tm) => tm.id === settingsSnap.theme)?.icon ?? 'fa-moon');
+const musicSnap = musicState;
+const tasksSnap = tasksState;
+const alarmSnap = alarmState;
+const notifySnap = notifyState;
+const weatherSnap = weatherState;
+const alertSnap = alertState;
+
+const lyric = computed(() => currentLyric(musicSnap));
+const marquee = computed(() => marqueeText(musicSnap));
+const alarmKeepInteractive = computed(() => keepInteractiveOf(alarmSnap));
+const alarmProgress = computed(() => progressOf(alarmSnap));
+const alarmDisplayRemain = computed(() => displayRemainOf(alarmSnap));
+const visiblePopups = computed(() => notifySnap.popups.slice(0, MAX_VISIBLE));
+const foldedCount = computed(() => Math.max(0, notifySnap.popups.length - MAX_VISIBLE));
+const weatherIconCls = computed(() => weatherIcon(weatherSnap, isNightTime.value));
 
 /** 点击提示条的动作按钮：执行后立即消费收起（固定时长只是不点时的兜底） */
 function onAlertAction(handler: (() => void) | null) {
   handler?.();
-  alert.dismiss();
+  dismissAlert();
 }
 
 const islandEl = ref<HTMLElement | null>(null);
@@ -46,9 +69,8 @@ const miniHover = ref(false);
 let rectsArmed = false;
 
 const island = useIslandMode({
-  keepInteractive: () => hideDragging.value || notify.hoveringPopup.value || miniHover.value,
-  holdMode: () =>
-    tasksApi.activeReminderTask.value !== null || alarm.keepInteractive.value || hideDragging.value,
+  keepInteractive: () => hideDragging.value || notifySnap.hoveredPopup !== null || miniHover.value,
+  holdMode: () => tasksState.activeReminderTask !== null || alarmKeepInteractive.value || hideDragging.value,
   // 热区 = 岛本体，叠上可见的通知栈/迷你闹钟（和岛不重叠，取包围盒即可）；
   // 大视图整窗可交互（点面板外的 shield 要收起）。
   // 绝不能报 container——它是全屏容器，报出去热区就是整窗，穿透全废
@@ -72,7 +94,7 @@ const island = useIslandMode({
     };
     const root = containerEl.value;
     // 隐藏态通知栈 dock-hidden 不可见，不并进热区
-    if (notify.visiblePopups.value.length && !island.isHidden.value) {
+    if (visiblePopups.value.length && !island.isHidden.value) {
       include(root?.querySelector('.notify-stack'));
     }
     if (alarmMini.value) include(root?.querySelector('.alarm-mini'));
@@ -105,12 +127,9 @@ function measureLyricWidth(text: string): number {
 
 const islandStyle = computed(() => {
   const style: Record<string, string> = {};
-  if (island.mode.value === 'still' && showMusicQuick.value && music.currentLyric.value) {
+  if (island.mode.value === 'still' && showMusicQuick.value && lyric.value) {
     const w = Math.round(
-      Math.min(
-        LYRIC_MAX_WIDTH,
-        Math.max(LYRIC_MIN_WIDTH, measureLyricWidth(music.currentLyric.value) + LYRIC_FIXED_WIDTH)
-      )
+      Math.min(LYRIC_MAX_WIDTH, Math.max(LYRIC_MIN_WIDTH, measureLyricWidth(lyric.value) + LYRIC_FIXED_WIDTH))
     );
     style.width = w + 'px';
   }
@@ -122,24 +141,26 @@ const islandStyle = computed(() => {
   return style;
 });
 const showMusicQuick = computed(
-  () => music.hasMusic.value && music.isPlaying.value && island.mode.value === 'still'
+  () => musicSnap.hasMusic && musicSnap.isPlaying && island.mode.value === 'still'
 );
 const showReminderInQuick = computed(
-  () => tasksApi.activeReminderTask.value !== null && island.mode.value !== 'large'
+  () => tasksSnap.activeReminderTask !== null && island.mode.value !== 'large'
 );
-const showAlarmInQuick = computed(() => alarm.countdown.running && island.mode.value !== 'large');
+const showAlarmInQuick = computed(() => alarmSnap.countdown.running && island.mode.value !== 'large');
 const capsuleBusy = computed(() => showMusicQuick.value || showReminderInQuick.value);
 const alarmInCapsule = computed(() => showAlarmInQuick.value && !capsuleBusy.value);
 const alarmMini = computed(
   () =>
-    alarm.countdown.running && island.mode.value !== 'large' && (capsuleBusy.value || island.isHidden.value)
+    alarmSnap.countdown.running &&
+    island.mode.value !== 'large' &&
+    (capsuleBusy.value || island.isHidden.value)
 );
 watch(alarmMini, (mini) => {
   if (!mini) miniHover.value = false;
 });
 
 // 通知卡片进出/迷你闹钟显隐都会改热区包围盒，重报；卡片有 0.28s 进出场动画，补一次延迟重报
-watch([() => notify.visiblePopups.value.length, alarmMini], () => {
+watch([() => visiblePopups.value.length, alarmMini], () => {
   island.reportRect();
   window.setTimeout(() => island.reportRect(), 300);
 });
@@ -234,9 +255,9 @@ function onIslandClick(e: MouseEvent) {
   if (target.closest('button') || target.closest('input') || target.closest('select')) return;
   if (swipe.consumeSuppressedClick()) return;
   if (island.expand()) {
-    if (tasksApi.activeReminderTask.value) {
+    if (tasksState.activeReminderTask) {
       swipe.switchPanel(CALENDAR_PANEL_INDEX);
-    } else if (alarm.countdown.running) {
+    } else if (alarmState.countdown.running) {
       swipe.switchPanel(ALARM_PANEL_INDEX);
     }
   }
@@ -274,26 +295,21 @@ function onFocusOut() {
 onMounted(async () => {
   await initI18n();
   await initSettings();
-  await Promise.all([
-    tasksApi.initTasks(),
-    alarm.initAlarm(),
-    clip.initClipboard(),
-    notify.initNotifications(),
-  ]);
+  await Promise.all([initTasks(), initAlarm(), initClipboard(), initNotifications()]);
 
   startClock();
-  music.startMusicPoll();
-  weather.initWeather();
-  tasksApi.startReminderTimer();
-  clip.startClipboardWatch();
-  clip.readCurrent();
+  startMusicPoll();
+  void initWeather();
+  startReminderTimer();
+  startClipboardWatch();
+  readCurrent();
 
   document.addEventListener('mousedown', onDocMouseDown);
   window.addEventListener('focusout', onFocusOut);
   window.addEventListener('blur', onWindowBlur);
 
   api.onUpdateDownloaded((info) => {
-    alert.show({
+    showAlert({
       icon: 'fa-arrow-up',
       text: t('updateReady', info.version),
       duration: 0,
@@ -324,7 +340,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', onWindowBlur);
   islandRO?.disconnect();
   islandRO = null;
-  music.stopMusicPoll();
+  stopMusicPoll();
 });
 
 function closeWindow() {
@@ -334,14 +350,19 @@ function closeWindow() {
 
 <template>
   <div v-if="isLargeView" class="large-dismiss-shield" @mousedown="island.collapse()"></div>
-  <div id="island-container" ref="containerEl" @mouseleave="onContainerLeave" @mousedown="onContainerMouseDown">
+  <div
+    id="island-container"
+    ref="containerEl"
+    @mouseleave="onContainerLeave"
+    @mousedown="onContainerMouseDown"
+  >
     <div
       id="island"
       ref="islandEl"
       :class="{
-        quick: isQuickView || showMusicQuick || alert.active.value,
+        quick: isQuickView || showMusicQuick || alertSnap.active,
         large: isLargeView,
-        'has-alert': alert.active.value,
+        'has-alert': alertSnap.active,
         'show-reminder': showReminderInQuick,
         'has-alarm': alarmInCapsule,
         hidden: island.isHidden.value,
@@ -357,39 +378,39 @@ function closeWindow() {
       @wheel.passive="swipe.onWheel"
     >
       <div
-        v-if="alert.active.value"
+        v-if="alertSnap.active"
         class="alert-content"
-        @click.stop="alert.actionHandler.value ? null : alert.dismiss()"
+        @click.stop="alertSnap.actionHandler ? null : dismissAlert()"
       >
-        <i :class="'fa-solid ' + alert.icon.value"></i>
-        <span class="alert-text">{{ alert.text.value }}</span>
+        <i :class="'fa-solid ' + alertSnap.icon"></i>
+        <span class="alert-text">{{ alertSnap.text }}</span>
         <button
-          v-if="alert.secondLabel.value"
+          v-if="alertSnap.secondLabel"
           class="alert-action-btn secondary"
-          @click.stop="onAlertAction(alert.secondHandler.value)"
+          @click.stop="onAlertAction(alertSnap.secondHandler)"
         >
-          {{ alert.secondLabel.value }}
+          {{ alertSnap.secondLabel }}
         </button>
         <button
-          v-if="alert.actionLabel.value"
+          v-if="alertSnap.actionLabel"
           class="alert-action-btn"
-          @click.stop="onAlertAction(alert.actionHandler.value)"
+          @click.stop="onAlertAction(alertSnap.actionHandler)"
         >
-          {{ alert.actionLabel.value }}
+          {{ alertSnap.actionLabel }}
         </button>
         <i
-          v-if="alert.dismissible.value"
+          v-if="alertSnap.dismissible"
           class="fa-solid fa-xmark alert-close"
-          @click.stop="alert.dismiss()"
+          @click.stop="dismissAlert()"
         ></i>
       </div>
 
       <template v-if="!isLargeView">
-        <div v-if="showReminderInQuick && !alert.active.value" class="reminder-content">
+        <div v-if="showReminderInQuick && !alertSnap.active" class="reminder-content">
           <div class="reminder-top">
             <i class="fa-solid fa-clock reminder-icon"></i>
-            <span class="reminder-text">{{ tasksApi.activeReminderTask.value!.text }}</span>
-            <button class="reminder-done-btn" @click.stop="tasksApi.completeReminderTask()">
+            <span class="reminder-text">{{ tasksSnap.activeReminderTask!.text }}</span>
+            <button class="reminder-done-btn" @click.stop="completeReminderTask()">
               <i class="fa-solid fa-check"></i>
             </button>
           </div>
@@ -397,7 +418,7 @@ function closeWindow() {
         </div>
 
         <Transition name="capfade">
-          <div v-if="alarmInCapsule && !alert.active.value" class="alarm-quick">
+          <div v-if="alarmInCapsule && !alertSnap.active" class="alarm-quick">
             <svg class="alarm-quick-ring" viewBox="0 0 32 32" width="30" height="30">
               <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(128,128,128,0.28)" stroke-width="3.5" />
               <circle
@@ -409,12 +430,12 @@ function closeWindow() {
                 stroke-width="3.5"
                 stroke-linecap="round"
                 :stroke-dasharray="2 * Math.PI * 13"
-                :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarm.progress.value)"
+                :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarmProgress)"
                 transform="rotate(-90 16 16)"
               />
             </svg>
-            <span class="alarm-quick-time">{{ alarm.displayRemain.value }}</span>
-            <button class="alarm-quick-stop" @click.stop="alarm.cancelCountdown()">
+            <span class="alarm-quick-time">{{ alarmDisplayRemain }}</span>
+            <button class="alarm-quick-stop" @click.stop="cancelCountdown()">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
@@ -424,7 +445,7 @@ function closeWindow() {
           v-if="
             island.mode.value === 'still' &&
             !showMusicQuick &&
-            !alert.active.value &&
+            !alertSnap.active &&
             !showReminderInQuick &&
             !alarmInCapsule
           "
@@ -435,14 +456,14 @@ function closeWindow() {
 
         <div
           v-if="
-            isQuickView && !showMusicQuick && !alert.active.value && !showReminderInQuick && !alarmInCapsule
+            isQuickView && !showMusicQuick && !alertSnap.active && !showReminderInQuick && !alarmInCapsule
           "
           class="quick-content"
         >
-          <div v-if="weather.temp.value !== null" class="quick-weather">
-            <i :class="'fa-solid ' + weather.icon.value"></i>
-            <span>{{ weather.temp.value }}°</span>
-            <span class="quick-weather-city">{{ weather.city.value }}</span>
+          <div v-if="weatherSnap.temp !== null" class="quick-weather">
+            <i :class="'fa-solid ' + weatherIconCls"></i>
+            <span>{{ weatherSnap.temp }}°</span>
+            <span class="quick-weather-city">{{ weatherSnap.city }}</span>
           </div>
           <span class="quick-time">{{ currentTime }}</span>
           <span class="quick-date">{{ currentDate }}</span>
@@ -460,20 +481,20 @@ function closeWindow() {
         </div>
 
         <div
-          v-if="showMusicQuick && music.hasMusic.value && !alert.active.value && !showReminderInQuick"
+          v-if="showMusicQuick && musicSnap.hasMusic && !alertSnap.active && !showReminderInQuick"
           class="quick-content music-full"
         >
           <div class="artwork-wrap">
-            <img v-if="music.artworkUrl.value" :src="music.artworkUrl.value" alt="" draggable="false" />
+            <img v-if="musicSnap.artworkUrl" :src="musicSnap.artworkUrl" alt="" draggable="false" />
             <i v-else class="fa-solid fa-music"></i>
           </div>
-          <div v-if="music.currentLyric.value" class="lyric-box">
-            <span :key="music.currentLyric.value" class="lyric-line">{{ music.currentLyric.value }}</span>
+          <div v-if="lyric" class="lyric-box">
+            <span :key="lyric" class="lyric-line">{{ lyric }}</span>
           </div>
           <MusicMarquee
             v-else
-            :text="music.marqueeText.value"
-            :active="music.isPlaying.value && island.mode.value === 'still'"
+            :text="marquee"
+            :active="musicSnap.isPlaying && island.mode.value === 'still'"
           />
         </div>
       </template>
@@ -517,20 +538,23 @@ function closeWindow() {
       :class="{ 'dock-hidden': isLargeView || island.isHidden.value }"
     >
       <div
-        v-for="card in notify.visiblePopups.value"
+        v-for="card in visiblePopups"
         :key="card.key"
         class="notify-card"
-        @mouseenter="notify.setPopupHover(card.key)"
-        @mouseleave="notify.setPopupHover(null)"
-        @click.stop="notify.activatePopup(card)"
+        @mouseenter="setPopupHover(card.key)"
+        @mouseleave="setPopupHover(null)"
+        @click.stop="activatePopup(card)"
       >
         <div
           class="notify-avatar"
-          :class="{ 'notify-blur': notifications.privacy.enabled && notifications.privacy.blurAvatar }"
+          :class="{
+            'notify-blur':
+              settingsSnap.notifications.privacy.enabled && settingsSnap.notifications.privacy.blurAvatar,
+          }"
         >
           <img
-            v-if="notify.images.value[card.entry.key]"
-            :src="notify.images.value[card.entry.key]"
+            v-if="notifySnap.images[card.entry.key]"
+            :src="notifySnap.images[card.entry.key]"
             alt=""
             draggable="false"
           />
@@ -539,30 +563,33 @@ function closeWindow() {
         <div class="notify-body">
           <div class="notify-meta">
             <span class="notify-app">{{ card.entry.app }}</span>
-            <span class="notify-time">{{ notify.formatTime(card.entry.arrival) }}</span>
+            <span class="notify-time">{{ formatTime(card.entry.arrival) }}</span>
           </div>
           <div
             v-if="card.entry.title"
             class="notify-title"
-            :class="{ 'notify-blur': notifications.privacy.enabled && notifications.privacy.blurName }"
+            :class="{
+              'notify-blur':
+                settingsSnap.notifications.privacy.enabled && settingsSnap.notifications.privacy.blurName,
+            }"
           >
             {{ card.entry.title }}
           </div>
           <div
-            v-if="notifications.privacy.enabled && notifications.privacy.replaceBody"
+            v-if="
+              settingsSnap.notifications.privacy.enabled && settingsSnap.notifications.privacy.replaceBody
+            "
             class="notify-text notify-text-private"
           >
-            {{ notifications.privacy.bodyText || t('notifyPrivateBody') }}
+            {{ settingsSnap.notifications.privacy.bodyText || t('notifyPrivateBody') }}
           </div>
           <div v-else-if="card.entry.body" class="notify-text">{{ card.entry.body }}</div>
         </div>
-        <button class="notify-close" @click.stop="notify.closePopup(card.key)">
+        <button class="notify-close" @click.stop="closePopup(card.key)">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
-      <div v-if="notify.foldedCount.value > 0" key="__fold" class="notify-fold">
-        还有 {{ notify.foldedCount.value }} 条消息
-      </div>
+      <div v-if="foldedCount > 0" key="__fold" class="notify-fold">还有 {{ foldedCount }} 条消息</div>
     </TransitionGroup>
 
     <Transition name="capfade">
@@ -586,14 +613,14 @@ function closeWindow() {
             stroke-width="4"
             stroke-linecap="round"
             :stroke-dasharray="2 * Math.PI * 13"
-            :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarm.progress.value)"
+            :stroke-dashoffset="2 * Math.PI * 13 * (1 - alarmProgress)"
             transform="rotate(-90 16 16)"
           />
         </svg>
         <div class="alarm-mini-pop">
           <div class="alarm-mini-pop-card">
-            <span class="alarm-mini-time">{{ alarm.displayRemain.value }}</span>
-            <button class="alarm-mini-stop" @click.stop="alarm.cancelCountdown()">
+            <span class="alarm-mini-time">{{ alarmDisplayRemain }}</span>
+            <button class="alarm-mini-stop" @click.stop="cancelCountdown()">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>

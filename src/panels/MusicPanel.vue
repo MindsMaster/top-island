@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from '../i18n';
-import { formatTimeMs, useMusic } from '../composables/useMusic';
+import {
+  currentLyricIndex,
+  effectiveDurationMs,
+  formatTimeMs,
+  musicState,
+  playIcon,
+  progressAvailable,
+  seek,
+  seekable,
+  skipTrack,
+  togglePlay,
+} from '../store/music';
 
 const { t } = useI18n();
-const music = useMusic();
+const snap = musicState;
 
 const albumRotation = ref({ x: 0, y: 0 });
 const albumHovered = ref(false);
@@ -32,33 +43,32 @@ const albumStyle = computed(() => ({
 }));
 
 function onScrubStart() {
-  if (music.seekable.value) music.isScrubbing.value = true;
+  if (seekable(musicState)) musicState.isScrubbing = true;
 }
 
 function onScrubInput(e: Event) {
-  music.positionMs.value = parseInt((e.target as HTMLInputElement).value);
+  musicState.positionMs = parseInt((e.target as HTMLInputElement).value);
 }
 
 function onScrubChange(e: Event) {
   const v = parseInt((e.target as HTMLInputElement).value);
-  music.isScrubbing.value = false;
-  music.seek(v);
+  musicState.isScrubbing = false;
+  seek(v);
 }
 
 function onScrubPointerUp() {
-  setTimeout(() => (music.isScrubbing.value = false), 50);
+  setTimeout(() => (musicState.isScrubbing = false), 50);
 }
 
-const positionLabel = computed(() =>
-  music.progressAvailable.value ? formatTimeMs(music.positionMs.value) : '--:--'
-);
+const positionLabel = computed(() => (progressAvailable(snap) ? formatTimeMs(snap.positionMs) : '--:--'));
 const durationLabel = computed(() =>
-  music.progressAvailable.value ? formatTimeMs(music.effectiveDurationMs.value) : '--:--'
+  progressAvailable(snap) ? formatTimeMs(effectiveDurationMs(snap)) : '--:--'
 );
 
 const LYRIC_LINE_H = 24;
+const lyricIndex = computed(() => currentLyricIndex(snap));
 const lyricsTransform = computed(() => {
-  const idx = Math.max(0, music.currentLyricIndex.value);
+  const idx = Math.max(0, lyricIndex.value);
   return `translateY(${LYRIC_LINE_H - idx * LYRIC_LINE_H}px)`;
 });
 </script>
@@ -71,35 +81,35 @@ const lyricsTransform = computed(() => {
     @mousemove="onAlbumMouseMove"
     @mouseleave="onAlbumMouseLeave"
   >
-    <img v-if="music.artworkUrl.value" :src="music.artworkUrl.value" alt="" draggable="false" />
+    <img v-if="snap.artworkUrl" :src="snap.artworkUrl" alt="" draggable="false" />
     <i v-else class="fa-solid fa-music"></i>
   </div>
   <div class="large-info">
-    <div class="large-title">{{ music.currentTrack.value || t('musicNotPlaying') }}</div>
-    <div class="large-artist">{{ music.currentArtist.value }}</div>
+    <div class="large-title">{{ snap.currentTrack || t('musicNotPlaying') }}</div>
+    <div class="large-artist">{{ snap.currentArtist }}</div>
   </div>
-  <div v-if="music.lyricLines.value.length" class="large-lyrics">
+  <div v-if="snap.lyricLines.length" class="large-lyrics">
     <div class="lyrics-scroll" :style="{ transform: lyricsTransform }">
       <div
-        v-for="(line, i) in music.lyricLines.value"
+        v-for="(line, i) in snap.lyricLines"
         :key="i"
         class="lyric-line"
-        :class="{ active: i === music.currentLyricIndex.value }"
+        :class="{ active: i === lyricIndex }"
       >
         {{ line.text }}
       </div>
     </div>
   </div>
-  <div class="large-progress" :class="{ disabled: !music.progressAvailable.value }">
+  <div class="large-progress" :class="{ disabled: !progressAvailable(snap) }">
     <span class="progress-time">{{ positionLabel }}</span>
     <input
       type="range"
       class="progress-slider-lg"
-      :class="{ readonly: !music.seekable.value }"
+      :class="{ readonly: !seekable(snap) }"
       min="0"
-      :max="music.effectiveDurationMs.value || 100"
+      :max="effectiveDurationMs(snap) || 100"
       step="1000"
-      :value="music.positionMs.value"
+      :value="snap.positionMs"
       @pointerdown="onScrubStart"
       @pointerup="onScrubPointerUp"
       @input="onScrubInput"
@@ -108,13 +118,13 @@ const lyricsTransform = computed(() => {
     <span class="progress-time">{{ durationLabel }}</span>
   </div>
   <div class="large-controls">
-    <button class="ctrl-btn-lg" @click.stop="music.skipTrack(-1)">
+    <button class="ctrl-btn-lg" @click.stop="skipTrack(-1)">
       <i class="fa-solid fa-backward-step"></i>
     </button>
-    <button class="ctrl-btn-lg play-btn-lg" @click.stop="music.togglePlay()">
-      <i :class="'fa-solid ' + music.playIcon.value"></i>
+    <button class="ctrl-btn-lg play-btn-lg" @click.stop="togglePlay()">
+      <i :class="'fa-solid ' + playIcon(snap)"></i>
     </button>
-    <button class="ctrl-btn-lg" @click.stop="music.skipTrack(1)">
+    <button class="ctrl-btn-lg" @click.stop="skipTrack(1)">
       <i class="fa-solid fa-forward-step"></i>
     </button>
   </div>

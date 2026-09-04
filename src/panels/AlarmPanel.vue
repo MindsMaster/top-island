@@ -1,28 +1,31 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from '../i18n';
-import { useAlarm } from '../composables/useAlarm';
-import type { AlarmItem } from '../composables/useAlarm';
-import SettingSelect from '../components/SettingSelect.vue';
-import TimeDial from '../components/TimeDial.vue';
-
-const { t, weekdays } = useI18n();
-const {
-  alarms,
-  sound,
-  defaultSounds,
-  countdown,
-  ringDash,
-  displayRemain,
+import {
+  alarmState,
+  displayRemainOf,
+  ringDashOf,
   upsertAlarm,
   removeAlarm,
   toggleAlarm,
+  setPickMinutes,
   startCountdown,
   pauseCountdown,
   cancelCountdown,
   preview,
   pickCustomSound,
-} = useAlarm();
+} from '../store/alarm';
+import type { AlarmItem } from '../store/alarm';
+import SettingSelect from '../components/SettingSelect.vue';
+import TimeDial from '../components/TimeDial.vue';
+
+const { t, weekdays } = useI18n();
+const snap = alarmState;
+
+const ringDash = computed(() => ringDashOf(snap));
+const displayRemain = computed(() => displayRemainOf(snap));
+/** snap.alarms 是深只读快照，这里转回可变类型供 openEdit/daysSummary 使用 */
+const alarmList = computed(() => snap.alarms as AlarmItem[]);
 
 const mode = ref<'countdown' | 'clock'>('countdown');
 
@@ -31,14 +34,14 @@ const PRESETS = [5, 10, 15, 30, 60];
 const COUNTDOWN_MAX = 720;
 
 function onPickMinutes(e: Event) {
-  countdown.pickMinutes = parseInt((e.target as HTMLInputElement).value);
+  setPickMinutes(parseInt((e.target as HTMLInputElement).value));
 }
 
 function onMinutesTyped(e: Event) {
   const el = e.target as HTMLInputElement;
   const v = parseInt(el.value.replace(/\D/g, ''));
-  countdown.pickMinutes = Number.isFinite(v) ? Math.max(1, Math.min(COUNTDOWN_MAX, v)) : 1;
-  el.value = String(countdown.pickMinutes);
+  setPickMinutes(Number.isFinite(v) ? Math.max(1, Math.min(COUNTDOWN_MAX, v)) : 1);
+  el.value = String(alarmState.countdown.pickMinutes);
 }
 
 interface EditorState {
@@ -168,9 +171,9 @@ function daysSummary(a: AlarmItem): string {
 const CUSTOM_VALUE = '__custom__';
 
 const soundOptions = computed(() => [
-  ...defaultSounds.value.map((s) => ({ value: s.path, label: s.name, icon: 'fa-bell' })),
-  ...(sound.value && !defaultSounds.value.some((s) => s.path === sound.value?.path)
-    ? [{ value: sound.value.path, label: sound.value.name, icon: 'fa-file-audio' }]
+  ...snap.defaultSounds.map((s) => ({ value: s.path, label: s.name, icon: 'fa-bell' })),
+  ...(snap.sound && !snap.defaultSounds.some((s) => s.path === snap.sound?.path)
+    ? [{ value: snap.sound.path, label: snap.sound.name, icon: 'fa-file-audio' }]
     : []),
   { value: CUSTOM_VALUE, label: t('alarmSoundCustom'), icon: 'fa-folder-open' },
 ]);
@@ -181,8 +184,9 @@ function onSoundPick(value: string) {
     return;
   }
   const found =
-    defaultSounds.value.find((s) => s.path === value) ?? (sound.value?.path === value ? sound.value : null);
-  if (found) sound.value = found;
+    alarmState.defaultSounds.find((s) => s.path === value) ??
+    (alarmState.sound?.path === value ? alarmState.sound : null);
+  if (found) alarmState.sound = found;
 }
 </script>
 
@@ -215,18 +219,18 @@ function onSoundPick(value: string) {
       </svg>
       <div class="alarm-ring-center">
         <span class="alarm-time-display">{{ displayRemain }}</span>
-        <span v-if="countdown.paused" class="alarm-state-label">{{ t('alarmPaused') }}</span>
+        <span v-if="snap.countdown.paused" class="alarm-state-label">{{ t('alarmPaused') }}</span>
       </div>
     </div>
 
-    <template v-if="!countdown.running">
+    <template v-if="!snap.countdown.running">
       <div class="alarm-presets">
         <button
           v-for="p in PRESETS"
           :key="p"
           class="alarm-preset"
-          :class="{ active: countdown.pickMinutes === p }"
-          @click.stop="countdown.pickMinutes = p"
+          :class="{ active: snap.countdown.pickMinutes === p }"
+          @click.stop="setPickMinutes(p)"
         >
           {{ p }}{{ t('alarmMin') }}
         </button>
@@ -238,14 +242,14 @@ function onSoundPick(value: string) {
           min="1"
           max="120"
           step="1"
-          :value="Math.min(countdown.pickMinutes, 120)"
+          :value="Math.min(snap.countdown.pickMinutes, 120)"
           @input="onPickMinutes"
         />
         <input
           class="alarm-min-input"
           inputmode="numeric"
           maxlength="3"
-          :value="countdown.pickMinutes"
+          :value="snap.countdown.pickMinutes"
           spellcheck="false"
           @click.stop
           @focus="($event.target as HTMLInputElement).select()"
@@ -255,13 +259,13 @@ function onSoundPick(value: string) {
         />
         <span class="alarm-min-unit">{{ t('alarmMin') }}</span>
       </div>
-      <button class="alarm-action-btn" @click.stop="startCountdown(countdown.pickMinutes)">
+      <button class="alarm-action-btn" @click.stop="startCountdown(snap.countdown.pickMinutes)">
         {{ t('alarmStart') }}
       </button>
     </template>
     <div v-else class="alarm-running-actions">
       <button class="alarm-action-btn" @click.stop="pauseCountdown()">
-        {{ countdown.paused ? t('alarmResume') : t('alarmPause') }}
+        {{ snap.countdown.paused ? t('alarmResume') : t('alarmPause') }}
       </button>
       <button class="alarm-action-btn secondary" @click.stop="cancelCountdown()">
         {{ t('alarmCancel') }}
@@ -271,12 +275,12 @@ function onSoundPick(value: string) {
 
   <template v-else>
     <div class="alarm-list">
-      <div v-if="!alarms.length" class="alarm-empty">
+      <div v-if="!alarmList.length" class="alarm-empty">
         <i class="fa-solid fa-bell-slash"></i>
         <span>{{ t('alarmEmpty') }}</span>
       </div>
       <div
-        v-for="a in alarms"
+        v-for="a in alarmList"
         :key="a.id"
         class="alarm-row"
         :class="{ off: !a.enabled }"
@@ -303,7 +307,7 @@ function onSoundPick(value: string) {
   <!-- 提示音（两种模式共用；编辑抽屉打开时隐藏） -->
   <div v-if="!editor" class="alarm-sound-row">
     <SettingSelect
-      :model-value="sound?.path ?? ''"
+      :model-value="snap.sound?.path ?? ''"
       :options="soundOptions"
       @update:model-value="onSoundPick"
     />

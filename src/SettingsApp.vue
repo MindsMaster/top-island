@@ -2,27 +2,14 @@
 import { computed, onMounted, ref } from 'vue';
 import { api } from './api';
 import { useI18n } from './i18n';
-import { hexLuminance, THEMES, useSettings } from './composables/useSettings';
+import { hexLuminance, THEMES, initSettings, setCustomColor, settings } from './store/settings';
 import SettingSelect from './components/SettingSelect.vue';
 import ColorPicker from './components/ColorPicker.vue';
 import type { DiagnosticsToggles, DisplayInfo, LangPref, ThemeId, UpdateCheckResult } from '../shared/ipc';
 
 const { t, initI18n } = useI18n();
-const {
-  theme,
-  customTheme,
-  island,
-  lang,
-  notifications,
-  diagnostics,
-  autoLaunch,
-  initSettings,
-  setDiagnostic,
-  setCustomColor,
-  setIsland,
-  setNotifications,
-  setPrivacy,
-} = useSettings();
+/** 读直接渲染（reactive 自动追踪）；写也直接改字段，持久化/广播由 store 的 watch 统一处理 */
+const st = settings;
 
 type SectionId = 'general' | 'messages' | 'diag';
 const sections: Array<{ id: SectionId; icon: string; titleKey: string }> = [
@@ -66,7 +53,7 @@ function onDocMouseDownPicker(e: MouseEvent) {
 
 /** 迷你岛预览的文字颜色：按背景平均亮度取黑/白（与 applyTheme 同规则） */
 const previewTextColor = computed(() =>
-  (hexLuminance(customTheme.value.a) + hexLuminance(customTheme.value.b)) / 2 > 0.55
+  (hexLuminance(st.customTheme.a) + hexLuminance(st.customTheme.b)) / 2 > 0.55
     ? 'rgba(0, 0, 0, 0.85)'
     : '#fff'
 );
@@ -89,16 +76,16 @@ const displayOptions = computed(() => {
 });
 
 const displayValue = computed(() => {
-  if (island.value.displayId === 'primary') {
+  if (st.island.displayId === 'primary') {
     return displays.value.find((d) => d.primary)?.id ?? '';
   }
-  return island.value.displayId;
+  return st.island.displayId;
 });
 
 function onDisplayPick(id: string) {
   const d = displays.value.find((x) => x.id === id);
   // 选中主显示器时存 'primary'（跨重插拔更稳）
-  setIsland({ displayId: d?.primary ? 'primary' : id });
+  settings.island.displayId = d?.primary ? 'primary' : id;
 }
 
 const SCALE_MIN = 45;
@@ -107,13 +94,13 @@ const SCALE_MAX = 300;
 function onScaleTyped(e: Event) {
   const el = e.target as HTMLInputElement;
   const v = parseInt(el.value.replace(/\D/g, ''));
-  const next = Number.isFinite(v) ? Math.max(SCALE_MIN, Math.min(SCALE_MAX, v)) : island.value.scale;
-  setIsland({ scale: next });
+  const next = Number.isFinite(v) ? Math.max(SCALE_MIN, Math.min(SCALE_MAX, v)) : settings.island.scale;
+  settings.island.scale = next;
   el.value = String(next);
 }
 
 function onPeekInput(e: Event) {
-  setIsland({ hiddenPeek: parseInt((e.target as HTMLInputElement).value) });
+  settings.island.hiddenPeek = parseInt((e.target as HTMLInputElement).value);
 }
 
 /** 每次打开设置窗 +1：根节点换 key 重建以重播进入动画（窗口常驻不销毁，Vue 不会自己重挂载） */
@@ -241,7 +228,11 @@ onMounted(async () => {
         <template v-if="active === 'general'">
           <div class="setting-row">
             <div class="setting-label">{{ t('settingsAutoLaunch') }}</div>
-            <button class="setting-toggle" :class="{ on: autoLaunch }" @click="autoLaunch = !autoLaunch">
+            <button
+              class="setting-toggle"
+              :class="{ on: st.autoLaunch }"
+              @click="settings.autoLaunch = !settings.autoLaunch"
+            >
               <span class="setting-toggle-knob"></span>
             </button>
           </div>
@@ -264,28 +255,28 @@ onMounted(async () => {
           <div class="setting-row">
             <div class="setting-label">{{ t('settingsLanguage') }}</div>
             <SettingSelect
-              :model-value="lang"
+              :model-value="st.lang"
               :options="langOptions"
-              @update:model-value="lang = $event as LangPref"
+              @update:model-value="settings.lang = $event as LangPref"
             />
           </div>
           <div class="setting-row">
             <div class="setting-label">{{ t('settingsTheme') }}</div>
             <SettingSelect
-              :model-value="theme"
+              :model-value="st.theme"
               :options="themeOptions"
               :group-labels="themeGroupLabels"
-              @update:model-value="theme = $event as ThemeId"
+              @update:model-value="settings.theme = $event as ThemeId"
             />
           </div>
-          <div v-if="theme === 'custom'" class="setting-row custom-palette">
+          <div v-if="st.theme === 'custom'" class="setting-row custom-palette">
             <!-- 迷你岛预览 -->
             <div class="custom-preview">
               <div
                 class="custom-preview-pill"
-                :style="{ background: `linear-gradient(135deg, ${customTheme.a}, ${customTheme.b})` }"
+                :style="{ background: `linear-gradient(135deg, ${st.customTheme.a}, ${st.customTheme.b})` }"
               >
-                <i class="fa-solid fa-music" :style="{ color: customTheme.accent }"></i>
+                <i class="fa-solid fa-music" :style="{ color: st.customTheme.accent }"></i>
                 <span :style="{ color: previewTextColor }">12:34</span>
               </div>
             </div>
@@ -294,13 +285,13 @@ onMounted(async () => {
                 <button
                   class="custom-swatch"
                   :class="{ open: openPicker === p.key }"
-                  :style="{ background: customTheme[p.key] }"
+                  :style="{ background: st.customTheme[p.key] }"
                   @click="togglePicker(p.key)"
                 ></button>
                 <span class="custom-color-label">{{ t(p.labelKey) }}</span>
                 <div v-if="openPicker === p.key" class="cp-popover">
                   <ColorPicker
-                    :model-value="customTheme[p.key]"
+                    :model-value="st.customTheme[p.key]"
                     @update:model-value="setCustomColor(p.key, $event)"
                   />
                 </div>
@@ -322,7 +313,7 @@ onMounted(async () => {
                 class="setting-num-input"
                 inputmode="numeric"
                 maxlength="3"
-                :value="island.scale"
+                :value="st.island.scale"
                 spellcheck="false"
                 @focus="($event.target as HTMLInputElement).select()"
                 @mouseup.prevent="($event.target as HTMLInputElement).select()"
@@ -335,7 +326,7 @@ onMounted(async () => {
           <div class="setting-row offset-row">
             <div class="setting-label">
               {{ t('settingsHiddenPeek') }}
-              <span class="offset-value">{{ island.hiddenPeek }}px</span>
+              <span class="offset-value">{{ st.island.hiddenPeek }}px</span>
             </div>
             <div class="offset-control">
               <input
@@ -344,7 +335,7 @@ onMounted(async () => {
                 min="2"
                 max="20"
                 step="1"
-                :value="island.hiddenPeek"
+                :value="st.island.hiddenPeek"
                 @input="onPeekInput"
               />
             </div>
@@ -364,23 +355,23 @@ onMounted(async () => {
             <div class="setting-label">{{ t('notifyEnable') }}</div>
             <button
               class="setting-toggle"
-              :class="{ on: notifications.enabled }"
-              @click="setNotifications({ enabled: !notifications.enabled })"
+              :class="{ on: st.notifications.enabled }"
+              @click="settings.notifications.enabled = !settings.notifications.enabled"
             >
               <span class="setting-toggle-knob"></span>
             </button>
           </div>
-          <div v-if="notifications.enabled" class="setting-row">
+          <div v-if="st.notifications.enabled" class="setting-row">
             <div class="setting-label">{{ t('notifyPopup') }}</div>
             <button
               class="setting-toggle"
-              :class="{ on: notifications.popup }"
-              @click="setNotifications({ popup: !notifications.popup })"
+              :class="{ on: st.notifications.popup }"
+              @click="settings.notifications.popup = !settings.notifications.popup"
             >
               <span class="setting-toggle-knob"></span>
             </button>
           </div>
-          <div v-if="notifications.enabled && notifications.popup" class="setting-row">
+          <div v-if="st.notifications.enabled && st.notifications.popup" class="setting-row">
             <div class="setting-label">
               {{ t('notifyPrivacy') }}
               <span class="setting-help">
@@ -390,23 +381,25 @@ onMounted(async () => {
             </div>
             <button
               class="setting-toggle"
-              :class="{ on: notifications.privacy.enabled }"
-              @click="setPrivacy({ enabled: !notifications.privacy.enabled })"
+              :class="{ on: st.notifications.privacy.enabled }"
+              @click="settings.notifications.privacy.enabled = !settings.notifications.privacy.enabled"
             >
               <span class="setting-toggle-knob"></span>
             </button>
           </div>
           <!-- 隐私细项：主开关开启后渐进披露 -->
           <div
-            v-if="notifications.enabled && notifications.popup && notifications.privacy.enabled"
+            v-if="st.notifications.enabled && st.notifications.popup && st.notifications.privacy.enabled"
             class="setting-subgroup"
           >
             <div class="setting-row setting-sub">
               <div class="setting-label">{{ t('notifyPrivacyAvatar') }}</div>
               <button
                 class="setting-toggle"
-                :class="{ on: notifications.privacy.blurAvatar }"
-                @click="setPrivacy({ blurAvatar: !notifications.privacy.blurAvatar })"
+                :class="{ on: st.notifications.privacy.blurAvatar }"
+                @click="
+                  settings.notifications.privacy.blurAvatar = !settings.notifications.privacy.blurAvatar
+                "
               >
                 <span class="setting-toggle-knob"></span>
               </button>
@@ -415,8 +408,8 @@ onMounted(async () => {
               <div class="setting-label">{{ t('notifyPrivacyName') }}</div>
               <button
                 class="setting-toggle"
-                :class="{ on: notifications.privacy.blurName }"
-                @click="setPrivacy({ blurName: !notifications.privacy.blurName })"
+                :class="{ on: st.notifications.privacy.blurName }"
+                @click="settings.notifications.privacy.blurName = !settings.notifications.privacy.blurName"
               >
                 <span class="setting-toggle-knob"></span>
               </button>
@@ -425,30 +418,32 @@ onMounted(async () => {
               <div class="setting-label">{{ t('notifyPrivacyBody') }}</div>
               <button
                 class="setting-toggle"
-                :class="{ on: notifications.privacy.replaceBody }"
-                @click="setPrivacy({ replaceBody: !notifications.privacy.replaceBody })"
+                :class="{ on: st.notifications.privacy.replaceBody }"
+                @click="
+                  settings.notifications.privacy.replaceBody = !settings.notifications.privacy.replaceBody
+                "
               >
                 <span class="setting-toggle-knob"></span>
               </button>
             </div>
-            <div v-if="notifications.privacy.replaceBody" class="setting-sub setting-sub-input">
+            <div v-if="st.notifications.privacy.replaceBody" class="setting-sub setting-sub-input">
               <input
                 class="setting-text-input"
                 type="text"
                 maxlength="40"
-                :value="notifications.privacy.bodyText"
+                :value="st.notifications.privacy.bodyText"
                 :placeholder="t('notifyPrivateBody')"
-                @input="setPrivacy({ bodyText: ($event.target as HTMLInputElement).value })"
+                @input="settings.notifications.privacy.bodyText = ($event.target as HTMLInputElement).value"
               />
             </div>
           </div>
-          <template v-if="notifications.enabled">
+          <template v-if="st.notifications.enabled">
             <div class="setting-row">
               <div class="setting-label">{{ t('notifySuppress') }}</div>
               <button
                 class="setting-toggle"
-                :class="{ on: notifications.suppressBanner }"
-                @click="setNotifications({ suppressBanner: !notifications.suppressBanner })"
+                :class="{ on: st.notifications.suppressBanner }"
+                @click="settings.notifications.suppressBanner = !settings.notifications.suppressBanner"
               >
                 <span class="setting-toggle-knob"></span>
               </button>
@@ -459,13 +454,13 @@ onMounted(async () => {
               <div class="setting-label">{{ t('wechatEnable') }}</div>
               <button
                 class="setting-toggle"
-                :class="{ on: notifications.wechat }"
-                @click="setNotifications({ wechat: !notifications.wechat })"
+                :class="{ on: st.notifications.wechat }"
+                @click="settings.notifications.wechat = !settings.notifications.wechat"
               >
                 <span class="setting-toggle-knob"></span>
               </button>
             </div>
-            <div v-if="notifications.wechat" class="setting-row">
+            <div v-if="st.notifications.wechat" class="setting-row">
               <div class="setting-label">
                 {{ t('wechatKey') }}
                 <span class="offset-value">{{ wechatHasKey ? t('wechatKeyHave') : t('wechatKeyNone') }}</span>
@@ -475,7 +470,7 @@ onMounted(async () => {
                 {{ wechatHasKey ? t('wechatReacquire') : t('wechatAcquire') }}
               </button>
             </div>
-            <div v-if="notifications.wechat && wechatMsg" class="setting-hint">{{ wechatMsg }}</div>
+            <div v-if="st.notifications.wechat && wechatMsg" class="setting-hint">{{ wechatMsg }}</div>
           </template>
         </template>
 
@@ -487,8 +482,8 @@ onMounted(async () => {
             <div class="setting-label">{{ t(tg.nameKey) }}</div>
             <button
               class="setting-toggle"
-              :class="{ on: diagnostics[tg.key] }"
-              @click="setDiagnostic(tg.key, !diagnostics[tg.key])"
+              :class="{ on: st.diagnostics[tg.key] }"
+              @click="settings.diagnostics[tg.key] = !settings.diagnostics[tg.key]"
             >
               <span class="setting-toggle-knob"></span>
             </button>
@@ -508,7 +503,9 @@ onMounted(async () => {
               <i class="fa-solid fa-trash-can"></i>{{ t('settingsResetBtn') }}
             </button>
             <div v-else class="reset-confirm">
-              <button class="setting-action-btn" @click="resetArmed = false">{{ t('settingsResetCancel') }}</button>
+              <button class="setting-action-btn" @click="resetArmed = false">
+                {{ t('settingsResetCancel') }}
+              </button>
               <button class="setting-action-btn danger" @click="confirmReset">
                 <i class="fa-solid fa-triangle-exclamation"></i>{{ t('settingsResetConfirm') }}
               </button>
