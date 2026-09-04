@@ -39,6 +39,26 @@ fn copy_db() -> Result<std::path::PathBuf> {
     Ok(dir.join("wpndatabase.db"))
 }
 
+/// 源库指纹：主库与 WAL 的 (修改时间, 长度)。轮询方每轮先比指纹，没变就跳过拷贝——
+/// 否则 1.5s 一次全量拷贝通知库，空闲时也压着磁盘读（1MB+/s）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DbFingerprint {
+    db: Option<(std::time::SystemTime, u64)>,
+    wal: Option<(std::time::SystemTime, u64)>,
+}
+
+pub fn source_fingerprint() -> DbFingerprint {
+    let stamp = |suffix: &str| -> Option<(std::time::SystemTime, u64)> {
+        let local = std::env::var("LOCALAPPDATA").ok()?;
+        let path = std::path::Path::new(&local)
+            .join(r"Microsoft\Windows\Notifications")
+            .join(format!("wpndatabase.db{suffix}"));
+        let meta = std::fs::metadata(path).ok()?;
+        Some((meta.modified().ok()?, meta.len()))
+    };
+    DbFingerprint { db: stamp(""), wal: stamp("-wal") }
+}
+
 fn filetime_to_unix_ms(filetime: i64) -> i64 {
     // FILETIME 是 1601 起的 100ns 计数；非法值（<=0）按 0 处理，同 WpnDatabase.cs
     if filetime <= 0 {

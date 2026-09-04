@@ -159,6 +159,42 @@ watch(alarmMini, (mini) => {
   if (!mini) miniHover.value = false;
 });
 
+/** 已挂载的面板。首次进大视图只挂当前面板和相邻，其余在动画期间的空闲帧补齐——
+ *  一次挂 7 个面板会产生 60~85ms 的长任务，摊开后展开不卡。
+ *  面板挂载后不再卸载（外层改 v-show），之后展开/收起零挂载成本 */
+const mountedPanels = ref<Set<number>>(new Set());
+let backfillTimer: number | null = null;
+
+function ensurePanel(i: number) {
+  if (i >= 0 && i < panels.length) mountedPanels.value.add(i);
+}
+
+watch(isLargeView, (large) => {
+  if (!large) return;
+  ensurePanel(swipe.activePanel.value);
+  ensurePanel(swipe.activePanel.value - 1);
+  ensurePanel(swipe.activePanel.value + 1);
+  if (backfillTimer !== null) clearInterval(backfillTimer);
+  let next = 0;
+  backfillTimer = window.setInterval(() => {
+    while (next < panels.length && mountedPanels.value.has(next)) next++;
+    if (next >= panels.length) {
+      if (backfillTimer !== null) clearInterval(backfillTimer);
+      backfillTimer = null;
+      return;
+    }
+    mountedPanels.value.add(next);
+  }, 60);
+});
+
+// 滑到未挂载的面板时立即补上（补齐通常早已完成，这是兜底）
+watch(swipe.activePanel, (i) => {
+  if (!isLargeView.value) return;
+  ensurePanel(i);
+  ensurePanel(i - 1);
+  ensurePanel(i + 1);
+});
+
 // 通知卡片进出/迷你闹钟显隐都会改热区包围盒，重报；卡片有 0.28s 进出场动画，补一次延迟重报
 watch([() => visiblePopups.value.length, alarmMini], () => {
   island.reportRect();
@@ -499,36 +535,35 @@ function closeWindow() {
         </div>
       </template>
 
-      <template v-if="isLargeView">
-        <div class="panels-wrapper" :class="{ dragging: swipe.isDragging.value }">
+      <div v-show="isLargeView" class="panels-wrapper" :class="{ dragging: swipe.isDragging.value }">
+        <template v-for="(p, i) in panels" :key="p.id">
           <div
-            v-for="(p, i) in panels"
-            :key="p.id"
+            v-if="mountedPanels.has(i)"
             class="panel"
             :class="p.id + '-panel'"
             :style="swipe.panelStyle(i)"
           >
             <component :is="p.component" />
           </div>
-        </div>
+        </template>
+      </div>
 
-        <div class="panel-indicator">
-          <button
-            v-for="(p, i) in panels"
-            :key="p.id"
-            class="panel-nav-btn"
-            :class="{ active: swipe.activePanel.value === i }"
-            :title="t(p.titleKey)"
-            @click.stop="swipe.switchPanel(i)"
-          >
-            <i :class="'fa-solid ' + p.icon"></i>
-          </button>
-          <div class="panel-indicator-sep"></div>
-          <button class="panel-nav-btn" :title="t('openSettings')" @click.stop="api.openSettings()">
-            <i class="fa-solid fa-gear"></i>
-          </button>
-        </div>
-      </template>
+      <div v-show="isLargeView" class="panel-indicator">
+        <button
+          v-for="(p, i) in panels"
+          :key="p.id"
+          class="panel-nav-btn"
+          :class="{ active: swipe.activePanel.value === i }"
+          :title="t(p.titleKey)"
+          @click.stop="swipe.switchPanel(i)"
+        >
+          <i :class="'fa-solid ' + p.icon"></i>
+        </button>
+        <div class="panel-indicator-sep"></div>
+        <button class="panel-nav-btn" :title="t('openSettings')" @click.stop="api.openSettings()">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
     </div>
 
     <TransitionGroup

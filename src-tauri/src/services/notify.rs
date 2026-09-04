@@ -75,6 +75,7 @@ fn watch_loop(app: AppHandle, generation: u64) {
             0
         }
     };
+    let mut last_fp = island_windows::wpn::source_fingerprint();
     loop {
         // 分段 sleep：停用时 100ms 内退出，不用等满一个轮询周期
         let mut stopped = false;
@@ -89,6 +90,12 @@ fn watch_loop(app: AppHandle, generation: u64) {
         if stopped {
             return;
         }
+        // 库没变就跳过：否则每轮全量拷贝 wpndatabase+WAL，空闲也压着磁盘
+        let fp = island_windows::wpn::source_fingerprint();
+        if fp == last_fp {
+            continue;
+        }
+        last_fp = fp;
         let suppress = lock_state().suppress;
         match island_windows::wpn::toasts_since(watermark) {
             Ok((rows, raw_max)) => {
