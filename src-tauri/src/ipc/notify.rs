@@ -25,7 +25,7 @@ pub async fn notify_activate_toast(aumid: String, launch: String, atype: String)
     off_thread(move || Ok(island_windows::activate::activate_toast(&aumid, &launch, &atype))).await
 }
 
-/// 通知图片/头像 → data URL。白名单外的来源返回 null，渲染层回退首字母块
+/// 通知图片/头像 → data URL。内容认不出是图片的来源返回 null，渲染层回退首字母块
 #[tauri::command]
 pub async fn notify_image(src: String) -> AppResult<Option<String>> {
     off_thread(move || Ok(services::notify::notify_image(&src))).await

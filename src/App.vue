@@ -41,12 +41,43 @@ const hideDragging = ref(false);
 const hideDragOffset = ref(0);
 const miniHover = ref(false);
 
+/** setup 完成后才置真：useIslandMode 的 watchEffect 首次同步运行时 alarmMini 等还没声明（TDZ），
+ *  那几轮上报只给岛本体，mounted 里置真后会重报完整热区 */
+let rectsArmed = false;
+
 const island = useIslandMode({
   keepInteractive: () => hideDragging.value || notify.hoveringPopup.value || miniHover.value,
   holdMode: () =>
     tasksApi.activeReminderTask.value !== null || alarm.keepInteractive.value || hideDragging.value,
-  // 热区含通知栈：悬停通知卡片时岛不收起、可点击
-  getRect: () => containerEl.value?.getBoundingClientRect() ?? null,
+  // 热区 = 岛本体，叠上可见的通知栈/迷你闹钟（和岛不重叠，取包围盒即可）；
+  // 大视图整窗可交互（点面板外的 shield 要收起）。
+  // 绝不能报 container——它是全屏容器，报出去热区就是整窗，穿透全废
+  getRect: () => {
+    const islandRect = islandEl.value?.getBoundingClientRect();
+    if (!islandRect || !rectsArmed) return islandRect ?? null;
+    if (island.mode.value === 'large') {
+      return containerEl.value?.getBoundingClientRect() ?? islandRect;
+    }
+    let left = islandRect.left;
+    let top = islandRect.top;
+    let right = islandRect.right;
+    let bottom = islandRect.bottom;
+    const include = (el: Element | null | undefined) => {
+      const r = el?.getBoundingClientRect();
+      if (!r || r.width === 0 || r.height === 0) return;
+      left = Math.min(left, r.left);
+      top = Math.min(top, r.top);
+      right = Math.max(right, r.right);
+      bottom = Math.max(bottom, r.bottom);
+    };
+    const root = containerEl.value;
+    // 隐藏态通知栈 dock-hidden 不可见，不并进热区
+    if (notify.visiblePopups.value.length && !island.isHidden.value) {
+      include(root?.querySelector('.notify-stack'));
+    }
+    if (alarmMini.value) include(root?.querySelector('.alarm-mini'));
+    return new DOMRect(left, top, right - left, bottom - top);
+  },
 });
 
 const swipe = usePanelSwipe({
@@ -105,6 +136,12 @@ const alarmMini = computed(
 );
 watch(alarmMini, (mini) => {
   if (!mini) miniHover.value = false;
+});
+
+// 通知卡片进出/迷你闹钟显隐都会改热区包围盒，重报；卡片有 0.28s 进出场动画，补一次延迟重报
+watch([() => notify.visiblePopups.value.length, alarmMini], () => {
+  island.reportRect();
+  window.setTimeout(() => island.reportRect(), 300);
 });
 
 function onMiniClick() {
@@ -277,6 +314,7 @@ onMounted(async () => {
     islandRO.observe(islandEl.value);
     if (containerEl.value) islandRO.observe(containerEl.value);
   }
+  rectsArmed = true;
   island.reportRect();
 });
 

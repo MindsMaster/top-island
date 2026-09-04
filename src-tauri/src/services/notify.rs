@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -13,7 +13,6 @@ use crate::infra::persist;
 const POLL_INTERVAL: Duration = Duration::from_millis(1500);
 const MAX_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 const IMAGE_CACHE_CAP: usize = 200;
-const IMAGE_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 // 沿用 Electron 版 store.json 的键：被改过横幅的应用 → 原值（-1 = 原本没有该值，还原=删除）
 const SUPPRESS_KEY: &str = "notifySuppressedApps";
 
@@ -244,9 +243,10 @@ fn lock_cache() -> MutexGuard<'static, ImageLru> {
     IMAGE_CACHE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 通知图片/头像 → data URL。白名单：http(s) 经网络拉取；本地只允许
-/// %LOCALAPPDATA%\Packages\ 与 %TEMP% 下的图片文件。其余一律拒绝（记日志）返回 None，
-/// 渲染层回退首字母块。
+/// 通知图片/头像 → data URL。http(s) 经网络拉取；本地文件读进来按魔数认格式，
+/// 认不出是受支持图片的一律拒绝（记日志）返回 None，渲染层回退首字母块。
+/// 不做扩展名/目录白名单：toast 里的路径由来源应用自己写——QQ NT 头像没有扩展名、
+/// Edge 通知资源是 .tmp、缓存目录还可能不在系统盘，白名单只会误伤正常头像。
 pub fn notify_image(src: &str) -> Option<String> {
     let src = src.trim();
     if src.is_empty() {
@@ -307,72 +307,58 @@ fn fetch_http(url: &str) -> Option<String> {
 }
 
 fn read_local(path_text: &str) -> Option<String> {
-    let ext = Path::new(path_text)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase());
-    let Some(ext) = ext.filter(|e| IMAGE_EXTS.contains(&e.as_str())) else {
-        eprintln!("[notify] 拒绝通知图片（扩展名不在白名单）: {path_text}");
-        return None;
-    };
-    // 规范化后才能比前缀：toast 里的路径可能带 .. 或符号链接
-    let path = match std::fs::canonicalize(path_text) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[notify] 通知图片路径不可读({path_text}): {e}");
-            return None;
-        }
-    };
-    if !under_allowed_root(&path) {
-        eprintln!("[notify] 拒绝通知图片（路径不在白名单目录下）: {}", path.display());
+    // 包资源 URI（ms-appx/ms-appdata/ms-resource）解不到真实文件，静默回退（同 Electron 版）
+    let lower = path_text.to_ascii_lowercase();
+    if lower.starts_with("ms-appx:") || lower.starts_with("ms-appdata:") || lower.starts_with("ms-resource:") {
         return None;
     }
-    match std::fs::metadata(&path) {
+    let path = Path::new(path_text);
+    match std::fs::metadata(path) {
         Ok(meta) if meta.len() as usize > MAX_IMAGE_BYTES => {
             eprintln!("[notify] 拒绝通知图片（超过 2MB）: {}", path.display());
             return None;
         }
         Err(e) => {
-            eprintln!("[notify] 读取通知图片信息失败({}): {e}", path.display());
+            eprintln!("[notify] 通知图片不可读({}): {e}", path.display());
             return None;
         }
         _ => {}
     }
-    let bytes = match std::fs::read(&path) {
+    let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("[notify] 读取通知图片失败({}): {e}", path.display());
             return None;
         }
     };
-    let mime = match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        _ => unreachable!("扩展名已过白名单"),
+    let Some(mime) = sniff_image_mime(&bytes) else {
+        eprintln!("[notify] 拒绝通知图片（内容不是受支持的图片）: {}", path.display());
+        return None;
     };
     Some(format!("data:{mime};base64,{}", base64_encode(&bytes)))
 }
 
-/// 只允许 %LOCALAPPDATA%\Packages\ 与 %TEMP% 之下。两侧都做 canonicalize
-/// （TEMP 可能是 8.3 短名），统一小写比较（Windows 路径大小写不敏感）。
-fn under_allowed_root(path: &Path) -> bool {
-    let mut roots: Vec<PathBuf> = Vec::new();
-    if let Ok(local) = std::env::var("LOCALAPPDATA") {
-        roots.push(Path::new(&local).join("Packages"));
+/// 按魔数识别图片格式，认不出返回 None
+fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("image/png");
     }
-    roots.push(std::env::temp_dir());
-    let text = path.to_string_lossy().to_lowercase();
-    let text = text.trim_end_matches('\\');
-    roots.iter().any(|root| {
-        let root = std::fs::canonicalize(root).unwrap_or_default();
-        let root_text = root.to_string_lossy().to_lowercase();
-        let root_text = root_text.trim_end_matches('\\');
-        !root_text.is_empty()
-            && (text == root_text || text.starts_with(&format!("{root_text}\\")))
-    })
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    if bytes.starts_with(b"BM") {
+        return Some("image/bmp");
+    }
+    if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) {
+        return Some("image/x-icon");
+    }
+    None
 }
 
 /// file:// 前缀剥离（toast 图片多为裸路径，file:// 只是防御性兼容）
@@ -490,32 +476,65 @@ mod tests {
     }
 
     #[test]
-    fn read_local_rejects_non_image_extensions() {
+    fn sniff_image_mime_recognizes_common_formats() {
+        assert_eq!(sniff_image_mime(b"\x89PNG\r\n\x1a\nrest"), Some("image/png"));
+        assert_eq!(sniff_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("image/jpeg"));
+        assert_eq!(sniff_image_mime(b"GIF89a...."), Some("image/gif"));
+        assert_eq!(sniff_image_mime(b"RIFF\x00\x00\x00\x00WEBPvp8"), Some("image/webp"));
+        assert_eq!(sniff_image_mime(b"BMxxxx"), Some("image/bmp"));
+        assert_eq!(sniff_image_mime(&[0x00, 0x00, 0x01, 0x00]), Some("image/x-icon"));
+        assert_eq!(sniff_image_mime(b"MZ\x90\x00"), None, "可执行文件必须认不出");
+        assert_eq!(sniff_image_mime(b""), None, "空内容必须认不出");
+    }
+
+    #[test]
+    fn read_local_rejects_non_image_content() {
         assert_eq!(
             read_local(r"C:\Windows\System32\kernel32.dll"),
             None,
-            "非图片扩展名必须拒绝"
+            "内容不是图片的文件必须拒绝"
         );
     }
 
     #[test]
-    fn under_allowed_root_rejects_paths_outside_whitelist() {
-        // canonicalize 后的路径带 \\?\ 前缀；白名单根同样在 Users 目录下，C:\Windows 必不在其中
-        let outside = Path::new(r"\\?\C:\Windows\System32\evil.png");
-        assert!(!under_allowed_root(outside), "白名单目录之外的路径必须拒绝");
+    fn read_local_silently_skips_package_resource_uris() {
+        assert_eq!(read_local("ms-appdata:///local/ToastCollectionIcons/x.png"), None);
+        assert_eq!(read_local("ms-appx:///Assets/icon.png"), None);
+        assert_eq!(read_local("ms-resource:app/Resources/icon"), None);
     }
 
     #[test]
-    fn read_local_rejects_existing_image_outside_whitelist_dirs() {
-        // 测试可执行文件在 target\ 下，必不在 Packages/TEMP 白名单里
+    fn read_local_accepts_extensionless_and_tmp_images() {
+        // QQ NT 头像缓存没有扩展名，Edge 通知资源是 .tmp：按内容认，都得能读
+        let dir = std::env::temp_dir().join("top-island-test-noext");
+        std::fs::create_dir_all(&dir).unwrap();
+        let avatar = dir.join("s_b643435b134d5c1cc2495e6076174f59");
+        std::fs::write(&avatar, [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).unwrap();
+        let out = read_local(&avatar.to_string_lossy());
+        assert!(
+            out.as_deref().is_some_and(|s| s.starts_with("data:image/jpeg;base64,")),
+            "无扩展名的 jpeg 头像必须按内容识别，实际: {out:?}"
+        );
+        let tmp = dir.join("e8143a85.tmp");
+        std::fs::write(&tmp, b"\x89PNG\r\n\x1a\n....").unwrap();
+        let out = read_local(&tmp.to_string_lossy());
+        assert!(
+            out.as_deref().is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            ".tmp 的 png 通知资源必须按内容识别，实际: {out:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn read_local_accepts_image_outside_system_dirs() {
+        // 头像缓存目录由应用自定（QQ 常在数据盘），不得再做目录白名单
         let exe = std::env::current_exe().unwrap();
-        let file = exe.with_file_name("top-island-test-outside.png");
-        let png: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-        std::fs::write(&file, png).unwrap();
-        assert_eq!(
-            read_local(&file.to_string_lossy()),
-            None,
-            "真实存在但在白名单目录之外的图片必须拒绝"
+        let file = exe.with_file_name("top-island-test-anywhere.png");
+        std::fs::write(&file, b"\x89PNG\r\n\x1a\n....").unwrap();
+        let out = read_local(&file.to_string_lossy());
+        assert!(
+            out.as_deref().is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            "任意目录下的合法图片必须可读，实际: {out:?}"
         );
         std::fs::remove_file(&file).ok();
     }
