@@ -30,6 +30,7 @@ import { useIslandMode } from './composables/useIslandMode';
 import { usePanelSwipe } from './composables/usePanelSwipe';
 import { panels, CALENDAR_PANEL_INDEX, ALARM_PANEL_INDEX } from './panels';
 import MusicMarquee from './components/MusicMarquee.vue';
+import DevOverlay from './components/DevOverlay.vue';
 
 const { t, initI18n } = useI18n();
 const { currentTime, currentDate, isNightTime, startClock } = useClock();
@@ -662,5 +663,6 @@ function closeWindow() {
         </div>
       </div>
     </Transition>
+    <DevOverlay />
   </div>
 </template>

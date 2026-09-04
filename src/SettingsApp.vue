@@ -22,6 +22,7 @@ const active = ref<SectionId>('general');
 const diagToggles: Array<{ key: keyof DiagnosticsToggles; nameKey: string }> = [
   { key: 'clipboardPoll', nameKey: 'diagClipboardPoll' },
   { key: 'musicPoll', nameKey: 'diagMusicPoll' },
+  { key: 'devOverlay', nameKey: 'diagDevOverlay' },
 ];
 
 const themeOptions = computed(() =>

@@ -63,15 +63,17 @@ pub enum LangPref {
 
 /// 可单独停用的后台子系统（故障排查用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct DiagnosticsToggles {
     pub clipboard_poll: bool,
     pub music_poll: bool,
+    /// 开发者模式开关，仅前端渲染 FPS 浮层
+    pub dev_overlay: bool,
 }
 
 impl Default for DiagnosticsToggles {
     fn default() -> Self {
-        Self { clipboard_poll: true, music_poll: true }
+        Self { clipboard_poll: true, music_poll: true, dev_overlay: false }
     }
 }
 

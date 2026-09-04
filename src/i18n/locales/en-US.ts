@@ -154,6 +154,7 @@ const enUS: Messages = {
     'If you experience mouse stutter, turn these off one by one to locate the source (the feature pauses while off). The diagnostic log records jank and slow operations automatically.',
   diagClipboardPoll: 'Clipboard monitoring',
   diagMusicPoll: 'Music state polling',
+  diagDevOverlay: 'Developer mode',
   diagLogLabel: 'Diagnostic log',
   diagLogReveal: 'Open folder',
   settingsResetTitle: 'Reset',

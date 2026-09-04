@@ -61,6 +61,7 @@ export const THEMES: Array<{
 const DEFAULT_DIAGNOSTICS: DiagnosticsToggles = {
   clipboardPoll: true,
   musicPoll: true,
+  devOverlay: false,
 };
 
 const DEFAULT_CUSTOM_THEME: CustomTheme = { a: '#6d4bce', b: '#e0508f', accent: '#ff7ab8' };

@@ -41,6 +41,8 @@ export interface DiagnosticsToggles {
   clipboardPoll: boolean;
   /** 音乐状态轮询（2s，SMTC helper） */
   musicPoll: boolean;
+  /** 开发者模式：岛窗显示 FPS 浮层 */
+  devOverlay: boolean;
 }
 
 /** 主题 ID。新增主题：styles/_tokens.scss 加令牌块 + useSettings THEMES 注册 */

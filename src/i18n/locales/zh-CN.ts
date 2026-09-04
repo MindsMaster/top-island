@@ -153,6 +153,7 @@ const zhCN: Messages = {
     '遇到鼠标卡顿等问题时，逐个关闭下方开关定位来源（关闭后对应功能暂停）。诊断日志会自动记录卡顿和耗时异常，可发给开发者。',
   diagClipboardPoll: '剪贴板监听',
   diagMusicPoll: '音乐状态轮询',
+  diagDevOverlay: '开发者模式',
   diagLogLabel: '诊断日志',
   diagLogReveal: '打开所在文件夹',
   settingsResetTitle: '重置',
