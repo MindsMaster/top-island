@@ -116,6 +116,12 @@ function onPeekInput(e: Event) {
   setIsland({ hiddenPeek: parseInt((e.target as HTMLInputElement).value) });
 }
 
+/** 每次打开设置窗 +1：根节点换 key 重建以重播进入动画（窗口常驻不销毁，Vue 不会自己重挂载） */
+const enterKey = ref(0);
+api.onSettingsOpened(() => {
+  enterKey.value++;
+});
+
 const wechatHasKey = ref(false);
 const wechatAcquiring = ref(false);
 const wechatMsg = ref('');
@@ -207,7 +213,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div id="settings-window">
+  <div id="settings-window" :key="enterKey">
     <header class="settings-header">
       <i class="fa-solid fa-gear settings-header-icon"></i>
       <span class="settings-title">{{ t('settingsTitle') }}</span>

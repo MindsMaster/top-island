@@ -318,6 +318,11 @@ fn read_local(path_text: &str) -> Option<String> {
             eprintln!("[notify] 拒绝通知图片（超过 2MB）: {}", path.display());
             return None;
         }
+        // 通知资源是瞬态文件（Edge 的 Notification Resources 发完就删），
+        // 前端来取时已不在属正常路径，不刷日志
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return None;
+        }
         Err(e) => {
             eprintln!("[notify] 通知图片不可读({}): {e}", path.display());
             return None;
@@ -326,6 +331,9 @@ fn read_local(path_text: &str) -> Option<String> {
     }
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return None;
+        }
         Err(e) => {
             eprintln!("[notify] 读取通知图片失败({}): {e}", path.display());
             return None;

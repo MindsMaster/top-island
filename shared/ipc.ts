@@ -276,6 +276,8 @@ export interface IslandApi {
   onWindowGeometryChanged(cb: () => void): void;
   /** 打开（或聚焦已打开的）设置窗口 */
   openSettings(): Promise<void>;
+  /** 设置窗每次被打开时触发（窗口常驻不销毁，靠它重播进入动画） */
+  onSettingsOpened(cb: () => void): void;
   /** 持久化设置并广播给其他窗口 */
   settingsUpdate(settings: AppSettings): Promise<void>;
   /** 订阅其他窗口引起的设置变更 */

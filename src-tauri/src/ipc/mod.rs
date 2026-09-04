@@ -143,6 +143,8 @@ pub fn settings_open(app: AppHandle) -> AppResult<()> {
     let win = app.get_webview_window("settings").ok_or("error.io: 设置窗不存在")?;
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
+    // 窗口常驻（关闭只是 hide），Vue 不会重挂载：显式通知前端重播进入动画
+    let _ = app.emit_to("settings", "settings:opened", ());
     Ok(())
 }
 

@@ -12,6 +12,12 @@
   color: var(--island-text);
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35);
   border: 1px solid var(--panel-border);
+  /* 打开进入动画：根节点 key 每次打开都换，动画随重建重播 */
+  animation: settings-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+@keyframes settings-in {
+  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+  to { opacity: 1; transform: none; }
 }
 html[data-scheme='light'] #settings-window {
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.14);

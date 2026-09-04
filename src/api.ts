@@ -32,6 +32,9 @@ export const api: IslandApi = {
     void listen('tauri://scale-change', () => cb());
   },
   openSettings: () => invoke('settings_open'),
+  onSettingsOpened: (cb) => {
+    void listen('settings:opened', () => cb());
+  },
   settingsUpdate: (settings: AppSettings) => invoke('settings_update', { settings }),
   onSettingsChanged: (cb) => {
     void listen<AppSettings>('settings:changed', (e) => cb(e.payload));
