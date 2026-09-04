@@ -591,7 +591,7 @@ function closeWindow() {
       name="npop"
       tag="div"
       class="notify-stack"
-      :class="{ 'dock-hidden': isLargeView || island.isHidden.value }"
+      :class="{ 'dock-hidden': island.isHidden.value, 'dock-large': isLargeView }"
     >
       <div
         v-for="card in visiblePopups"

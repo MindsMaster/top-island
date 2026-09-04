@@ -111,7 +111,12 @@
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   z-index: 30;
   pointer-events: none; /* 命中区域只在卡片上，空白处保持穿透 */
-  transition: opacity 0.28s ease, visibility 0.28s;
+  /* top 与岛高度形变同一条弹簧曲线，通知栈全程贴着岛下沿走 */
+  transition: opacity 0.28s ease, visibility 0.28s,
+              top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.notify-stack.dock-large {
+  top: 378px; /* 岛 top 10 + 大视图高 360 + 间距 8 */
 }
 .notify-stack.dock-hidden {
   opacity: 0;
