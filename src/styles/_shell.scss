@@ -197,6 +197,11 @@
   overflow: hidden;
   position: relative;
 }
+/* 形变期间把视野外面板摘出布局：它们被平移在画面外，用户看不到区别，
+   但重排重绘的量省掉了 */
+.panel.morph-parked {
+  display: none !important;
+}
 .panel {
   position: absolute;
   top: 0; left: 0;

@@ -112,6 +112,20 @@ const swipe = usePanelSwipe({
 const isQuickView = computed(() => island.mode.value === 'quick');
 const isLargeView = computed(() => island.mode.value === 'large');
 
+/** 大视图形变进行中。形变每帧改宽高和裁剪区，可见面板会被迫逐帧重排重绘；
+ *  视野外的面板（平移在画面外的那六个）形变期间摘出布局，到位再回来。
+ *  当前面板始终在场且实时跟随形变，视觉与旧版一致，布局量省掉约 6/7 */
+const morphing = ref(false);
+let morphTimer: number | null = null;
+watch(isLargeView, () => {
+  morphing.value = true;
+  if (morphTimer !== null) clearTimeout(morphTimer);
+  morphTimer = window.setTimeout(() => {
+    morphing.value = false;
+    morphTimer = null;
+  }, 520);
+});
+
 const LYRIC_MIN_WIDTH = 190;
 const LYRIC_MAX_WIDTH = 800;
 /** 歌词文本以外的固定占位：岛 padding + 封面 + 间距 */
@@ -172,9 +186,21 @@ function ensurePanel(i: number) {
 
 watch(isLargeView, (large) => {
   if (!large) return;
+  // 只立即挂当前面板，其余交给空闲帧（一次挂多个会叠出一个几百毫秒的帧）
   ensurePanel(swipe.activePanel.value);
-  ensurePanel(swipe.activePanel.value - 1);
-  ensurePanel(swipe.activePanel.value + 1);
+  startBackfill(60);
+});
+
+// 滑到未挂载的面板时立即补上（补齐通常早已完成，这是兜底）
+watch(swipe.activePanel, (i) => {
+  if (!isLargeView.value) return;
+  ensurePanel(i);
+  ensurePanel(i - 1);
+  ensurePanel(i + 1);
+});
+
+/** 空闲帧逐个挂载面板：启动后和进大视图时都靠它摊平挂载成本 */
+function startBackfill(intervalMs: number) {
   if (backfillTimer !== null) clearInterval(backfillTimer);
   let next = 0;
   backfillTimer = window.setInterval(() => {
@@ -185,16 +211,8 @@ watch(isLargeView, (large) => {
       return;
     }
     mountedPanels.value.add(next);
-  }, 60);
-});
-
-// 滑到未挂载的面板时立即补上（补齐通常早已完成，这是兜底）
-watch(swipe.activePanel, (i) => {
-  if (!isLargeView.value) return;
-  ensurePanel(i);
-  ensurePanel(i - 1);
-  ensurePanel(i + 1);
-});
+  }, intervalMs);
+}
 
 // 通知卡片进出/迷你闹钟显隐都会改热区包围盒，重报；卡片有 0.28s 进出场动画，补一次延迟重报
 watch([() => visiblePopups.value.length, alarmMini], () => {
@@ -369,6 +387,8 @@ onMounted(async () => {
   }
   rectsArmed = true;
   island.reportRect();
+  // 启动后趁空闲慢慢把面板都挂好，第一次展开就不需要现挂
+  startBackfill(300);
 });
 
 onBeforeUnmount(() => {
@@ -541,7 +561,7 @@ function closeWindow() {
           <div
             v-if="mountedPanels.has(i)"
             class="panel"
-            :class="p.id + '-panel'"
+            :class="[p.id + '-panel', { 'morph-parked': morphing && i !== swipe.activePanel.value }]"
             :style="swipe.panelStyle(i)"
           >
             <component :is="p.component" />
