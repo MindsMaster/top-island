@@ -141,10 +141,14 @@ pub fn settings_open(app: AppHandle) -> AppResult<()> {
         .island;
     infra::layout::apply_settings_layout(&app, &layout)?;
     let win = app.get_webview_window("settings").ok_or("error.io: 设置窗不存在")?;
+    // 窗口常驻（关闭只是 hide），Vue 不会重挂载：打开前显式通知前端重建根节点播进入动画。
+    // 必须先 emit 再 show——show 之后 emit 会先看到旧内容闪一次再播动画；
+    // 窗口本就开着（重复点击只是聚焦）时不播，同 Electron 版
+    if !win.is_visible().unwrap_or(false) {
+        let _ = app.emit_to("settings", "settings:opened", ());
+    }
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
-    // 窗口常驻（关闭只是 hide），Vue 不会重挂载：显式通知前端重播进入动画
-    let _ = app.emit_to("settings", "settings:opened", ());
     Ok(())
 }
 
