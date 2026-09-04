@@ -5,7 +5,8 @@ use island_core::IslandLayout;
 use crate::error::AppResult;
 
 const ISLAND_BASE_W: f64 = 900.0;
-const ISLAND_BASE_H: f64 = 440.0;
+// 高度要装下大视图（370）+ 下方通知栈（3 张卡 + 折叠行 ≈ 280）
+const ISLAND_BASE_H: f64 = 660.0;
 const SETTINGS_BASE_W: f64 = 480.0;
 const SETTINGS_BASE_H: f64 = 420.0;
 /// 设置窗距所在屏顶部的基准偏移（随缩放等比放大）

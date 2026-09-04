@@ -87,7 +87,7 @@ onBeforeUnmount(stop);
 .dev-overlay {
   position: fixed;
   left: 8px;
-  bottom: 8px;
+  top: 8px;
   z-index: 2147483647;
   display: flex;
   gap: 10px;

@@ -15,7 +15,7 @@
         "label": "island",
         "title": "Top Island",
         "width": 900,
-        "height": 440,
+        "height": 660,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
