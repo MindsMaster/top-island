@@ -20,12 +20,30 @@
 !macro NSIS_HOOK_POSTUNINSTALL
 !macroend
 
-!macro NSIS_HOOK_PREINSTALL
-!macroend
-
 ; 老 Electron 版一次性迁移清理。迁移标志是老 appId 的卸载键存在，
 ; Tauri 自身更新不会写这个键，天然和被动自更新区分开
 !define LEGACY_UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.topisland.app"
+
+!macro NSIS_HOOK_PREINSTALL
+  SetShellVarContext current
+  ReadRegStr $1 HKCU "${LEGACY_UNINSTALL_KEY}" "UninstallString"
+  ${If} $1 != ""
+    ; 老进程可能还占着老目录，先杀（模板只检测新二进制名）
+    nsExec::ExecToStack 'taskkill /F /IM TopIsland.exe'
+    Pop $0
+    Pop $0
+    ; 静默/被动迁移沿用老版安装位置。向导流程由用户在目录页自己选
+    ${If} ${Silent}
+    ${OrIf} $PassiveMode == 1
+      ReadRegStr $0 HKCU "${LEGACY_UNINSTALL_KEY}" "InstallLocation"
+      ${If} $0 != ""
+      ${AndIf} ${FileExists} "$0\Uninstall TopIsland.exe"
+        StrCpy $INSTDIR $0
+        SetOutPath $INSTDIR
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+!macroend
 
 !macro NSIS_HOOK_POSTINSTALL
   SetShellVarContext current
@@ -36,16 +54,11 @@
 
   ReadRegStr $1 HKCU "${LEGACY_UNINSTALL_KEY}" "UninstallString"
   ${If} $1 != ""
-    ; 模板只检测新二进制名，还在跑的老进程自己杀
-    nsExec::ExecToStack 'taskkill /F /IM TopIsland.exe'
-    Pop $0
-    Pop $0
-
     ReadRegStr $0 HKCU "${LEGACY_UNINSTALL_KEY}" "InstallLocation"
     ${If} $0 == ""
       StrCpy $0 "$LOCALAPPDATA\Programs\TopIsland"
     ${EndIf}
-    ; 两道保险：不等于新 $INSTDIR、目录里确实有老卸载器，指错宁可不删
+    ; 老目录和新目录不同才删，相同说明新版就装在这里
     ${If} $0 != $INSTDIR
     ${AndIf} ${FileExists} "$0\Uninstall TopIsland.exe"
       RMDir /r "$0"
@@ -55,15 +68,9 @@
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "TopIsland"
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "TopIsland"
     RMDir /r "$LOCALAPPDATA\top-island-updater"
+    DeleteRegKey HKCU "${LEGACY_UNINSTALL_KEY}"
 
-    ; 目录没删干净就保留卸载键，下次安装重试
-    ${IfNot} ${FileExists} "$0\Uninstall TopIsland.exe"
-      DeleteRegKey HKCU "${LEGACY_UNINSTALL_KEY}"
-    ${EndIf}
-
-    ; 仅静默迁移拉起新版。/P 被动自更新不置 Silent，交互向导有完成页复选框
-    ${If} ${Silent}
-      Exec '"$INSTDIR\island-app.exe"'
-    ${EndIf}
+    ; 迁移装完无条件拉起新版，向导的完成页复选框靠不住
+    Exec '"$INSTDIR\island-app.exe"'
   ${EndIf}
 !macroend
