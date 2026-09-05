@@ -59,7 +59,8 @@
     "active": true,
     "targets": ["nsis"],
     "icon": ["icons/icon.ico"],
-    "publisher": "AzuraMC",
+    "publisher": "an5w1r@163.com",
+    "copyright": "an5w1r@163.com",
     "shortDescription": "Top Island",
     "createUpdaterArtifacts": true,
     "windows": {
