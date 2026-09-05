@@ -29,6 +29,15 @@ impl UpdateStatus {
 
 static STATUS: Mutex<Option<UpdateStatus>> = Mutex::new(None);
 static DOWNLOADED: AtomicBool = AtomicBool::new(false);
+/// 下载完但还没装的更新。插件的 install() 在 Windows 上会拉起安装器并
+/// 当场 process::exit，所以不能下载完就装（应用会自己消失再重启），
+/// 必须存着等用户点「重启更新」。
+static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
+
+struct Pending {
+    update: tauri_plugin_updater::Update,
+    bytes: Vec<u8>,
+}
 
 fn set_status(status: UpdateStatus) {
     *STATUS.lock().unwrap_or_else(|e| e.into_inner()) = Some(status);
@@ -109,18 +118,21 @@ async fn run_check(app: AppHandle, force: bool) -> UpdateStatus {
             let mut st = UpdateStatus::new("available");
             st.version = Some(update.version.clone());
             set_status(st);
-            // autoDownload 语义：检查到即下载安装，装完等用户重启
-            match update.download_and_install(|_, _| {}, || {}).await {
-                Ok(()) => {
+            // autoDownload 语义：检查到就下载，装不装等用户点「重启更新」
+            match update.download(|_, _| {}, || {}).await {
+                Ok(bytes) => {
+                    let version = update.version.clone();
+                    *PENDING.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(Pending { update, bytes });
                     DOWNLOADED.store(true, Ordering::Relaxed);
                     let mut st = UpdateStatus::new("downloaded");
-                    st.version = Some(update.version.clone());
-                    let _ = app.emit("update:downloaded", serde_json::json!({ "version": update.version }));
+                    st.version = Some(version.clone());
+                    let _ = app.emit("update:downloaded", serde_json::json!({ "version": version }));
                     st
                 }
                 Err(e) => {
                     let mut st = UpdateStatus::new("error");
-                    st.message = Some(format!("下载安装失败: {e}"));
+                    st.message = Some(format!("下载失败: {e}"));
                     st
                 }
             }
@@ -145,12 +157,35 @@ pub async fn check(app: AppHandle, force: bool) -> UpdateStatus {
     run_check(app, force).await
 }
 
-/// 安装已下载的更新：重启即生效（NSIS 已装好，重启进新版本）
-pub fn install(app: &AppHandle) -> AppResult<()> {
-    if !DOWNLOADED.load(Ordering::Relaxed) {
+/// 装已下载的更新。安装器带 /R，装完自己把新版拉起来；本进程在插件的
+/// install() 里就退出了，所以下面的代码只有失败时才跑得到。
+pub fn install() -> AppResult<()> {
+    let Some(pending) = PENDING.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         return Err(AppError::new("error.io: 没有已下载的更新"));
+    };
+    if let Err(e) = pending.update.install(&pending.bytes) {
+        // 装失败不丢下载好的包，用户可以再点一次
+        *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(pending);
+        let mut st = UpdateStatus::new("error");
+        st.message = Some(format!("安装失败: {e}"));
+        set_status(st);
+        return Err(AppError::new(format!("error.io: 安装更新: {e}")));
     }
-    app.restart();
+    Ok(())
+}
+
+/// 更新器把安装包解到 %TEMP%\<产品名>-<版本>-updater-xxxx\ 且故意不删
+/// （tempfile 的 keep()，而且装完直接 exit 连析构都不跑），一次更新留一份 7MB。
+/// 前缀是我们自己的产品名，启动时扫掉上次留下的；正在用的那份删不掉，跳过。
+fn clean_stale_downloads(app: &AppHandle) {
+    let prefix = format!("{}-", app.package_info().name);
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with(&prefix) && name.contains("-updater-") {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 /// 启动即查 + 每小时（非强制，按日去重）
@@ -159,6 +194,7 @@ pub fn start(app: &AppHandle) {
     std::thread::Builder::new()
         .name("update-check".into())
         .spawn(move || {
+            clean_stale_downloads(&handle);
             tauri::async_runtime::block_on(run_check(handle.clone(), false));
             loop {
                 std::thread::sleep(CHECK_INTERVAL);

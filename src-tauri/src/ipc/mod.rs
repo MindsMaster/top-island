@@ -223,8 +223,8 @@ pub async fn update_check(app: AppHandle) -> AppResult<services::update::UpdateS
 }
 
 #[tauri::command]
-pub async fn update_install(app: AppHandle) -> AppResult<()> {
-    services::update::install(&app)
+pub async fn update_install() -> AppResult<()> {
+    services::update::install()
 }
 
 /// 在资源管理器里打开数据目录（诊断入口；Electron 版是定位日志文件，
