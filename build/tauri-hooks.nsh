@@ -13,8 +13,11 @@
 ; （UUIDv5，namespace 50e065bc-3134-11e6-9bab-38c9862bdaf3）。
 ; 它是 Software\<GUID> 安装信息键的名字，清残留用；识别老版不靠它，见 LegacyScan。
 !define LEGACY_GUID "8d1c5a58-b3e5-5de8-8173-817103161a87"
-; 老版自启值名由 Electron 的 app.setLoginItemSettings 生成，和新版的 TopIsland 不同名
+; 老版自启值名由 Electron 的 app.setLoginItemSettings 生成，和新版的值名不同
 !define LEGACY_RUN_VALUE "electron.app.TopIsland"
+; 老版的 userData 目录名（%APPDATA% 下，Electron 按 package.json 的 name 建），
+; 身份校验用：认老版不能只看显示名，见 LegacyScan
+!define LEGACY_DATA_DIR "top-island"
 
 Var LegacyDir ; 老版安装目录，空 = 机器上没有老版
 Var LegacyKey ; 老版卸载键的完整路径（相对 hive）
@@ -53,7 +56,6 @@ Var LegacyMachine ; 1 = 老版装在 HKLM（全用户）
     ReadRegStr $7 ${ROOT} "${UNINST_ROOT}\$9" "UninstallString"
     ${StrLoc} $6 $7 "Uninstall ${PRODUCTNAME}.exe" ">"
     StrCmp $6 "" legacy_scan_next_${ROOT}
-    StrCpy $LegacyKey "${UNINST_ROOT}\$9"
     ; 安装目录：老版把 InstallLocation 写在 Software\<GUID>，卸载键里不一定有，
     ; 都读不到就取卸载器路径的父目录
     ReadRegStr $6 ${ROOT} "${UNINST_ROOT}\$9" "InstallLocation"
@@ -62,12 +64,26 @@ Var LegacyMachine ; 1 = 老版装在 HKLM（全用户）
       ReadRegStr $6 ${ROOT} "Software\${LEGACY_GUID}" "InstallLocation"
       !insertmacro NormalizePath $6
     ${EndIf}
-    ${If} $6 != ""
-      StrCpy $LegacyDir $6
-    ${Else}
+    ${If} $6 == ""
       !insertmacro NormalizePath $7
-      ${GetParent} $7 $LegacyDir
+      ${GetParent} $7 $6
     ${EndIf}
+    ; 身份校验。认错的代价是 RMDir /r 掉别人的安装目录，所以显示名和卸载器
+    ; 文件名对上还不够——别人也可以做个叫 TopIsland 的 electron-builder 应用。
+    ; 再要求两条：目录里确实是个 Electron 应用（resources\app.asar），
+    ; 且有一条只可能属于我们的痕迹（appId 派生的 Software\<GUID>，或我们的数据目录）。
+    ${IfNot} ${FileExists} "$6\resources\app.asar"
+      DetailPrint "$6 里没有 Electron 应用，不认作老版"
+      Goto legacy_scan_next_${ROOT}
+    ${EndIf}
+    ReadRegStr $5 ${ROOT} "Software\${LEGACY_GUID}" "InstallLocation"
+    ${If} $5 == ""
+    ${AndIfNot} ${FileExists} "$APPDATA\${LEGACY_DATA_DIR}\store.json"
+      DetailPrint "$6 认不出是我们的老版，不动它"
+      Goto legacy_scan_next_${ROOT}
+    ${EndIf}
+    StrCpy $LegacyKey "${UNINST_ROOT}\$9"
+    StrCpy $LegacyDir $6
   legacy_scan_end_${ROOT}:
 !macroend
 
@@ -240,6 +256,9 @@ Var LegacyMachine ; 1 = 老版装在 HKLM（全用户）
     SetShellVarContext current
 
     ; 应用内自启登记的值名（infra/autolaunch.rs 的 VALUE_NAME）
+    DeleteRegValue HKCU "${RUN_KEY}" "${BUNDLEID}"
+    DeleteRegValue HKCU "${STARTUP_APPROVED_KEY}" "${BUNDLEID}"
+    ; 0.0.2 及以前用的是产品名，装过那几版的机器上还留着
     DeleteRegValue HKCU "${RUN_KEY}" "${PRODUCTNAME}"
     DeleteRegValue HKCU "${STARTUP_APPROVED_KEY}" "${PRODUCTNAME}"
 
