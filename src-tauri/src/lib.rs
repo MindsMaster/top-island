@@ -3,6 +3,7 @@ mod infra;
 mod ipc;
 mod services;
 
+use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Emitter, Manager};
 
 use island_core::AppSettings;
@@ -48,6 +49,12 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // 首屏加载完再清 Electron 残留：启动路径上不做磁盘扫描
+        .on_page_load(|webview, payload| {
+            if webview.label() == "island" && payload.event() == PageLoadEvent::Finished {
+                infra::legacy::start();
+            }
+        })
         .setup(|app| {
             infra::persist::init()?;
 
