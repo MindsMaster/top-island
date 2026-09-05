@@ -10,6 +10,9 @@ use anyhow::{Context, Result};
 //   cargo xtask publish           把 release-feed/ PUT 到 Nexus。发布动作，只由人手动跑，不自动化。
 
 const NEXUS_BASE: &str = "https://repo.azuramc.cc/repository/raw-public/top-island";
+/// 上传走 hosted 仓：raw-public 是聚合组，只读，PUT 会 405
+const NEXUS_UPLOAD_RELEASES: &str = "https://repo.azuramc.cc/repository/raw-releases/top-island";
+const NEXUS_UPLOAD_SNAPSHOTS: &str = "https://repo.azuramc.cc/repository/raw-snapshots/top-island";
 // 签名私钥的密码：不追求保密（私钥本身才是秘密），只为绕开 bundler 的空密码兼容问题
 const KEY_PASSWORD: &str = "topisland-updater";
 
@@ -194,13 +197,20 @@ fn publish() -> Result<()> {
     files.sort();
     anyhow::ensure!(!files.is_empty(), "release-feed/ 是空的");
 
+    let channel = channel_of(&conf_version()?);
     let token = base64::Engine::encode(
         &base64::engine::general_purpose::STANDARD,
         format!("{user}:{pass}"),
     );
     for path in files {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        let url = format!("{NEXUS_BASE}/{name}");
+        // snapshot.* 一律进 raw-snapshots 覆盖旧 feed，其余按版本渠道走
+        let base = if name.starts_with("snapshot.") || channel == "snapshot" {
+            NEXUS_UPLOAD_SNAPSHOTS
+        } else {
+            NEXUS_UPLOAD_RELEASES
+        };
+        let url = format!("{base}/{name}");
         println!("PUT {url}");
         let body = std::fs::read(&path).with_context(|| format!("读 {}", path.display()))?;
         let resp = ureq::put(&url)
