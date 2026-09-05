@@ -143,9 +143,45 @@ fn build() -> Result<()> {
     Ok(())
 }
 
+/// 凭证先读环境变量，再回落到各 gradle home 的 gradle.properties
+/// （azuraRepoUsername/azuraRepoPassword），和老 dist 脚本一致
+fn repo_creds() -> Result<(String, String)> {
+    if let (Ok(u), Ok(p)) = (
+        std::env::var("AZURA_REPO_USERNAME"),
+        std::env::var("AZURA_REPO_PASSWORD"),
+    ) {
+        return Ok((u, p));
+    }
+    let userprofile = std::env::var("USERPROFILE").context("缺 USERPROFILE")?;
+    let mut homes = vec![
+        std::env::var("GRADLE_USER_HOME").unwrap_or_default(),
+        std::env::var("GRADLE_HOME").unwrap_or_default(),
+        format!("{userprofile}/.gradle"),
+    ];
+    homes.retain(|h| !h.is_empty());
+    let (mut user, mut pass) = (None, None);
+    for home in homes {
+        let Ok(text) = std::fs::read_to_string(format!("{home}/gradle.properties")) else {
+            continue;
+        };
+        for line in text.lines() {
+            let t = line.trim();
+            if let Some(v) = t.strip_prefix("azuraRepoUsername") {
+                user = user.or(Some(v.trim_start_matches('=').trim().to_string()));
+            }
+            if let Some(v) = t.strip_prefix("azuraRepoPassword") {
+                pass = pass.or(Some(v.trim_start_matches('=').trim().to_string()));
+            }
+        }
+    }
+    match (user, pass) {
+        (Some(u), Some(p)) => Ok((u, p)),
+        _ => anyhow::bail!("缺凭证：设 AZURA_REPO_USERNAME/PASSWORD 或写进 gradle.properties"),
+    }
+}
+
 fn publish() -> Result<()> {
-    let user = std::env::var("AZURA_REPO_USERNAME").context("缺 AZURA_REPO_USERNAME")?;
-    let pass = std::env::var("AZURA_REPO_PASSWORD").context("缺 AZURA_REPO_PASSWORD")?;
+    let (user, pass) = repo_creds()?;
     let dir = PathBuf::from("release-feed");
     anyhow::ensure!(dir.is_dir(), "release-feed/ 不存在，先 cargo xtask build");
 
