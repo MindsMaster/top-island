@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 // 用法：
 //   cargo xtask keygen            生成 updater 签名密钥（~/.tauri/topisland.key），打印 conf 用 pubkey
 //   cargo xtask build             tauri build（带签名私钥），产物和 feed json 收集到 release-feed/
+//   cargo xtask legacy-feed       生成老 electron-updater 用的 latest.yml/snapshot.yml（迁移专用，一次性）
 //   cargo xtask publish           把 release-feed/ PUT 到 Nexus。发布动作，只由人手动跑，不自动化。
 
 const NEXUS_BASE: &str = "https://repo.azuramc.cc/repository/raw-public/top-island";
@@ -18,9 +19,10 @@ fn main() {
         Some("keygen") => keygen(),
         Some("keycheck") => keycheck(),
         Some("build") => build(),
+        Some("legacy-feed") => legacy_feed(),
         Some("publish") => publish(),
         _ => {
-            eprintln!("usage: cargo xtask <keygen|build|publish>");
+            eprintln!("usage: cargo xtask <keygen|build|legacy-feed|publish>");
             std::process::exit(2);
         }
     };
@@ -173,5 +175,49 @@ fn publish() -> Result<()> {
         anyhow::ensure!(resp.status().is_success(), "上传 {name} 失败: HTTP {}", resp.status());
     }
     println!("全部上传完成");
+    Ok(())
+}
+
+/// 老 electron-updater 客户端只认 yml feed。生成 latest.yml/snapshot.yml 指向
+/// 当前 release-feed 里的安装包，让老版经自动更新迁移到 Tauri 版。迁移完成后可删。
+fn legacy_feed() -> Result<()> {
+    use sha2::Digest;
+
+    let version = conf_version()?;
+    let name = format!("TopIsland_{version}_x64-setup.exe");
+    let out = PathBuf::from("release-feed");
+    let exe = out.join(&name);
+    anyhow::ensure!(exe.exists(), "缺少 {}，先 cargo xtask build", exe.display());
+
+    let bytes = std::fs::read(&exe).context("读安装包")?;
+    let sha512 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, sha2::Sha512::digest(&bytes));
+    let size = bytes.len();
+    let date = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+
+    let yml = format!(
+        "version: {version}\n\
+         files:\n\
+         \x20 - url: {name}\n\
+         \x20   sha512: {sha512}\n\
+         \x20   size: {size}\n\
+         path: {name}\n\
+         sha512: {sha512}\n\
+         releaseDate: '{date}'\n"
+    );
+    std::fs::write(out.join("latest.yml"), &yml).context("写 latest.yml")?;
+    std::fs::write(out.join("snapshot.yml"), &yml).context("写 snapshot.yml")?;
+
+    // 装着 0.0.1-SNAPSHOT 的机器读的是 snapshot.json，镜像一份让它们也能升上来
+    let latest_json = out.join("latest.json");
+    anyhow::ensure!(latest_json.exists(), "缺少 latest.json，先 cargo xtask build");
+    std::fs::copy(&latest_json, out.join("snapshot.json")).context("镜像 snapshot.json")?;
+
+    println!("version: {version}");
+    println!("sha512: {sha512}");
+    println!("size: {size}");
+    println!("已写 latest.yml / snapshot.yml / snapshot.json，检查后用 cargo xtask publish 一并上传");
     Ok(())
 }

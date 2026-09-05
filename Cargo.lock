@@ -5784,6 +5784,7 @@ dependencies = [
  "base64 0.22.1",
  "minisign",
  "serde_json",
+ "sha2",
  "time",
  "ureq",
 ]
