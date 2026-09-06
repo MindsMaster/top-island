@@ -3,45 +3,14 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{
     CLSIDFromString, CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
-use windows::Win32::System::Registry::{
-    RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
-};
 use windows::Win32::UI::Shell::{
     ApplicationActivationManager, IApplicationActivationManager, ShellExecuteW, AO_NONE,
 };
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-
-/// 应用注册的 toast activator CLSID（HKCU 优先，其次 HKLM）
+/// 应用注册的 toast activator CLSID
 fn custom_activator(aumid: &str) -> Option<String> {
-    let subkey = HSTRING::from(format!(r"Software\Classes\AppUserModelId\{aumid}"));
-    let value = HSTRING::from("CustomActivator");
-    for root in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
-        let mut size: u32 = 0;
-        let ok = unsafe {
-            RegGetValueW(root, &subkey, &value, RRF_RT_REG_SZ, None, None, Some(&mut size))
-        };
-        if ok.is_err() || size == 0 {
-            continue;
-        }
-        let mut buf = vec![0u16; (size / 2) as usize];
-        let ok = unsafe {
-            RegGetValueW(
-                root,
-                &subkey,
-                &value,
-                RRF_RT_REG_SZ,
-                None,
-                Some(buf.as_mut_ptr() as *mut _),
-                Some(&mut size),
-            )
-        };
-        if ok.is_ok() {
-            let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-            return Some(String::from_utf16_lossy(&buf[..end]));
-        }
-    }
-    None
+    crate::appid::registry_value(aumid, "CustomActivator")
 }
 
 // INotificationActivationCallback：应用注册的 toast 点击回调接口

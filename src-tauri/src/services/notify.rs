@@ -76,6 +76,7 @@ fn watch_loop(app: AppHandle, generation: u64) {
         }
     };
     let mut last_fp = island_windows::wpn::source_fingerprint();
+    island_windows::appid::prewarm();
     loop {
         // 分段 sleep：停用时 100ms 内退出，不用等满一个轮询周期
         let mut stopped = false;
@@ -128,12 +129,23 @@ fn row_to_item(row: island_windows::wpn::WpnToast) -> Option<NotificationItem> {
     if payload.title.is_empty() && payload.body.is_empty() {
         return None;
     }
-    let app = if row.display_name.is_empty() { row.aumid.clone() } else { row.display_name };
+    // 库里只有 UWP 应用带名字/图标；win32 应用的名字这里立刻解析，图标留 aumid: 占位
+    // 交给 notify_image 按需取（历史面板会持久化 item，不能把图标字节塞进去）
+    let app = if !row.display_name.is_empty() {
+        row.display_name
+    } else {
+        island_windows::appid::display_name(&row.aumid).unwrap_or_else(|| row.aumid.clone())
+    };
+    let icon = if row.icon_uri.is_empty() && !row.aumid.is_empty() {
+        format!("aumid:{}", row.aumid)
+    } else {
+        row.icon_uri
+    };
     Some(NotificationItem {
         id: row.id,
         aumid: row.aumid,
         app,
-        icon: row.icon_uri,
+        icon,
         image: payload.image,
         title: payload.title,
         body: payload.body,
@@ -268,6 +280,11 @@ pub fn notify_image(src: &str) -> Option<String> {
 }
 
 fn load_image(src: &str) -> Option<String> {
+    if let Some(aumid) = src.strip_prefix("aumid:") {
+        let bytes = island_windows::appid::icon_bytes(aumid)?;
+        let mime = sniff_image_mime(&bytes)?;
+        return Some(format!("data:{mime};base64,{}", base64_encode(&bytes)));
+    }
     let lower = src.to_ascii_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") {
         return fetch_http(src);

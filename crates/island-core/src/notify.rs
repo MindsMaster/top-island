@@ -10,7 +10,7 @@ pub struct NotificationItem {
     pub aumid: String,
     /// 应用显示名（缺省回退 AUMID）
     pub app: String,
-    /// 应用图标 URI（可能为空/不可直接加载）
+    /// 应用图标 URI；win32 应用库里没有 URI，此时为 aumid:<AUMID>，由 notify_image 反查解析
     pub icon: String,
     /// toast 内嵌图片（聊天应用的发送人头像，多为本地文件路径），优先于 icon 展示
     pub image: String,

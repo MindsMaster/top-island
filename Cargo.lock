@@ -2113,6 +2113,7 @@ dependencies = [
 name = "island-windows"
 version = "0.0.1"
 dependencies = [
+ "png 0.18.1",
  "rusqlite",
  "serde",
  "windows 0.58.0",

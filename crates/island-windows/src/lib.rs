@@ -1,4 +1,5 @@
 pub mod activate;
+pub mod appid;
 pub mod banner;
 pub mod clipboard;
 pub mod coreaudio;
