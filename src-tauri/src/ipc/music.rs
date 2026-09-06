@@ -3,6 +3,7 @@ use island_core::{LyricsData, MusicAction, MusicArtwork, MusicState};
 use super::off_thread;
 use crate::error::AppResult;
 use crate::services;
+use crate::services::music::BridgeStatus;
 
 #[tauri::command]
 pub async fn music_poll() -> AppResult<MusicState> {
@@ -29,4 +30,9 @@ pub async fn music_artwork(hash: String) -> AppResult<Option<MusicArtwork>> {
 #[tauri::command]
 pub async fn music_lyrics(id: String) -> AppResult<Option<LyricsData>> {
     off_thread(move || Ok(services::music::lyrics(&id))).await
+}
+
+#[tauri::command]
+pub async fn music_bridge_status() -> AppResult<BridgeStatus> {
+    off_thread(|| Ok(services::music::bridge_status())).await
 }

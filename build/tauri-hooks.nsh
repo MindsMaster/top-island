@@ -39,6 +39,29 @@ Var LegacyMachine ; 1 = 老版装在 HKLM（全用户）
   ${EndIf}
 !macroend
 
+; 卸载时清掉部署进网易云目录的 bridge 代理。只认带我们标记文件的目录，不碰别人的 msimg32。
+; TAG 让展开出的跳转标号唯一，同一 hive 会以不同注册表视图调两次。
+!macro RevertNcmBridge ROOT TAG
+  StrCpy $2 0
+  ncm_revert_next_${TAG}:
+    EnumRegKey $3 ${ROOT} "${UNINST_ROOT}" $2
+    StrCmp $3 "" ncm_revert_end_${TAG}
+    IntOp $2 $2 + 1
+    ReadRegStr $4 ${ROOT} "${UNINST_ROOT}\$3" "InstallLocation"
+    !insertmacro NormalizePath $4
+    StrCmp $4 "" ncm_revert_next_${TAG}
+    ${IfNot} ${FileExists} "$4\msimg32.dll.topisland"
+      Goto ncm_revert_next_${TAG}
+    ${EndIf}
+    Delete /REBOOTOK "$4\msimg32.dll"
+    Delete /REBOOTOK "$4\msimg32_original.dll"
+    Delete /REBOOTOK "$4\msimg32.dll.topisland"
+    Delete /REBOOTOK "$4\msimg32.dll.new"
+    DetailPrint "已清理网易云音乐增强：$4"
+    Goto ncm_revert_next_${TAG}
+  ncm_revert_end_${TAG}:
+!macroend
+
 ; 扫 ${ROOT} 下的 Uninstall 子键找老版，命中就填 $LegacyDir / $LegacyKey。
 ;
 ; electron-builder 的卸载键名不是 appId，而是 appId 的 UUIDv5，所以按 appId
@@ -254,6 +277,12 @@ Var LegacyMachine ; 1 = 老版装在 HKLM（全用户）
   ${OrIf} $UpdateMode = 1
   ${Else}
     SetShellVarContext current
+
+    !insertmacro RevertNcmBridge HKCU hkcu
+    SetRegView 64
+    !insertmacro RevertNcmBridge HKLM hklm64
+    SetRegView 32
+    !insertmacro RevertNcmBridge HKLM hklm32
 
     ; 应用内自启登记的值名（infra/autolaunch.rs 的 VALUE_NAME）
     DeleteRegValue HKCU "${RUN_KEY}" "${BUNDLEID}"

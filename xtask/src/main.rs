@@ -4,10 +4,14 @@ use std::process::Command;
 use anyhow::{Context, Result};
 
 // 用法：
+//   cargo xtask bridge            编译网易云 bridge 代理 DLL（release）
+//   cargo xtask dev               先编 bridge 再 tauri dev
 //   cargo xtask keygen            生成 updater 签名密钥（~/.tauri/topisland.key），打印 conf 用 pubkey
-//   cargo xtask build             tauri build（带签名私钥），产物和 feed json 收集到 release-feed/
+//   cargo xtask build             先编 bridge 再 tauri build（带签名私钥），产物和 feed json 收集到 release-feed/
 //   cargo xtask legacy-feed       生成老 electron-updater 用的 latest.yml/snapshot.yml（迁移专用，一次性）
 //   cargo xtask publish           把 release-feed/ PUT 到 Nexus。发布动作，只由人手动跑，不自动化。
+//
+// app 的 build.rs 从 target 目录嵌入 bridge DLL，两者没有 cargo 依赖边，所以 dev/build 要先编 bridge。
 
 const NEXUS_BASE: &str = "https://repo.azuramc.cc/repository/raw-public/top-island";
 /// 上传走 hosted 仓：raw-public 是聚合组，只读，PUT 会 405
@@ -19,13 +23,15 @@ const KEY_PASSWORD: &str = "topisland-updater";
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
+        Some("bridge") => build_bridge(),
+        Some("dev") => dev(),
         Some("keygen") => keygen(),
         Some("keycheck") => keycheck(),
         Some("build") => build(),
         Some("legacy-feed") => legacy_feed(),
         Some("publish") => publish(),
         _ => {
-            eprintln!("usage: cargo xtask <keygen|build|legacy-feed|publish>");
+            eprintln!("usage: cargo xtask <bridge|dev|keygen|build|legacy-feed|publish>");
             std::process::exit(2);
         }
     };
@@ -37,6 +43,26 @@ fn main() {
 
 fn key_dir() -> PathBuf {
     PathBuf::from(std::env::var("USERPROFILE").expect("USERPROFILE")).join(".tauri")
+}
+
+fn build_bridge() -> Result<()> {
+    println!("编译网易云 bridge 代理 DLL (release)…");
+    let status = Command::new("cargo")
+        .args(["build", "-p", "island-cloudmusic-bridge", "--release"])
+        .status()
+        .context("cargo build island-cloudmusic-bridge")?;
+    anyhow::ensure!(status.success(), "编译 bridge DLL 失败");
+    Ok(())
+}
+
+fn dev() -> Result<()> {
+    build_bridge()?;
+    let status = Command::new("node")
+        .args(["node_modules/@tauri-apps/cli/tauri.js", "dev"])
+        .status()
+        .context("tauri dev")?;
+    anyhow::ensure!(status.success(), "tauri dev 退出非零");
+    Ok(())
 }
 
 fn keygen() -> Result<()> {
@@ -90,6 +116,8 @@ fn channel_of(version: &str) -> &'static str {
 }
 
 fn build() -> Result<()> {
+    build_bridge()?;
+
     let key_path = key_dir().join("topisland.key");
     let key_file = std::fs::read_to_string(&key_path)
         .context("读签名私钥失败（先 cargo xtask keygen）")?;

@@ -5,16 +5,24 @@ import { useI18n } from './i18n';
 import { hexLuminance, THEMES, initSettings, setCustomColor, settings } from './store/settings';
 import SettingSelect from './components/SettingSelect.vue';
 import ColorPicker from './components/ColorPicker.vue';
-import type { DiagnosticsToggles, DisplayInfo, LangPref, ThemeId, UpdateCheckResult } from '../shared/ipc';
+import type {
+  BridgeStatus,
+  DiagnosticsToggles,
+  DisplayInfo,
+  LangPref,
+  ThemeId,
+  UpdateCheckResult,
+} from '../shared/ipc';
 
 const { t, initI18n } = useI18n();
 /** 读直接渲染（reactive 自动追踪）；写也直接改字段，持久化/广播由 store 的 watch 统一处理 */
 const st = settings;
 
-type SectionId = 'general' | 'messages' | 'diag';
+type SectionId = 'general' | 'messages' | 'music' | 'diag';
 const sections: Array<{ id: SectionId; icon: string; titleKey: string }> = [
   { id: 'general', icon: 'fa-sliders', titleKey: 'settingsGeneral' },
   { id: 'messages', icon: 'fa-comment-dots', titleKey: 'settingsMessages' },
+  { id: 'music', icon: 'fa-music', titleKey: 'settingsMusic' },
   { id: 'diag', icon: 'fa-stethoscope', titleKey: 'settingsDiag' },
 ];
 const active = ref<SectionId>('general');
@@ -110,6 +118,21 @@ api.onSettingsOpened(() => {
   enterKey.value++;
 });
 
+const bridgeStatus = ref<BridgeStatus>('notDetected');
+const BRIDGE_STATUS_KEY: Record<BridgeStatus, string> = {
+  notDetected: 'bridgeStatusNotDetected',
+  needsRestart: 'bridgeStatusNeedsRestart',
+  installed: 'bridgeStatusInstalled',
+  connecting: 'bridgeStatusConnecting',
+  connected: 'bridgeStatusConnected',
+};
+const bridgeStatusText = computed(() => t(BRIDGE_STATUS_KEY[bridgeStatus.value]));
+
+async function refreshBridgeStatus() {
+  if (!settings.music.neteaseBridge) return;
+  bridgeStatus.value = await api.musicBridgeStatus().catch(() => 'notDetected' as BridgeStatus);
+}
+
 const wechatHasKey = ref(false);
 const wechatAcquiring = ref(false);
 const wechatMsg = ref('');
@@ -197,6 +220,8 @@ onMounted(async () => {
   appVersionLabel.value = ver.gitHash ? `${ver.version} (${ver.gitHash})` : ver.version;
   api.onUpdateDownloaded((info) => applyUpdateResult({ status: 'downloaded', version: info.version }));
   applyUpdateResult(await api.getUpdateStatus().catch(() => ({ status: ver.packaged ? 'checking' : 'dev' })));
+  void refreshBridgeStatus();
+  window.setInterval(() => void refreshBridgeStatus(), 2000);
 });
 </script>
 
@@ -473,6 +498,25 @@ onMounted(async () => {
             </div>
             <div v-if="st.notifications.wechat && wechatMsg" class="setting-hint">{{ wechatMsg }}</div>
           </template>
+        </template>
+
+        <!-- 音乐 -->
+        <template v-else-if="active === 'music'">
+          <div class="setting-group-title">{{ t('settingsMusicTitle') }}</div>
+          <div class="setting-hint">{{ t('settingsMusicHint') }}</div>
+          <div class="setting-row">
+            <div class="setting-label">
+              {{ t('musicNeteaseLabel') }}
+              <span v-if="st.music.neteaseBridge" class="offset-value">{{ bridgeStatusText }}</span>
+            </div>
+            <button
+              class="setting-toggle"
+              :class="{ on: st.music.neteaseBridge }"
+              @click="settings.music.neteaseBridge = !settings.music.neteaseBridge"
+            >
+              <span class="setting-toggle-knob"></span>
+            </button>
+          </div>
         </template>
 
         <!-- 诊断 -->

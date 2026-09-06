@@ -1,0 +1,21 @@
+[package]
+name = "island-cloudmusic-bridge"
+description = "Proxy msimg32.dll side-loaded by NetEase CloudMusic; injects the top-island bridge into its renderer."
+version.workspace = true
+edition.workspace = true
+
+[lib]
+# rlib 只为让纯逻辑可以单测，部署的是 cdylib
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+retour = "0.3"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+[lints]
+workspace = true

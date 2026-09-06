@@ -1,20 +1,26 @@
 //! 歌词获取：网易云 / QQ 音乐 API（阻塞 ureq，调用方已 off_thread）。
 //! 移植自 electron/main/services/lyrics/*，含 LRC 解析与搜索相关性校验。
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use island_core::{LyricLine, LyricsData};
 
 use super::b64;
+use super::provider::TrackMeta;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 const TIMEOUT: Duration = Duration::from_secs(8);
 
-fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .timeout_global(Some(TIMEOUT))
-        .build()
-        .into()
+/// 共享连接池，免得每个请求重做 TLS 握手
+fn agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        ureq::Agent::config_builder()
+            .timeout_global(Some(TIMEOUT))
+            .build()
+            .into()
+    })
 }
 
 fn fetch_json(url: &str, referer: Option<&str>) -> Option<serde_json::Value> {
@@ -194,7 +200,7 @@ fn search_163(title: &str, artist: &str) -> Option<(i64, i64)> {
 fn fetch_163_inner(title: &str, artist: &str) -> Option<LyricsData> {
     let (id, duration_ms) = search_163(title, artist)?;
     let json = fetch_json(
-        &format!("https://music.163.com/api/song/lyric?id={id}&lv=1&kv=1&tv=-1"),
+        &format!("https://music.163.com/api/song/lyric?id={id}&lv=-1&kv=-1&tv=-1"),
         None,
     )?;
     let lrc = json
@@ -205,17 +211,13 @@ fn fetch_163_inner(title: &str, artist: &str) -> Option<LyricsData> {
     Some(LyricsData { lines: parse_lrc(lrc), duration_ms })
 }
 
-/// 按 songId 直取歌词与时长，不经搜索。有确切 songId（来自 elog 位置源）时优先，
-/// 避免搜索匹配到 live/翻唱等错误版本导致歌词整体错位
+/// 按 songId 直取，不经搜索；搜索会匹配到 live、翻唱等错误版本
 pub fn fetch_163_by_id(song_id: &str) -> Option<LyricsData> {
-    let lyric = fetch_json(
-        &format!("https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1"),
-        None,
-    );
-    let detail = fetch_json(
-        &format!("https://music.163.com/api/song/detail?id={song_id}&ids=%5B{song_id}%5D"),
-        None,
-    );
+    let lyric_url = format!("https://music.163.com/api/song/lyric?id={song_id}&lv=-1&kv=-1&tv=-1");
+    let detail_url = format!("https://music.163.com/api/song/detail?id={song_id}&ids=%5B{song_id}%5D");
+    let detail_thread = std::thread::spawn(move || fetch_json(&detail_url, None));
+    let lyric = fetch_json(&lyric_url, None);
+    let detail = detail_thread.join().ok().flatten();
     let lrc = lyric
         .as_ref()
         .and_then(|j| j.get("lrc"))
@@ -234,6 +236,42 @@ pub fn fetch_163_by_id(song_id: &str) -> Option<LyricsData> {
         return None;
     }
     Some(LyricsData { lines: parse_lrc(lrc), duration_ms })
+}
+
+pub fn fetch_163_detail(song_id: &str) -> Option<TrackMeta> {
+    let detail = fetch_json(
+        &format!("https://music.163.com/api/song/detail?id={song_id}&ids=%5B{song_id}%5D"),
+        None,
+    )?;
+    let song = detail.get("songs")?.as_array()?.first()?;
+    let title = song.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let artist = song
+        .get("artists")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| a.get("name").and_then(|n| n.as_str()))
+                .collect::<Vec<_>>()
+                .join(" / ")
+        })
+        .unwrap_or_default();
+    let album = song
+        .get("album")
+        .and_then(|al| al.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let pic = song
+        .get("album")
+        .and_then(|al| al.get("picUrl"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let cover_url = if pic.is_empty() { String::new() } else { format!("{pic}?param=512y512") };
+    let duration_ms = song.get("duration").and_then(|d| d.as_i64()).unwrap_or(0);
+    if title.is_empty() && cover_url.is_empty() && duration_ms == 0 {
+        return None;
+    }
+    Some(TrackMeta { title, artist, album, cover_url, duration_ms })
 }
 
 fn provider_163_fetch(title: &str, artist: &str) -> Option<LyricsData> {

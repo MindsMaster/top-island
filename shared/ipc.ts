@@ -1,18 +1,24 @@
+/** 锚点式播放状态：positionMs 是 anchorEpochMs 时刻的位置，渲染层按 rate 本地外推 */
 export interface MusicState {
+  /** 'ncm-bridge' | 'smtc' | '' */
+  provider: string;
   isPlaying: boolean;
   track?: string;
   artist?: string;
+  album?: string;
   sourceAppId?: string;
-  /** SMTC 时间轴，部分应用（旧版网易云等）不上报，此时两者为 0 */
-  positionMs?: number;
+  songId?: string;
+  positionMs: number;
+  anchorEpochMs: number;
+  /** 播放 1，暂停或无时间轴 0 */
+  rate: number;
   durationMs?: number;
-  /** 会话是否支持外部改变播放位置（决定进度条能否拖动） */
-  seekSupported?: boolean;
-  /** 当前曲目封面的内容 hash；渲染层据此调 musicArtwork 拉取一次 */
+  seekSupported: boolean;
+  /** 封面直链，可直接作 <img> src */
+  artworkUrl?: string;
+  /** 封面位图 hash，据此调 musicArtwork 拉取一次 */
   artworkHash?: string;
-  /** SMTC 无时间轴时，来自歌词源的估算时长（ms） */
-  estimatedDurationMs?: number;
-  /** 当前曲目歌词已就绪的标识（曲目 key）；渲染层据此调 musicLyrics 拉取一次 */
+  /** 歌词就绪标识，据此调 musicLyrics 拉取一次 */
   lyricsId?: string;
 }
 
@@ -34,6 +40,18 @@ export interface LyricsData {
 }
 
 export type MusicAction = 'play' | 'pause' | 'next' | 'prev' | 'volume';
+
+export type BridgeStatus =
+  | 'notDetected'
+  | 'needsRestart'
+  | 'installed'
+  | 'connecting'
+  | 'connected';
+
+export interface MusicConfig {
+  /** 网易云进程内增强，默认开启 */
+  neteaseBridge: boolean;
+}
 
 /** 可单独停用的后台子系统（故障排查用：逐个关闭定位鼠标卡顿等问题的来源） */
 export interface DiagnosticsToggles {
@@ -143,6 +161,7 @@ export interface AppSettings {
   lang: LangPref;
   notifications: NotificationsConfig;
   diagnostics: DiagnosticsToggles;
+  music: MusicConfig;
   /** 开机自启动（默认开启；仅打包版实际生效） */
   autoLaunch: boolean;
 }
@@ -304,6 +323,7 @@ export interface IslandApi {
   musicArtwork(hash: string): Promise<MusicArtwork | null>;
   /** 按 lyricsId 取当前曲目歌词；id 不匹配（已切歌）时返回 null */
   musicLyrics(id: string): Promise<LyricsData | null>;
+  musicBridgeStatus(): Promise<BridgeStatus>;
   weatherIpCity(): Promise<IpCityInfo>;
   weatherGeocode(city: string, lang: string): Promise<GeocodeResult>;
   weatherQuery(lat: number, lon: number, opts?: WeatherQueryOptions): Promise<WeatherResult>;

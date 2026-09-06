@@ -2,62 +2,77 @@ import { reactive } from 'vue';
 import { api } from '../api';
 import { settings } from './settings';
 import type { LyricLine, MusicAction, MusicState } from '../../shared/ipc';
+import {
+  builtinLyricOffset,
+  extrapolate as extrapolateAnchor,
+  formatTimeMs,
+  lyricIndexAt,
+  trackIdentity,
+} from './musicMath';
 
-/**
- * QQ 音乐的 SMTC 时间轴上报比实际播放落后约 400ms，协议侧无法修正。匹配当前歌词行时把进度往后补 400ms，否则歌词始终慢半拍。
- */
-export function builtinLyricOffset(sourceAppId: string): number {
-  return sourceAppId.toLowerCase().includes('qqmusic') ? 400 : 0;
-}
+export { builtinLyricOffset, formatTimeMs };
 
-/** 音乐播放状态。组件模板直读字段（reactive 自动追踪）；
- *  组件侧写 isScrubbing/positionMs（拖动进度条）直接改 musicState 的字段 */
+/** positionMs 由 tick 从锚点外推；组件拖动进度条时直接写 isScrubbing/positionMs */
 export const musicState = reactive({
+  provider: '',
   isPlaying: false,
   hasMusic: false,
   currentTrack: '',
   currentArtist: '',
+  currentAlbum: '',
   currentSourceApp: '',
+  songId: '',
   artworkUrl: '',
-  // 进度（毫秒）。SMTC 上报稀疏，poll 间隙本地按时间外推
   positionMs: 0,
   durationMs: 0,
-  /** SMTC 无时间轴时来自歌词源的估算时长；进度为纯本地计时（从检测到切歌起算） */
-  estimatedDurationMs: 0,
   lyricLines: [] as LyricLine[],
-  /** 会话是否支持外部 seek（网易云等为 false，进度条只显示不可拖） */
   seekSupported: false,
-  /** 用户正在拖动进度条：暂停同步与外推 */
   isScrubbing: false,
 });
 
-/** 派生函数的入参：直接传 musicState（Readonly 只是提醒别在派生里写） */
 export type MusicStateView = Readonly<typeof musicState>;
 
-// 纯内部簿记，不参与渲染，不进 proxy
 let lastPlayAction = 0;
 let lastSeekAction = 0;
 let missCount = 0;
 let pollTimer: number | null = null;
 let tickTimer: number | null = null;
-let lastTickAt = 0;
+let watchdogTimer: number | null = null;
 let artworkHashLoaded = '';
 let lyricsIdLoaded = '';
+let lastTickAt = 0;
+
+let anchorPositionMs = 0;
+let anchorEpochMs = 0;
+let rate = 0;
+
+function extrapolate(now: number): number {
+  return extrapolateAnchor({ positionMs: anchorPositionMs, anchorEpochMs, rate }, now, musicState.durationMs);
+}
+
+function setAnchor(positionMs: number, epochMs: number, r: number) {
+  anchorPositionMs = positionMs;
+  anchorEpochMs = epochMs || Date.now();
+  rate = r;
+  musicState.positionMs = extrapolate(Date.now());
+}
 
 function clearState() {
+  musicState.provider = '';
   musicState.hasMusic = false;
   musicState.currentTrack = '';
   musicState.currentArtist = '';
+  musicState.currentAlbum = '';
   musicState.currentSourceApp = '';
+  musicState.songId = '';
   musicState.isPlaying = false;
   musicState.artworkUrl = '';
   artworkHashLoaded = '';
-  musicState.positionMs = 0;
   musicState.durationMs = 0;
-  musicState.estimatedDurationMs = 0;
   musicState.lyricLines = [];
   lyricsIdLoaded = '';
   musicState.seekSupported = false;
+  setAnchor(0, Date.now(), 0);
 }
 
 function loadLyrics(id: string) {
@@ -93,42 +108,47 @@ function handleState(data: MusicState) {
   missCount = 0;
   const t = data.track.replace(/^["\s]+|["\s]+$/g, '');
   const a = (data.artist || '').replace(/^["\s]+|["\s]+$/g, '');
-  const trackChanged =
-    musicState.hasMusic && (t !== musicState.currentTrack || a !== musicState.currentArtist);
+  const idNow = trackIdentity(data.songId, t, a);
+  const idPrev = trackIdentity(musicState.songId, musicState.currentTrack, musicState.currentArtist);
+  const trackChanged = musicState.hasMusic && idNow !== idPrev;
+
+  musicState.provider = data.provider;
   musicState.currentTrack = t;
   musicState.currentArtist = a;
+  musicState.currentAlbum = data.album || '';
   musicState.currentSourceApp = data.sourceAppId || '';
+  musicState.songId = data.songId || '';
   musicState.hasMusic = true;
-  // 刚手动操作过播放/暂停时，短时间内以本地状态为准，避免轮询回跳
-  if (Date.now() - lastPlayAction > 2000) {
-    musicState.isPlaying = data.isPlaying;
-  }
+
+  // 刚点过播放/暂停的 2s 内以本地为准，免得轮询回跳；切了歌本地那次点击就作废
+  const holdPlayState = !trackChanged && Date.now() - lastPlayAction < 2000;
+  if (!holdPlayState) musicState.isPlaying = data.isPlaying;
 
   musicState.durationMs = data.durationMs || 0;
-  musicState.estimatedDurationMs = data.estimatedDurationMs || 0;
   musicState.seekSupported = !!data.seekSupported;
-  const smtcPos = data.positionMs || 0;
+
+  if (data.artworkUrl) {
+    if (data.artworkUrl !== musicState.artworkUrl) musicState.artworkUrl = data.artworkUrl;
+    artworkHashLoaded = '';
+  } else if (data.artworkHash && data.artworkHash !== artworkHashLoaded) {
+    loadArtwork(data.artworkHash);
+  }
+
   if (trackChanged) {
-    musicState.positionMs = smtcPos;
-    musicState.artworkUrl = '';
+    musicState.artworkUrl = data.artworkUrl || '';
     artworkHashLoaded = '';
     musicState.lyricLines = [];
     lyricsIdLoaded = '';
-  } else if (data.durationMs && !musicState.isScrubbing && Date.now() - lastSeekAction > 3000) {
-    // 仅在真实时间轴存在时回同步（估算模式上报位置恒为 0，会把本地计时拽回去）。
-    // 分级收敛：暂停/大偏差直接对齐；中等偏差每次收一半（几个 poll 内归零）；
-    // <150ms 视为噪声不动。但不能留“永不纠正”的死区，否则瞬时误差会固化成整首歌的歌词滞后。
-    const diff = smtcPos - musicState.positionMs;
-    if (!data.isPlaying || Math.abs(diff) > 600) {
-      musicState.positionMs = smtcPos;
-    } else if (Math.abs(diff) > 150) {
-      musicState.positionMs += diff / 2;
-    }
   }
 
-  if (data.artworkHash && data.artworkHash !== artworkHashLoaded) {
-    loadArtwork(data.artworkHash);
+  // 拖动中或刚 seek 过时保留本地锚点，别被服务端还没追上的旧位置拽回去
+  const effectiveRate = musicState.isPlaying ? data.rate || 1 : 0;
+  if (!musicState.isScrubbing && Date.now() - lastSeekAction > 3000) {
+    setAnchor(data.positionMs, data.anchorEpochMs, effectiveRate);
+  } else {
+    rate = effectiveRate;
   }
+
   if (data.lyricsId && data.lyricsId !== lyricsIdLoaded) {
     loadLyrics(data.lyricsId);
   }
@@ -142,27 +162,35 @@ async function poll() {
 }
 
 function tick() {
-  const now = Date.now();
-  const elapsed = now - lastTickAt;
-  lastTickAt = now;
+  lastTickAt = Date.now();
   if (!musicState.isPlaying || musicState.isScrubbing) return;
-  const cap = musicState.durationMs || musicState.estimatedDurationMs;
-  musicState.positionMs =
-    cap > 0 ? Math.min(musicState.positionMs + elapsed, cap) : musicState.positionMs + elapsed;
+  musicState.positionMs = extrapolate(Date.now());
 }
+
+// webview 被后台节流后 setInterval 可能长时间不触发，心跳停了就重建
+function watchdog() {
+  if (tickTimer !== null && lastTickAt > 0 && Date.now() - lastTickAt > 2000) {
+    clearInterval(tickTimer);
+    tickTimer = window.setInterval(tick, 100);
+  }
+}
+
+let stateListenerRegistered = false;
 
 export function startMusicPoll() {
   stopMusicPoll();
-  // 事件通道：SMTC 变化（播放/暂停/切歌）由主进程即时推送，不等下个轮询周期；
-  // 2s 轮询保留作兜底并驱动非事件源（网易云 elog 进度等）
-  api.onMusicState((state) => {
-    if (settings.diagnostics.musicPoll) handleState(state);
-  });
+  if (!stateListenerRegistered) {
+    stateListenerRegistered = true;
+    api.onMusicState((state) => {
+      if (settings.diagnostics.musicPoll) handleState(state);
+    });
+  }
   poll();
   pollTimer = window.setInterval(poll, 2000);
-  lastTickAt = Date.now();
   // 100ms：歌词切行的量化延迟上限。250ms 时平均多 ~125ms 滞后，肉眼可感
+  lastTickAt = Date.now();
   tickTimer = window.setInterval(tick, 100);
+  watchdogTimer = window.setInterval(watchdog, 3000);
 }
 
 export function stopMusicPoll() {
@@ -174,6 +202,10 @@ export function stopMusicPoll() {
     clearInterval(tickTimer);
     tickTimer = null;
   }
+  if (watchdogTimer !== null) {
+    clearInterval(watchdogTimer);
+    watchdogTimer = null;
+  }
 }
 
 function control(action: MusicAction, level?: number) {
@@ -181,9 +213,12 @@ function control(action: MusicAction, level?: number) {
 }
 
 export function togglePlay() {
-  control(musicState.isPlaying ? 'pause' : 'play');
-  musicState.isPlaying = !musicState.isPlaying;
+  const next = !musicState.isPlaying;
+  control(next ? 'play' : 'pause');
+  musicState.isPlaying = next;
   lastPlayAction = Date.now();
+  // 本地立即改速率，进度不跳变：以当前外推位置重设锚点
+  setAnchor(extrapolate(Date.now()), Date.now(), next ? rate || 1 : 0);
 }
 
 export function pauseIfPlaying(): boolean {
@@ -191,6 +226,7 @@ export function pauseIfPlaying(): boolean {
   control('pause');
   musicState.isPlaying = false;
   lastPlayAction = Date.now();
+  setAnchor(extrapolate(Date.now()), Date.now(), 0);
   return true;
 }
 
@@ -199,6 +235,7 @@ export function resumePlay() {
   control('play');
   musicState.isPlaying = true;
   lastPlayAction = Date.now();
+  setAnchor(extrapolate(Date.now()), Date.now(), rate || 1);
 }
 
 export function skipTrack(dir: number) {
@@ -209,9 +246,9 @@ export function skipTrack(dir: number) {
 
 /** 拖动进度条改变实际播放位置（仅在源支持 seek 时可用） */
 export function seek(ms: number) {
-  const target = Math.max(0, Math.min(ms, musicState.durationMs || musicState.estimatedDurationMs));
-  musicState.positionMs = target;
+  const target = Math.max(0, Math.min(ms, musicState.durationMs || Number.MAX_SAFE_INTEGER));
   lastSeekAction = Date.now();
+  setAnchor(target, Date.now(), musicState.isPlaying ? rate || 1 : 0);
   api.musicSeek(target).catch(() => {});
 }
 
@@ -225,7 +262,7 @@ export function marqueeText(state: MusicStateView): string {
   return state.currentTrack + (state.currentArtist ? '  •  ' + state.currentArtist : '');
 }
 
-/** 当前源是否上报时间轴（旧版网易云等不上报 -> 进度条禁用） */
+/** 当前源是否上报时间轴（无时间轴源 -> 进度条禁用） */
 export function timelineAvailable(state: MusicStateView): boolean {
   return state.durationMs > 0;
 }
@@ -233,34 +270,19 @@ export function timelineAvailable(state: MusicStateView): boolean {
 export function seekable(state: MusicStateView): boolean {
   return state.seekSupported && timelineAvailable(state);
 }
-/** 有效时长：真实时间轴优先，其次歌词源估算 */
+/** 有效时长（ms）：权威时间轴 */
 export function effectiveDurationMs(state: MusicStateView): number {
-  return state.durationMs || state.estimatedDurationMs;
+  return state.durationMs;
 }
 export function progressAvailable(state: MusicStateView): boolean {
   return effectiveDurationMs(state) > 0;
 }
 
-/** 当前歌词行索引（按位置取最后一条已到时间的）；无歌词/未到首句为 -1 */
+/** 当前歌词行索引；无歌词/未到首句为 -1 */
 export function currentLyricIndex(state: MusicStateView): number {
-  const lines = state.lyricLines;
-  if (!lines.length) return -1;
-  const pos = state.positionMs + builtinLyricOffset(state.currentSourceApp);
-  let idx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].timeMs > pos) break;
-    idx = i;
-  }
-  return idx;
+  return lyricIndexAt(state.lyricLines, state.positionMs + builtinLyricOffset(state.currentSourceApp));
 }
 
 export function currentLyric(state: MusicStateView): string {
   return state.lyricLines[currentLyricIndex(state)]?.text ?? '';
-}
-
-export function formatTimeMs(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return m + ':' + String(s).padStart(2, '0');
 }

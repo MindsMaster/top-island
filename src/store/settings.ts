@@ -6,6 +6,7 @@ import type {
   CustomTheme,
   DiagnosticsToggles,
   IslandLayout,
+  MusicConfig,
   NotificationsConfig,
   NotificationsPrivacy,
   ThemeId,
@@ -84,6 +85,8 @@ const DEFAULT_NOTIFICATIONS: NotificationsConfig = {
   wechat: false,
 };
 
+const DEFAULT_MUSIC: MusicConfig = { neteaseBridge: true };
+
 /** 全部窗口共享的设置。组件读直接渲染字段（reactive 自动追踪），写也直接改字段——
  *  subscribe 统一负责持久化+广播+主题应用，加字段只需改默认值和类型 */
 export const settings = reactive<AppSettings>({
@@ -93,6 +96,7 @@ export const settings = reactive<AppSettings>({
   lang: 'auto',
   notifications: { ...DEFAULT_NOTIFICATIONS, privacy: { ...DEFAULT_PRIVACY } },
   diagnostics: { ...DEFAULT_DIAGNOSTICS },
+  music: { ...DEFAULT_MUSIC },
   autoLaunch: true,
 });
 
@@ -119,6 +123,7 @@ function applyRemote(s: Partial<AppSettings> | null) {
     };
   }
   if (s.diagnostics) settings.diagnostics = { ...DEFAULT_DIAGNOSTICS, ...s.diagnostics };
+  if (s.music) settings.music = { ...DEFAULT_MUSIC, ...s.music };
   if (typeof s.autoLaunch === 'boolean') settings.autoLaunch = s.autoLaunch;
 }
 

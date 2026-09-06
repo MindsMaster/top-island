@@ -114,6 +114,19 @@ pub struct NotificationsConfig {
     pub wechat: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MusicConfig {
+    /// 网易云进程内增强，默认开启
+    pub netease_bridge: bool,
+}
+
+impl Default for MusicConfig {
+    fn default() -> Self {
+        Self { netease_bridge: true }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
@@ -123,6 +136,7 @@ pub struct AppSettings {
     pub lang: LangPref,
     pub notifications: NotificationsConfig,
     pub diagnostics: DiagnosticsToggles,
+    pub music: MusicConfig,
     /// 开机自启动（默认开启；仅安装版实际生效）
     pub auto_launch: bool,
 }

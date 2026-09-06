@@ -62,8 +62,20 @@ pub enum MediaAction {
 
 // windows 0.58 还没有 IAsyncOperation 的 Future 实现（0.59 起才有 windows-future），
 // WinRT 异步操作只能轮询状态。调用方负责放后台线程。
+/// 个别 SMTC 会话的异步永不完成，没有超时会一直自旋
+const ASYNC_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// E_ABORT
+fn timeout_err() -> windows::core::Error {
+    windows::core::Error::from(windows::core::HRESULT(0x8000_4004u32 as i32))
+}
+
 fn block_on<T: RuntimeType>(op: &IAsyncOperation<T>) -> windows::core::Result<T> {
+    let deadline = Instant::now() + ASYNC_TIMEOUT;
     while op.Status()? == AsyncStatus::Started {
+        if Instant::now() >= deadline {
+            return Err(timeout_err());
+        }
         std::thread::sleep(Duration::from_millis(5));
     }
     op.GetResults()
@@ -71,7 +83,11 @@ fn block_on<T: RuntimeType>(op: &IAsyncOperation<T>) -> windows::core::Result<T>
 
 // DataReader.LoadAsync 返回专属的 DataReaderLoadOperation 而非 IAsyncOperation<u32>
 fn block_on_load(op: &windows::Storage::Streams::DataReaderLoadOperation) -> windows::core::Result<u32> {
+    let deadline = Instant::now() + ASYNC_TIMEOUT;
     while op.Status()? == AsyncStatus::Started {
+        if Instant::now() >= deadline {
+            return Err(timeout_err());
+        }
         std::thread::sleep(Duration::from_millis(5));
     }
     op.GetResults()

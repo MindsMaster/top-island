@@ -4,3 +4,4 @@ pub mod legacy;
 pub mod paths;
 pub mod persist;
 pub mod tray;
+pub mod watchdog;

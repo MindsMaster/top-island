@@ -148,6 +148,17 @@ const enUS: Messages = {
   wechatKeyOk: 'Key obtained',
   wechatKeyFail: 'Failed. Make sure WeChat is running and retry.',
   wechatNoAccount: 'No WeChat account data directory found',
+  settingsMusic: 'Music',
+  settingsMusicTitle: 'Music enhancement',
+  settingsMusicHint:
+    'Enable in-process enhancement for NetEase CloudMusic to get accurate progress, lyrics and cover art, plus direct control. Other players use system media controls and are unaffected.',
+  musicNeteaseLabel: 'NetEase CloudMusic',
+  musicStatusLabel: 'Status',
+  bridgeStatusNotDetected: 'CloudMusic not detected',
+  bridgeStatusNeedsRestart: 'Restart CloudMusic',
+  bridgeStatusInstalled: 'Installed',
+  bridgeStatusConnecting: 'Connecting…',
+  bridgeStatusConnected: 'Connected',
   settingsDiag: 'Diagnose',
   settingsDiagTitle: 'Background Tasks',
   settingsDiagHint:

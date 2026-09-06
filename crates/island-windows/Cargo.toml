@@ -23,7 +23,9 @@ windows = { version = "0.58", features = [
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",
     "Win32_UI_Controls_Dialogs",
+    "Win32_UI_Input",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_Devices_HumanInterfaceDevice",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

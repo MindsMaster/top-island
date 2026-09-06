@@ -10,6 +10,7 @@
     "build": "vite build",
     "dist": "tauri build",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,vue,scss}\" \"shared/**/*.ts\""
@@ -31,6 +32,7 @@
     "sass-embedded": "^1.83.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
+    "vitest": "^5.0.0",
     "vue-tsc": "^2.2.0"
   },
   "private": true

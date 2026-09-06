@@ -6,7 +6,7 @@ pub mod weather;
 pub use music::{LyricLine, LyricsData, MusicAction, MusicArtwork, MusicState};
 pub use notify::{parse_toast_payload, NotificationItem, ToastPayload};
 pub use settings::{
-    AppSettings, CustomTheme, DiagnosticsToggles, IslandLayout, LangPref, NotificationsConfig,
-    NotificationsPrivacy, ThemeId,
+    AppSettings, CustomTheme, DiagnosticsToggles, IslandLayout, LangPref, MusicConfig,
+    NotificationsConfig, NotificationsPrivacy, ThemeId,
 };
 pub use weather::IpCityInfo;

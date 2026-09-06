@@ -1,12 +1,20 @@
+//! 悬停热区与剪贴板监听。
+//!
+//! 悬停用 Raw Input（`RIDEV_INPUTSINK`）：窗口穿透态下收不到 DOM 事件，只能在系统层知道
+//! 鼠标动了。不用 `WH_MOUSE_LL`：低级钩子是同步回调，超时会被系统静默卸载。
+
+use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 
 use windows::core::w;
+use windows::Win32::Devices::HumanInterfaceDevice::{HID_USAGE_GENERIC_MOUSE, HID_USAGE_PAGE_GENERIC};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::DataExchange::AddClipboardFormatListener;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::{RegisterRawInputDevices, RAWINPUTDEVICE, RIDEV_INPUTSINK};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-/// 物理像素矩形（屏幕坐标）
+/// 物理像素，屏幕坐标
 #[derive(Debug, Clone, Copy)]
 pub struct Rect {
     pub left: i32,
@@ -21,9 +29,6 @@ impl Rect {
     }
 }
 
-/// 输入监听挂接：悬停热区（光标进出时回调）与剪贴板变化。
-/// WebView2 没有 Electron 的 setIgnoreMouseEvents(forward:) 等价物，
-/// 悬停展开靠 WH_MOUSE_LL 跟踪光标位置，进出热区时通知调用方切换穿透。
 #[derive(Default)]
 pub struct InputHandlers {
     pub hover_rect: Option<Rect>,
@@ -42,37 +47,37 @@ impl std::fmt::Debug for InputHandlers {
 }
 
 struct HoverState {
-    /// None = 全程可交互（拖动等手势期间），钩子不再切换穿透
+    /// None 表示全程可交互（拖动等手势期间）
     rect: Option<Rect>,
     inside: bool,
-    on_change: Box<dyn Fn(bool) + Send>,
+    tx: Sender<bool>,
 }
 
 static HOVER: Mutex<Option<HoverState>> = Mutex::new(None);
-static CLIPBOARD_CB: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
+static CLIPBOARD_TX: Mutex<Option<Sender<()>>> = Mutex::new(None);
 
-/// 更新悬停热区；None 表示全程可交互（面板展开/窗口移动时同步调用）
 pub fn set_hover_rect(rect: Option<Rect>) {
     let mut guard = HOVER.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(st) = guard.as_mut() {
         st.rect = rect;
-        let inside = match &st.rect {
-            None => true,
-            Some(r) => cursor_inside(r),
-        };
-        if inside != st.inside {
-            st.inside = inside;
-            (st.on_change)(inside);
-        }
+        evaluate(st);
     }
 }
 
-fn cursor_inside(rect: &Rect) -> bool {
-    let (x, y) = cursor_position();
-    rect.contains(POINT { x, y })
+fn evaluate(st: &mut HoverState) {
+    let inside = match &st.rect {
+        None => true,
+        Some(r) => {
+            let (x, y) = cursor_position();
+            r.contains(POINT { x, y })
+        }
+    };
+    if inside != st.inside {
+        st.inside = inside;
+        let _ = st.tx.send(inside);
+    }
 }
 
-/// 全局光标的物理屏幕坐标；失败返回 (0, 0)
 pub fn cursor_position() -> (i32, i32) {
     let mut pt = POINT::default();
     if unsafe { GetCursorPos(&mut pt) }.is_ok() {
@@ -82,52 +87,78 @@ pub fn cursor_position() -> (i32, i32) {
     }
 }
 
-unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    unsafe {
-        if code >= 0 && wparam.0 as u32 == WM_MOUSEMOVE {
-            let pt = (*(lparam.0 as *const MSLLHOOKSTRUCT)).pt;
-            let mut guard = HOVER.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(st) = guard.as_mut() {
-                let inside = match &st.rect {
-                    None => true,
-                    Some(r) => r.contains(pt),
-                };
-                if inside != st.inside {
-                    st.inside = inside;
-                    (st.on_change)(inside);
+/// 回调会切窗口穿透并 emit 到 webview，放在独立线程上执行，突发时只取最后一个状态
+fn start_hover_dispatch(rx: std::sync::mpsc::Receiver<bool>, on_change: Box<dyn Fn(bool) + Send>) {
+    std::thread::Builder::new()
+        .name("island-hover".into())
+        .spawn(move || {
+            while let Ok(mut inside) = rx.recv() {
+                while let Ok(later) = rx.try_recv() {
+                    inside = later;
                 }
+                on_change(inside);
             }
-        }
-        CallNextHookEx(None, code, wparam, lparam)
-    }
+        })
+        .expect("spawn island-hover");
 }
 
-unsafe extern "system" fn clip_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+fn start_clip_dispatch(rx: std::sync::mpsc::Receiver<()>, on_change: Box<dyn Fn() + Send>) {
+    std::thread::Builder::new()
+        .name("island-clip".into())
+        .spawn(move || {
+            while rx.recv().is_ok() {
+                while rx.try_recv().is_ok() {}
+                on_change();
+            }
+        })
+        .expect("spawn island-clip");
+}
+
+unsafe extern "system" fn input_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
-        if msg == WM_CLIPBOARDUPDATE {
-            let guard = CLIPBOARD_CB.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(cb) = guard.as_ref() {
-                cb();
+        match msg {
+            WM_INPUT => {
+                // Raw Input 给的是相对位移，命中判定直接读 GetCursorPos
+                if let Ok(mut guard) = HOVER.try_lock() {
+                    if let Some(st) = guard.as_mut() {
+                        evaluate(st);
+                    }
+                }
+                // WM_INPUT 必须交给 DefWindowProc 清理
+                DefWindowProcW(hwnd, msg, wparam, lparam)
             }
-            return LRESULT(0);
+            WM_CLIPBOARDUPDATE => {
+                if let Ok(guard) = CLIPBOARD_TX.try_lock() {
+                    if let Some(tx) = guard.as_ref() {
+                        let _ = tx.send(());
+                    }
+                }
+                LRESULT(0)
+            }
+            _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
-        DefWindowProcW(hwnd, msg, wparam, lparam)
     }
 }
 
-/// 在 "island-input" 线程上安装鼠标钩子与剪贴板监听，跑消息循环。进程生命周期内调用一次。
 pub fn start_input(handlers: InputHandlers) {
-    if let (Some(rect), Some(on_hover)) = (handlers.hover_rect, handlers.on_hover) {
+    let want_hover = if let (Some(rect), Some(on_hover)) = (handlers.hover_rect, handlers.on_hover) {
+        let (tx, rx) = channel::<bool>();
+        start_hover_dispatch(rx, on_hover);
         *HOVER.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some(HoverState { rect: Some(rect), inside: false, on_change: on_hover });
-    }
-    if let Some(cb) = handlers.on_clipboard {
-        *CLIPBOARD_CB.lock().unwrap_or_else(|e| e.into_inner()) = Some(cb);
-    }
-
-    let want_hook = HOVER.lock().unwrap_or_else(|e| e.into_inner()).is_some();
-    let want_clip = CLIPBOARD_CB.lock().unwrap_or_else(|e| e.into_inner()).is_some();
-    if !want_hook && !want_clip {
+            Some(HoverState { rect: Some(rect), inside: false, tx });
+        true
+    } else {
+        false
+    };
+    let want_clip = if let Some(cb) = handlers.on_clipboard {
+        let (tx, rx) = channel::<()>();
+        start_clip_dispatch(rx, cb);
+        *CLIPBOARD_TX.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        true
+    } else {
+        false
+    };
+    if !want_hover && !want_clip {
         return;
     }
 
@@ -136,34 +167,45 @@ pub fn start_input(handlers: InputHandlers) {
         .spawn(move || unsafe {
             let hmod = GetModuleHandleW(None).expect("module handle");
             let hinst = HINSTANCE::from(hmod);
-            if want_hook {
-                SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), hinst, 0).expect("mouse hook");
+            let class = WNDCLASSEXW {
+                cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+                lpfnWndProc: Some(input_wnd_proc),
+                hInstance: hinst,
+                lpszClassName: w!("TopIslandInput"),
+                ..Default::default()
+            };
+            RegisterClassExW(&class);
+            let hwnd = CreateWindowExW(
+                WINDOW_EX_STYLE::default(),
+                w!("TopIslandInput"),
+                w!(""),
+                WINDOW_STYLE::default(),
+                0,
+                0,
+                0,
+                0,
+                HWND_MESSAGE,
+                None,
+                hinst,
+                None,
+            )
+            .expect("message window");
+
+            if want_hover {
+                let device = RAWINPUTDEVICE {
+                    usUsagePage: HID_USAGE_PAGE_GENERIC,
+                    usUsage: HID_USAGE_GENERIC_MOUSE,
+                    dwFlags: RIDEV_INPUTSINK,
+                    hwndTarget: hwnd,
+                };
+                if let Err(e) = RegisterRawInputDevices(&[device], std::mem::size_of::<RAWINPUTDEVICE>() as u32) {
+                    eprintln!("[input] 注册 Raw Input 鼠标失败，悬停不可用: {e}");
+                }
             }
             if want_clip {
-                let class = WNDCLASSEXW {
-                    cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-                    lpfnWndProc: Some(clip_wnd_proc),
-                    hInstance: hinst,
-                    lpszClassName: w!("TopIslandClip"),
-                    ..Default::default()
-                };
-                RegisterClassExW(&class);
-                let hwnd = CreateWindowExW(
-                    WINDOW_EX_STYLE::default(),
-                    w!("TopIslandClip"),
-                    w!(""),
-                    WINDOW_STYLE::default(),
-                    0,
-                    0,
-                    0,
-                    0,
-                    HWND_MESSAGE,
-                    None,
-                    hinst,
-                    None,
-                )
-                .expect("message window");
-                AddClipboardFormatListener(hwnd).expect("clipboard listener");
+                if let Err(e) = AddClipboardFormatListener(hwnd) {
+                    eprintln!("[input] 注册剪贴板监听失败: {e}");
+                }
             }
 
             let mut msg = MSG::default();

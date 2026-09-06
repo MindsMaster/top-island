@@ -66,6 +66,7 @@ pub fn run() {
 
             let win = app.get_webview_window("island").expect("island window");
             win.set_ignore_cursor_events(true)?;
+            infra::watchdog::start(app.handle().clone());
             init_input(app.handle());
             infra::tray::build(app.handle())?;
 
@@ -101,6 +102,7 @@ pub fn run() {
             ipc::music::music_seek,
             ipc::music::music_artwork,
             ipc::music::music_lyrics,
+            ipc::music::music_bridge_status,
             ipc::notify::notify_activate_toast,
             ipc::notify::notify_image,
             ipc::clipboard::clipboard_read_text,

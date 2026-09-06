@@ -4,6 +4,7 @@ import type {
   AlarmSound,
   AppSettings,
   AppVersionInfo,
+  BridgeStatus,
   DisplayInfo,
   HotRect,
   IpCityInfo,
@@ -58,6 +59,7 @@ export const api: IslandApi = {
   musicSeek: (positionMs) => invoke('music_seek', { positionMs }),
   musicArtwork: (hash) => invoke<MusicArtwork | null>('music_artwork', { hash }),
   musicLyrics: (id) => invoke<LyricsData | null>('music_lyrics', { id }),
+  musicBridgeStatus: () => invoke<BridgeStatus>('music_bridge_status'),
   weatherIpCity: () => invoke<IpCityInfo>('weather_ip_city'),
   weatherGeocode: (city, lang) => invoke('weather_geocode', { city, lang }),
   weatherQuery: (lat, lon, opts?: WeatherQueryOptions) =>
