@@ -204,7 +204,15 @@ function confirmReset() {
   api.storeClear();
 }
 
+let focusedAt = 0;
+const FOCUS_BLUR_GRACE_MS = 500;
+
+function onWindowFocus() {
+  focusedAt = Date.now();
+}
+
 function onWindowBlur() {
+  if (Date.now() - focusedAt < FOCUS_BLUR_GRACE_MS) return;
   api.closeSelf();
 }
 
@@ -213,6 +221,7 @@ onMounted(async () => {
   await initSettings();
   document.title = t('settingsTitle');
   window.addEventListener('blur', onWindowBlur);
+  window.addEventListener('focus', onWindowFocus);
   document.addEventListener('mousedown', onDocMouseDownPicker);
   displays.value = await api.displaysList().catch(() => []);
   await refreshWechatKey();

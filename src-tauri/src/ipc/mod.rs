@@ -12,7 +12,6 @@ pub mod music;
 pub mod notify;
 pub mod wechat;
 
-/// 耗时命令统一走阻塞线程池，不堵 Tauri UI 线程
 async fn off_thread<T: Send + 'static>(
     f: impl FnOnce() -> AppResult<T> + Send + 'static,
 ) -> AppResult<T> {
@@ -20,8 +19,6 @@ async fn off_thread<T: Send + 'static>(
         .await
         .unwrap_or_else(|e| Err(AppError::from(format!("error.io: {e}"))))
 }
-
-// ---- store ----
 
 #[tauri::command]
 pub async fn store_get(key: String) -> AppResult<serde_json::Value> {
@@ -40,8 +37,6 @@ pub async fn store_clear(app: AppHandle) -> AppResult<()> {
     app.restart();
 }
 
-// ---- settings ----
-
 /// 持久化设置并广播给其他窗口，附带同步自启与各域生命周期
 #[tauri::command]
 pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult<()> {
@@ -57,8 +52,6 @@ pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult
     let _ = app.emit("settings:changed", &settings);
     Ok(())
 }
-
-// ---- weather ----
 
 #[tauri::command]
 pub async fn weather_ip_city() -> AppResult<IpCityInfo> {
@@ -79,8 +72,6 @@ pub async fn weather_query(
 ) -> AppResult<serde_json::Value> {
     off_thread(move || services::weather::query(lat, lon, daily.as_deref(), forecast_days)).await
 }
-
-// ---- misc ----
 
 #[tauri::command]
 pub fn app_get_locale() -> String {
@@ -134,25 +125,23 @@ pub async fn shell_open_external(url: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn settings_open(app: AppHandle) -> AppResult<()> {
-    let layout = infra::persist::get("settings")
-        .map(AppSettings::from_value)
-        .unwrap_or_default()
-        .island;
-    infra::layout::apply_settings_layout(&app, &layout)?;
-    let win = app.get_webview_window("settings").ok_or("error.io: 设置窗不存在")?;
-    // 窗口常驻（关闭只是 hide），Vue 不会重挂载：打开前显式通知前端重建根节点播进入动画。
-    // 必须先 emit 再 show——show 之后 emit 会先看到旧内容闪一次再播动画；
-    // 窗口本就开着（重复点击只是聚焦）时不播，同 Electron 版
-    if !win.is_visible().unwrap_or(false) {
-        let _ = app.emit_to("settings", "settings:opened", ());
-    }
-    win.show().map_err(|e| e.to_string())?;
-    win.set_focus().map_err(|e| e.to_string())?;
-    Ok(())
+pub async fn settings_open(app: AppHandle) -> AppResult<()> {
+    off_thread(move || {
+        let win = app.get_webview_window("settings").ok_or("error.io: 设置窗不存在")?;
+        if !win.is_visible().unwrap_or(false) {
+            let layout = infra::persist::get("settings")
+                .map(AppSettings::from_value)
+                .unwrap_or_default()
+                .island;
+            let _ = infra::layout::apply_settings_layout(&app, &layout);
+            let _ = app.emit_to("settings", "settings:opened", ());
+        }
+        win.show().map_err(|e| e.to_string())?;
+        win.set_focus().map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
-
-// ---- window ----
 
 /// 退出整个应用
 #[tauri::command]
@@ -210,8 +199,6 @@ pub fn window_set_hot_rect(
     }
     Ok(())
 }
-
-// ---- update ----
 
 #[tauri::command]
 pub async fn update_status() -> AppResult<services::update::UpdateStatus> {
