@@ -94,8 +94,7 @@ const island = useIslandMode({
       bottom = Math.max(bottom, r.bottom);
     };
     const root = containerEl.value;
-    // 隐藏态通知栈 dock-hidden 不可见，不并进热区
-    if (visiblePopups.value.length && !island.isHidden.value) {
+    if (visiblePopups.value.length) {
       include(root?.querySelector('.notify-stack'));
     }
     if (alarmMini.value) include(root?.querySelector('.alarm-mini'));
@@ -215,10 +214,9 @@ function startBackfill(intervalMs: number) {
   }, intervalMs);
 }
 
-// 通知卡片进出/迷你闹钟显隐都会改热区包围盒，重报；卡片有 0.28s 进出场动画，补一次延迟重报
-watch([() => visiblePopups.value.length, alarmMini], () => {
+watch([() => visiblePopups.value.length, alarmMini, () => island.isHidden.value], () => {
   island.reportRect();
-  window.setTimeout(() => island.reportRect(), 300);
+  window.setTimeout(() => island.reportRect(), 550);
 });
 
 function onMiniClick() {

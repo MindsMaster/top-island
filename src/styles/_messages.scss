@@ -119,8 +119,7 @@
   top: 378px; /* 岛 top 10 + 大视图高 360 + 间距 8 */
 }
 .notify-stack.dock-hidden {
-  opacity: 0;
-  visibility: hidden;
+  top: calc(58px + var(--island-hidden-shift, -34px));
 }
 .notify-card {
   pointer-events: auto;
