@@ -121,7 +121,13 @@ pub fn decode_blob(bytes: &[u8]) -> Result<String> {
 /// 把解密后的库字节挂进内存 SQLite 连接（sqlite3_deserialize，明文不落盘）。
 /// rusqlite 0.32 的 OwnedData 没有 from_vec，只能自管 sqlite3_malloc 缓冲区；
 /// FREEONCLOSE 标志让连接关闭时由 sqlite 释放，失败路径泄漏一次但不出错。
-fn connection_from_bytes(data: &[u8]) -> Result<Connection> {
+fn connection_from_bytes(data: &mut [u8]) -> Result<Connection> {
+    // 解密已叠加 WAL 帧，镜像是自包含快照；WAL 模式的 memdb 建不起 wal-index，
+    // 读库必报 CANTOPEN，把文件格式版本改回落滚模式（18/19 字节 2→1）绕过
+    if data.len() >= 20 && data[18] == 2 && data[19] == 2 {
+        data[18] = 1;
+        data[19] = 1;
+    }
     let mut conn = Connection::open_in_memory().map_err(|e| WeChatError::sqlite("打开内存库", e))?;
     let raw = unsafe { rusqlite::ffi::sqlite3_malloc(data.len().try_into().unwrap_or(i32::MAX)) };
     let raw = NonNull::new(raw.cast::<u8>())
@@ -143,9 +149,9 @@ pub fn open_decrypted(key: &[u8; KEY_SIZE], db_path: &Path) -> Result<Connection
     if wal.is_none() && wal_path.exists() {
         eprintln!("[wechat] 读取 WAL 失败: {}", wal_path.display());
     }
-    let plain = decrypt::decrypt_database_with_wal(key, &file, wal.as_deref())
+    let mut plain = decrypt::decrypt_database_with_wal(key, &file, wal.as_deref())
         .ok_or(WeChatError::InvalidKey)?;
-    connection_from_bytes(&plain)
+    connection_from_bytes(&mut plain)
 }
 
 fn wal_path_of(db_path: &Path) -> std::path::PathBuf {
@@ -697,5 +703,30 @@ mod tests {
     #[test]
     fn strip_prefix_also_handles_gh_accounts() {
         assert_eq!(strip_sender_prefix("gh_ab12cd:\n通知"), "通知", "公众号 gh_ 前缀必须剥掉");
+    }
+
+    #[test]
+    fn wal_mode_image_is_readable_after_deserialize() {
+        // 微信库是 WAL 模式：解密出的明文镜像文件格式仍是 WAL
+        let dir = std::env::temp_dir().join(format!("ti-wal-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("m.db");
+        {
+            let c = Connection::open(&path).expect("临时库必须能建");
+            c.execute_batch(
+                "PRAGMA journal_mode=WAL; \
+                 CREATE TABLE Name2Id (user_name TEXT); \
+                 INSERT INTO Name2Id VALUES ('wxid_x');",
+            )
+            .expect("WAL 库必须能写");
+        }
+        let mut bytes = std::fs::read(&path).expect("读临时库字节");
+        assert_eq!(bytes[18], 2, "文件格式读版本必须是 2（WAL）");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let conn = connection_from_bytes(&mut bytes).expect("deserialize 必须成功");
+        let tables = tables_of(&conn);
+        assert!(tables.iter().any(|t| t == "Name2Id"), "WAL 镜像反序列化后必须能读表");
+        assert_eq!(load_name2id(&conn).get(&1).map(|s| s.as_str()), Some("wxid_x"));
     }
 }
