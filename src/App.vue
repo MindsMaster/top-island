@@ -101,6 +101,7 @@ const island = useIslandMode({
     if (alarmMini.value) include(root?.querySelector('.alarm-mini'));
     return new DOMRect(left, top, right - left, bottom - top);
   },
+  getHoverRect: () => islandEl.value?.getBoundingClientRect() ?? null,
 });
 
 const swipe = usePanelSwipe({

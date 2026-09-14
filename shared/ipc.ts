@@ -276,12 +276,8 @@ export interface HotRect {
 
 /** preload 通过 contextBridge 暴露给渲染层的 API 形状（Tauri 版由 src/api.ts 用 invoke/listen 实现同一形状） */
 export interface IslandApi {
-  /**
-   * 上报岛窗交互热区。WebView2 没有 setIgnoreMouseEvents(forward:) 等价物，
-   * 穿透由 Rust 侧 WH_MOUSE_LL 钩子按热区切换；热区外穿透、热区内可交互。
-   * 传 null 表示全程可交互（hide 拖动、通知卡片悬停等 keepInteractive 场景）。
-   */
-  setHotRect(rect: HotRect | null): Promise<void>;
+  /** 上报岛窗热区：interactive 切穿透（null = 全程可交互），hover 判岛悬停（null = 与交互区同） */
+  setHotRect(interactive: HotRect | null, hover: HotRect | null): Promise<void>;
   closeWindow(): Promise<void>;
   /** 仅关闭调用方所在窗口（设置窗等辅助窗口用；closeWindow 是退出整个应用） */
   closeSelf(): Promise<void>;

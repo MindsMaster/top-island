@@ -27,11 +27,11 @@ fn init_input(app: &AppHandle) {
     let hover_app = app.clone();
     let clip_app = app.clone();
     island_windows::start_input(InputHandlers {
-        hover_rect: Some(region),
-        on_hover: Some(Box::new(move |inside| {
+        interactive_rect: Some(region),
+        on_hover: Some(Box::new(move |change| {
             if let Some(win) = hover_app.get_webview_window("island") {
-                let _ = win.set_ignore_cursor_events(!inside);
-                let _ = hover_app.emit("island-hover", inside);
+                let _ = win.set_ignore_cursor_events(!change.interactive);
+                let _ = hover_app.emit("island-hover", change.hover);
             }
         })),
         on_clipboard: Some(Box::new(move || {

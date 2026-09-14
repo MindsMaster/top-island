@@ -20,7 +20,8 @@ import type {
 
 /** Tauri 版 IslandApi：与 Electron preload 暴露的形状一致，事件名沿用 shared/ipc.ts 的通道字符串 */
 export const api: IslandApi = {
-  setHotRect: (rect: HotRect | null) => invoke('window_set_hot_rect', { rect }),
+  setHotRect: (interactive: HotRect | null, hover: HotRect | null) =>
+    invoke('window_set_hot_rect', { interactive, hover }),
   closeWindow: () => invoke('window_close'),
   closeSelf: () => invoke('window_close_self'),
   getCursorPoint: () => invoke('window_get_cursor_point'),

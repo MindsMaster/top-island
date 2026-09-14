@@ -10,6 +10,7 @@ interface IslandModeOptions {
   holdMode?: () => boolean;
   /** 岛主体（含通知栈）的包围盒，作为上报给 Rust 钩子的交互热区 */
   getRect?: () => DOMRect | null;
+  getHoverRect?: () => DOMRect | null;
 }
 
 /**
@@ -34,12 +35,9 @@ export function useIslandMode(options: IslandModeOptions) {
   // 热区上报：keepInteractive 为真时报 null（全程可交互），否则报岛主体包围盒。
   // getRect 不是响应式的，尺寸/位置变化由调用方（ResizeObserver）触发 reportRect。
   function reportRect() {
-    if (options.keepInteractive()) {
-      void api.setHotRect(null).catch(() => {});
-      return;
-    }
-    const rect = options.getRect?.();
-    void api.setHotRect(rect ?? null).catch(() => {});
+    const interactive = options.keepInteractive() ? null : (options.getRect?.() ?? null);
+    const hover = options.getHoverRect?.() ?? null;
+    void api.setHotRect(interactive, hover).catch(() => {});
   }
 
   watchEffect(() => {

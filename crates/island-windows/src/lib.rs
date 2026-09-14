@@ -9,4 +9,4 @@ pub mod smtc;
 pub mod wpn;
 
 pub use error::{Result, WinError};
-pub use input::{start_input, InputHandlers, Rect};
+pub use input::{start_input, HoverChange, InputHandlers, Rect};

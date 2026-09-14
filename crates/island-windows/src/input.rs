@@ -31,50 +31,66 @@ impl Rect {
 
 #[derive(Default)]
 pub struct InputHandlers {
-    pub hover_rect: Option<Rect>,
-    pub on_hover: Option<Box<dyn Fn(bool) + Send>>,
+    pub interactive_rect: Option<Rect>,
+    pub on_hover: Option<Box<dyn Fn(HoverChange) + Send>>,
     pub on_clipboard: Option<Box<dyn Fn() + Send>>,
 }
 
 impl std::fmt::Debug for InputHandlers {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InputHandlers")
-            .field("hover_rect", &self.hover_rect)
+            .field("interactive_rect", &self.interactive_rect)
             .field("on_hover", &self.on_hover.is_some())
             .field("on_clipboard", &self.on_clipboard.is_some())
             .finish()
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct HoverChange {
+    pub interactive: bool,
+    pub hover: bool,
+}
+
 struct HoverState {
     /// None 表示全程可交互（拖动等手势期间）
-    rect: Option<Rect>,
-    inside: bool,
-    tx: Sender<bool>,
+    interactive: Option<Rect>,
+    hover: Option<Rect>,
+    interactive_inside: bool,
+    hover_inside: bool,
+    tx: Sender<HoverChange>,
 }
 
 static HOVER: Mutex<Option<HoverState>> = Mutex::new(None);
 static CLIPBOARD_TX: Mutex<Option<Sender<()>>> = Mutex::new(None);
 
-pub fn set_hover_rect(rect: Option<Rect>) {
+pub fn set_hover_rect(interactive: Option<Rect>, hover: Option<Rect>) {
     let mut guard = HOVER.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(st) = guard.as_mut() {
-        st.rect = rect;
+        st.interactive = interactive;
+        st.hover = hover;
         evaluate(st);
     }
 }
 
 fn evaluate(st: &mut HoverState) {
-    let inside = match &st.rect {
+    let (x, y) = cursor_position();
+    let pt = POINT { x, y };
+    let interactive_inside = match &st.interactive {
         None => true,
-        Some(r) => {
-            let (x, y) = cursor_position();
-            r.contains(POINT { x, y })
-        }
+        Some(r) => r.contains(pt),
     };
-    if inside != st.inside {
-        st.inside = inside;
-        let _ = st.tx.send(inside);
+    let hover_inside = match &st.hover {
+        None => interactive_inside,
+        Some(r) => r.contains(pt),
+    };
+    if interactive_inside != st.interactive_inside || hover_inside != st.hover_inside {
+        st.interactive_inside = interactive_inside;
+        st.hover_inside = hover_inside;
+        let _ = st.tx.send(HoverChange {
+            interactive: interactive_inside,
+            hover: hover_inside,
+        });
     }
 }
 
@@ -88,15 +104,18 @@ pub fn cursor_position() -> (i32, i32) {
 }
 
 /// 回调会切窗口穿透并 emit 到 webview，放在独立线程上执行，突发时只取最后一个状态
-fn start_hover_dispatch(rx: std::sync::mpsc::Receiver<bool>, on_change: Box<dyn Fn(bool) + Send>) {
+fn start_hover_dispatch(
+    rx: std::sync::mpsc::Receiver<HoverChange>,
+    on_change: Box<dyn Fn(HoverChange) + Send>,
+) {
     std::thread::Builder::new()
         .name("island-hover".into())
         .spawn(move || {
-            while let Ok(mut inside) = rx.recv() {
+            while let Ok(mut change) = rx.recv() {
                 while let Ok(later) = rx.try_recv() {
-                    inside = later;
+                    change = later;
                 }
-                on_change(inside);
+                on_change(change);
             }
         })
         .expect("spawn island-hover");
@@ -141,16 +160,26 @@ unsafe extern "system" fn input_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, l
 }
 
 pub fn start_input(handlers: InputHandlers) {
-    let want_hover = if let (Some(rect), Some(on_hover)) = (handlers.hover_rect, handlers.on_hover) {
-        let (tx, rx) = channel::<bool>();
+    let InputHandlers {
+        interactive_rect,
+        on_hover,
+        on_clipboard,
+    } = handlers;
+    let want_hover = if let (Some(rect), Some(on_hover)) = (interactive_rect, on_hover) {
+        let (tx, rx) = channel::<HoverChange>();
         start_hover_dispatch(rx, on_hover);
-        *HOVER.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some(HoverState { rect: Some(rect), inside: false, tx });
+        *HOVER.lock().unwrap_or_else(|e| e.into_inner()) = Some(HoverState {
+            interactive: Some(rect),
+            hover: None,
+            interactive_inside: false,
+            hover_inside: false,
+            tx,
+        });
         true
     } else {
         false
     };
-    let want_clip = if let Some(cb) = handlers.on_clipboard {
+    let want_clip = if let Some(cb) = on_clipboard {
         let (tx, rx) = channel::<()>();
         start_clip_dispatch(rx, cb);
         *CLIPBOARD_TX.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
