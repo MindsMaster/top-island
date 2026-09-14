@@ -1,7 +1,3 @@
-//! AUMID → 应用显示名 / 图标。wpndatabase 对 win32 应用（HandlerType=app:desktop）的
-//! DisplayName/IconUri 全是 NULL，通知中心自己走的解析链是：注册表 AppUserModelId 键，
-//! 否则反查开始菜单里 System.AppUserModel.ID 属性等于该 AUMID 的快捷方式。这里照做。
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -70,6 +66,7 @@ pub(crate) fn registry_value(aumid: &str, value: &str) -> Option<String> {
 
 /// 提前建好快捷方式索引（首次扫描连带 COM 冷启动要两秒多，别落在第一条通知上）
 pub fn prewarm() {
+    let _ = shell_item(std::ffi::OsStr::new("shell:AppsFolder\\Microsoft.Windows.Explorer"));
     let mut guard = lock_index();
     if guard.is_none() {
         *guard = Some(build_index());
@@ -83,7 +80,7 @@ pub fn display_name(aumid: &str) -> Option<String> {
             return Some(name);
         }
     }
-    let item = shell_item(&locate(aumid)?)?;
+    let item = resolve(aumid)?;
     let name = unsafe { item.GetDisplayName(SIGDN_NORMALDISPLAY) }.ok()?;
     take_pwstr(name).filter(|s| !s.is_empty())
 }
@@ -96,7 +93,7 @@ pub fn icon_bytes(aumid: &str) -> Option<Vec<u8>> {
             return Some(bytes);
         }
     }
-    let item = shell_item(&locate(aumid)?)?;
+    let item = resolve(aumid)?;
     let factory: IShellItemImageFactory = item.cast().ok()?;
     let hbm = unsafe { factory.GetImage(SIZE { cx: ICON_PX, cy: ICON_PX }, SIIGBF_ICONONLY) }.ok()?;
     let png = dib_to_png(hbm);
@@ -106,19 +103,18 @@ pub fn icon_bytes(aumid: &str) -> Option<Vec<u8>> {
     png
 }
 
-/// 能代表该 AUMID 的 shell 对象路径：开始菜单快捷方式，或 AUMID 本身就是 exe 路径（老应用惯例）
-fn locate(aumid: &str) -> Option<PathBuf> {
+fn resolve(aumid: &str) -> Option<IShellItem2> {
     if aumid.is_empty() {
         return None;
     }
-    if let Some(link) = lookup_link(aumid) {
-        return Some(link);
-    }
     let path = Path::new(aumid);
     if path.is_absolute() && path.is_file() {
-        return Some(path.to_path_buf());
+        return shell_item(path.as_os_str());
     }
-    None
+    if let Some(link) = lookup_link(aumid) {
+        return shell_item(link.as_os_str());
+    }
+    shell_item(std::ffi::OsStr::new(&format!("shell:AppsFolder\\{aumid}")))
 }
 
 fn lookup_link(aumid: &str) -> Option<PathBuf> {
@@ -170,15 +166,15 @@ fn walk(dir: &Path, visit: &mut dyn FnMut(&Path)) {
 }
 
 fn shortcut_aumid(lnk: &Path) -> Option<String> {
-    let item = shell_item(lnk)?;
+    let item = shell_item(lnk.as_os_str())?;
     let value = unsafe { item.GetString(&PKEY_APP_USER_MODEL_ID) }.ok()?;
     take_pwstr(value).filter(|s| !s.is_empty())
 }
 
-fn shell_item(path: &Path) -> Option<IShellItem2> {
+fn shell_item(name: &std::ffi::OsStr) -> Option<IShellItem2> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        SHCreateItemFromParsingName::<_, Option<&IBindCtx>, IShellItem2>(&HSTRING::from(path.as_os_str()), None).ok()
+        SHCreateItemFromParsingName::<_, Option<&IBindCtx>, IShellItem2>(&HSTRING::from(name), None).ok()
     }
 }
 
@@ -258,5 +254,15 @@ mod tests {
     fn unknown_aumid_resolves_to_nothing() {
         assert_eq!(display_name("top-island.test.no-such-app"), None);
         assert_eq!(icon_bytes("top-island.test.no-such-app"), None);
+    }
+
+    #[test]
+    fn packaged_app_resolves_via_appsfolder() {
+        let aumid =
+            "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
+        let name = display_name(aumid).expect("UWP 应用名应能解析");
+        assert!(!name.starts_with("windows."), "不该回退到裸 AUMID: {name}");
+        let icon = icon_bytes(aumid).expect("UWP 应用图标应能取到");
+        assert!(icon.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }
