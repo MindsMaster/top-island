@@ -1,37 +1,37 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api } from './api';
 import { useI18n } from './i18n';
 import { hexLuminance, THEMES, initSettings, setCustomColor, settings } from './store/settings';
 import SettingSelect from './components/SettingSelect.vue';
 import ColorPicker from './components/ColorPicker.vue';
-import type {
-  BridgeStatus,
-  DiagnosticsToggles,
-  DisplayInfo,
-  LangPref,
-  ThemeId,
-  UpdateCheckResult,
-} from '../shared/ipc';
+import SettingSwitch from './components/SettingSwitch.vue';
+import appIcon from './assets/app-icon.png';
+import type { BridgeStatus, DisplayInfo, LangPref, ThemeId, UpdateCheckResult } from '../shared/ipc';
 
 const { t, initI18n } = useI18n();
 /** 读直接渲染（reactive 自动追踪）；写也直接改字段，持久化/广播由 store 的 watch 统一处理 */
 const st = settings;
 
-type SectionId = 'general' | 'messages' | 'music' | 'diag';
+type SectionId = 'general' | 'appearance' | 'messages' | 'music' | 'diag' | 'about';
 const sections: Array<{ id: SectionId; icon: string; titleKey: string }> = [
   { id: 'general', icon: 'fa-sliders', titleKey: 'settingsGeneral' },
-  { id: 'messages', icon: 'fa-comment-dots', titleKey: 'settingsMessages' },
+  { id: 'appearance', icon: 'fa-palette', titleKey: 'settingsAppearance' },
+  { id: 'messages', icon: 'fa-bell', titleKey: 'settingsMessages' },
   { id: 'music', icon: 'fa-music', titleKey: 'settingsMusic' },
-  { id: 'diag', icon: 'fa-stethoscope', titleKey: 'settingsDiag' },
+  { id: 'diag', icon: 'fa-gear', titleKey: 'settingsDiag' },
+  { id: 'about', icon: 'fa-circle-info', titleKey: 'settingsAbout' },
 ];
 const active = ref<SectionId>('general');
+const activeTitle = computed(() => t(sections.find((section) => section.id === active.value)!.titleKey));
+const contentEl = ref<HTMLElement | null>(null);
 
-const diagToggles: Array<{ key: keyof DiagnosticsToggles; nameKey: string }> = [
-  { key: 'clipboardPoll', nameKey: 'diagClipboardPoll' },
-  { key: 'musicPoll', nameKey: 'diagMusicPoll' },
-  { key: 'devOverlay', nameKey: 'diagDevOverlay' },
-];
+watch(active, async () => {
+  openPicker.value = null;
+  resetArmed.value = false;
+  await nextTick();
+  contentEl.value?.scrollTo(0, 0);
+});
 
 const themeOptions = computed(() =>
   THEMES.map((tm) => ({ value: tm.id, label: t(tm.nameKey), icon: tm.icon, group: tm.group }))
@@ -76,12 +76,14 @@ const langOptions = computed(() => [
 const displays = ref<DisplayInfo[]>([]);
 
 const displayOptions = computed(() => {
-  const opts = displays.value.map((d) => ({
+  const counts = new Map<string, number>();
+  for (const d of displays.value) counts.set(d.label, (counts.get(d.label) ?? 0) + 1);
+  // 同型号双屏友好名相同，用 GDI 名（DISPLAY2）区分
+  return displays.value.map((d) => ({
     value: d.id,
-    label: d.primary ? `${t('displayPrimary')} · ${d.label}` : d.label,
+    label: counts.get(d.label)! > 1 ? `${d.label} (${d.id.replace(/^\\+\.\\/, '')})` : d.label,
     icon: 'fa-display',
   }));
-  return opts;
 });
 
 const displayValue = computed(() => {
@@ -115,6 +117,8 @@ function onPeekInput(e: Event) {
 /** 每次打开设置窗 +1：根节点换 key 重建以重播进入动画（窗口常驻不销毁，Vue 不会自己重挂载） */
 const enterKey = ref(0);
 api.onSettingsOpened(() => {
+  resetArmed.value = false;
+  openPicker.value = null;
   enterKey.value++;
 });
 
@@ -182,26 +186,36 @@ async function acquireWechatKey() {
   wechatAcquiring.value = false;
   if (r.ok) {
     wechatHasKey.value = true;
-    wechatMsg.value = t('wechatKeyOk') + (r.wxid ? ` (${r.wxid})` : '');
+    wechatMsg.value = t('wechatKeyOk');
   } else {
     wechatHasKey.value = false;
     wechatMsg.value = r.error === 'no-account' ? t('wechatNoAccount') : t('wechatKeyFail');
   }
 }
 
-// 二次确认防误触：清空全部本地数据并重启
 const resetArmed = ref(false);
-let resetTimer: number | null = null;
+const resetBusy = ref(false);
+const resetError = ref('');
+const resetCancelEl = ref<HTMLButtonElement | null>(null);
 
-function armReset() {
+async function armReset() {
+  resetError.value = '';
   resetArmed.value = true;
-  if (resetTimer) clearTimeout(resetTimer);
-  resetTimer = window.setTimeout(() => (resetArmed.value = false), 4000);
+  await nextTick();
+  resetCancelEl.value?.focus();
+  resetCancelEl.value?.scrollIntoView({ block: 'nearest' });
 }
 
-function confirmReset() {
-  if (resetTimer) clearTimeout(resetTimer);
-  api.storeClear();
+async function confirmReset() {
+  if (resetBusy.value) return;
+  resetBusy.value = true;
+  try {
+    await api.storeClear();
+  } catch {
+    resetError.value = t('settingsResetError');
+  } finally {
+    resetBusy.value = false;
+  }
 }
 
 let focusedAt = 0;
@@ -215,6 +229,15 @@ function onWindowBlur() {
   if (Date.now() - focusedAt < FOCUS_BLUR_GRACE_MS) return;
   api.closeSelf();
 }
+
+let bridgeTimer: number | undefined;
+
+onBeforeUnmount(() => {
+  window.removeEventListener('blur', onWindowBlur);
+  window.removeEventListener('focus', onWindowFocus);
+  document.removeEventListener('mousedown', onDocMouseDownPicker);
+  window.clearInterval(bridgeTimer);
+});
 
 onMounted(async () => {
   await initI18n();
@@ -230,341 +253,320 @@ onMounted(async () => {
   api.onUpdateDownloaded((info) => applyUpdateResult({ status: 'downloaded', version: info.version }));
   applyUpdateResult(await api.getUpdateStatus().catch(() => ({ status: ver.packaged ? 'checking' : 'dev' })));
   void refreshBridgeStatus();
-  window.setInterval(() => void refreshBridgeStatus(), 2000);
+  bridgeTimer = window.setInterval(() => void refreshBridgeStatus(), 2000);
 });
 </script>
 
 <template>
   <div id="settings-window" :key="enterKey">
     <header class="settings-header">
-      <i class="fa-solid fa-gear settings-header-icon"></i>
       <span class="settings-title">{{ t('settingsTitle') }}</span>
-      <button class="settings-close" :title="t('settingsClose')" @click="api.closeSelf()">
-        <i class="fa-solid fa-xmark"></i>
+      <button class="settings-close" :aria-label="t('settingsClose')" @click="api.closeSelf()">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
     </header>
 
     <div class="settings-body">
-      <nav class="settings-nav">
+      <nav class="settings-nav" :aria-label="t('settingsTitle')">
         <button
           v-for="s in sections"
           :key="s.id"
           class="settings-nav-btn"
-          :class="{ active: active === s.id }"
+          :class="{ active: active === s.id, 'settings-nav-bottom': s.id === 'about' }"
+          :aria-current="active === s.id ? 'page' : undefined"
           @click="active = s.id"
         >
-          <i :class="'fa-solid ' + s.icon"></i>
+          <i :class="'fa-solid ' + s.icon" aria-hidden="true"></i>
           <span>{{ t(s.titleKey) }}</span>
         </button>
       </nav>
 
-      <main class="settings-content">
-        <!-- 通用 -->
+      <main ref="contentEl" class="settings-content" aria-labelledby="settings-page-title">
+        <h1 id="settings-page-title" class="settings-page-title">{{ activeTitle }}</h1>
+
         <template v-if="active === 'general'">
-          <div class="setting-row">
-            <div class="setting-label">{{ t('settingsAutoLaunch') }}</div>
-            <button
-              class="setting-toggle"
-              :class="{ on: st.autoLaunch }"
-              @click="settings.autoLaunch = !settings.autoLaunch"
-            >
-              <span class="setting-toggle-knob"></span>
-            </button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('settingsVersion') }} · {{ appVersionLabel }}</div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('settingsCheckUpdate') }}</div>
-            <button class="setting-action-btn" :disabled="updateBusy" @click="checkForUpdate">
-              <i
-                class="fa-solid"
-                :class="
-                  updateBusy ? 'fa-spinner fa-spin' : updateCanInstall ? 'fa-rotate' : 'fa-cloud-arrow-down'
-                "
-              ></i>
-              {{ updateCanInstall ? t('updateRestart') : t('settingsCheckUpdate') }}
-            </button>
-          </div>
-          <div v-if="updateMsg" class="setting-hint">{{ updateMsg }}</div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('settingsLanguage') }}</div>
-            <SettingSelect
-              :model-value="st.lang"
-              :options="langOptions"
-              @update:model-value="settings.lang = $event as LangPref"
-            />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('settingsTheme') }}</div>
-            <SettingSelect
-              :model-value="st.theme"
-              :options="themeOptions"
-              :group-labels="themeGroupLabels"
-              @update:model-value="settings.theme = $event as ThemeId"
-            />
-          </div>
-          <div v-if="st.theme === 'custom'" class="setting-row custom-palette">
-            <!-- 迷你岛预览 -->
-            <div class="custom-preview">
-              <div
-                class="custom-preview-pill"
-                :style="{ background: `linear-gradient(135deg, ${st.customTheme.a}, ${st.customTheme.b})` }"
-              >
-                <i class="fa-solid fa-music" :style="{ color: st.customTheme.accent }"></i>
-                <span :style="{ color: previewTextColor }">12:34</span>
-              </div>
+          <section class="setting-group">
+            <SettingSwitch v-model="st.autoLaunch" :label="t('settingsAutoLaunch')" />
+            <div class="setting-row">
+              <label id="language-label" class="setting-label">{{ t('settingsLanguage') }}</label>
+              <SettingSelect
+                :model-value="st.lang"
+                :options="langOptions"
+                labelled-by="language-label"
+                @update:model-value="settings.lang = $event as LangPref"
+              />
             </div>
-            <div class="custom-swatches">
-              <div v-for="p in customColorParts" :key="p.key" class="custom-color-item">
-                <button
-                  class="custom-swatch"
-                  :class="{ open: openPicker === p.key }"
-                  :style="{ background: st.customTheme[p.key] }"
-                  @click="togglePicker(p.key)"
-                ></button>
-                <span class="custom-color-label">{{ t(p.labelKey) }}</span>
-                <div v-if="openPicker === p.key" class="cp-popover">
-                  <ColorPicker
-                    :model-value="st.customTheme[p.key]"
-                    @update:model-value="setCustomColor(p.key, $event)"
-                  />
+          </section>
+          <section class="setting-section">
+            <h2 class="setting-group-title">{{ t('settingsClipboardTitle') }}</h2>
+            <div class="setting-group">
+              <SettingSwitch v-model="st.diagnostics.clipboardPoll" :label="t('diagClipboardPoll')" />
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="active === 'appearance'">
+          <section class="setting-group">
+            <div class="setting-row">
+              <label id="theme-label" class="setting-label">{{ t('settingsTheme') }}</label>
+              <SettingSelect
+                :model-value="st.theme"
+                :options="themeOptions"
+                :group-labels="themeGroupLabels"
+                labelled-by="theme-label"
+                @update:model-value="settings.theme = $event as ThemeId"
+              />
+            </div>
+            <div v-if="st.theme === 'custom'" class="setting-row custom-palette">
+              <div class="custom-preview" aria-hidden="true">
+                <div
+                  class="custom-preview-pill"
+                  :style="{ background: `linear-gradient(135deg, ${st.customTheme.a}, ${st.customTheme.b})` }"
+                >
+                  <i class="fa-solid fa-music" :style="{ color: st.customTheme.accent }"></i>
+                  <span :style="{ color: previewTextColor }">12:34</span>
+                </div>
+              </div>
+              <div class="custom-swatches">
+                <div v-for="p in customColorParts" :key="p.key" class="custom-color-item">
+                  <button
+                    class="custom-swatch"
+                    :class="{ open: openPicker === p.key }"
+                    :style="{ background: st.customTheme[p.key] }"
+                    :aria-label="t(p.labelKey)"
+                    :aria-expanded="openPicker === p.key"
+                    @click="togglePicker(p.key)"
+                  ></button>
+                  <span class="custom-color-label">{{ t(p.labelKey) }}</span>
+                  <div v-if="openPicker === p.key" class="cp-popover" @keydown.esc.stop="openPicker = null">
+                    <ColorPicker
+                      :model-value="st.customTheme[p.key]"
+                      @update:model-value="setCustomColor(p.key, $event)"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div v-if="displays.length > 1" class="setting-row">
-            <div class="setting-label">{{ t('settingsDisplayMonitor') }}</div>
-            <SettingSelect
-              :model-value="displayValue"
-              :options="displayOptions"
-              @update:model-value="onDisplayPick"
-            />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('settingsIslandScale') }}</div>
-            <div class="setting-num">
-              <input
-                class="setting-num-input"
-                inputmode="numeric"
-                maxlength="3"
-                :value="st.island.scale"
-                spellcheck="false"
-                @focus="($event.target as HTMLInputElement).select()"
-                @mouseup.prevent="($event.target as HTMLInputElement).select()"
-                @keydown.enter="($event.target as HTMLInputElement).blur()"
-                @blur="onScaleTyped"
-              />
-              <span class="setting-num-unit">%</span>
+          </section>
+          <section class="setting-section">
+            <h2 class="setting-group-title">{{ t('settingsLayoutTitle') }}</h2>
+            <div class="setting-group">
+              <div v-if="displays.length > 1" class="setting-row">
+                <label id="display-label" class="setting-label">{{ t('settingsDisplayMonitor') }}</label>
+                <SettingSelect
+                  :model-value="displayValue"
+                  :options="displayOptions"
+                  labelled-by="display-label"
+                  @update:model-value="onDisplayPick"
+                />
+              </div>
+              <div class="setting-row">
+                <label for="island-scale" class="setting-label">{{ t('settingsIslandScale') }}</label>
+                <div class="setting-num">
+                  <input
+                    id="island-scale"
+                    class="setting-num-input"
+                    inputmode="numeric"
+                    maxlength="3"
+                    :value="st.island.scale"
+                    spellcheck="false"
+                    @focus="($event.target as HTMLInputElement).select()"
+                    @mouseup.prevent="($event.target as HTMLInputElement).select()"
+                    @keydown.enter="($event.target as HTMLInputElement).blur()"
+                    @blur="onScaleTyped"
+                  />
+                  <span class="setting-num-unit">%</span>
+                </div>
+              </div>
+              <div class="setting-row offset-row">
+                <label for="hidden-peek" class="setting-label">
+                  {{ t('settingsHiddenPeek') }}
+                </label>
+                <div class="offset-control">
+                  <input
+                    id="hidden-peek"
+                    type="range"
+                    class="offset-slider"
+                    min="2"
+                    max="20"
+                    step="1"
+                    :value="st.island.hiddenPeek"
+                    @input="onPeekInput"
+                  />
+                  <span class="offset-value">{{ st.island.hiddenPeek }} px</span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="setting-row offset-row">
-            <div class="setting-label">
-              {{ t('settingsHiddenPeek') }}
-              <span class="offset-value">{{ st.island.hiddenPeek }}px</span>
-            </div>
-            <div class="offset-control">
-              <input
-                type="range"
-                class="offset-slider"
-                min="2"
-                max="20"
-                step="1"
-                :value="st.island.hiddenPeek"
-                @input="onPeekInput"
-              />
-            </div>
-          </div>
+          </section>
         </template>
 
-        <!-- 消息托管 -->
         <template v-else-if="active === 'messages'">
-          <div class="setting-group-title">
-            {{ t('settingsMessagesTitle') }}
-            <span class="setting-help">
-              <i class="fa-solid fa-circle-question"></i>
-              <span class="setting-help-tip">{{ t('settingsMessagesHint') }}</span>
-            </span>
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('notifyEnable') }}</div>
-            <button
-              class="setting-toggle"
-              :class="{ on: st.notifications.enabled }"
-              @click="settings.notifications.enabled = !settings.notifications.enabled"
-            >
-              <span class="setting-toggle-knob"></span>
-            </button>
-          </div>
-          <div v-if="st.notifications.enabled" class="setting-row">
-            <div class="setting-label">{{ t('notifyPopup') }}</div>
-            <button
-              class="setting-toggle"
-              :class="{ on: st.notifications.popup }"
-              @click="settings.notifications.popup = !settings.notifications.popup"
-            >
-              <span class="setting-toggle-knob"></span>
-            </button>
-          </div>
-          <div v-if="st.notifications.enabled && st.notifications.popup" class="setting-row">
-            <div class="setting-label">
-              {{ t('notifyPrivacy') }}
-              <span class="setting-help">
-                <i class="fa-solid fa-circle-question"></i>
-                <span class="setting-help-tip">{{ t('notifyPrivacyHint') }}</span>
-              </span>
-            </div>
-            <button
-              class="setting-toggle"
-              :class="{ on: st.notifications.privacy.enabled }"
-              @click="settings.notifications.privacy.enabled = !settings.notifications.privacy.enabled"
-            >
-              <span class="setting-toggle-knob"></span>
-            </button>
-          </div>
-          <!-- 隐私细项：主开关开启后渐进披露 -->
-          <div
-            v-if="st.notifications.enabled && st.notifications.popup && st.notifications.privacy.enabled"
-            class="setting-subgroup"
-          >
-            <div class="setting-row setting-sub">
-              <div class="setting-label">{{ t('notifyPrivacyAvatar') }}</div>
-              <button
-                class="setting-toggle"
-                :class="{ on: st.notifications.privacy.blurAvatar }"
-                @click="
-                  settings.notifications.privacy.blurAvatar = !settings.notifications.privacy.blurAvatar
-                "
-              >
-                <span class="setting-toggle-knob"></span>
-              </button>
-            </div>
-            <div class="setting-row setting-sub">
-              <div class="setting-label">{{ t('notifyPrivacyName') }}</div>
-              <button
-                class="setting-toggle"
-                :class="{ on: st.notifications.privacy.blurName }"
-                @click="settings.notifications.privacy.blurName = !settings.notifications.privacy.blurName"
-              >
-                <span class="setting-toggle-knob"></span>
-              </button>
-            </div>
-            <div class="setting-row setting-sub">
-              <div class="setting-label">{{ t('notifyPrivacyBody') }}</div>
-              <button
-                class="setting-toggle"
-                :class="{ on: st.notifications.privacy.replaceBody }"
-                @click="
-                  settings.notifications.privacy.replaceBody = !settings.notifications.privacy.replaceBody
-                "
-              >
-                <span class="setting-toggle-knob"></span>
-              </button>
-            </div>
-            <div v-if="st.notifications.privacy.replaceBody" class="setting-sub setting-sub-input">
-              <input
-                class="setting-text-input"
-                type="text"
-                maxlength="40"
-                :value="st.notifications.privacy.bodyText"
-                :placeholder="t('notifyPrivateBody')"
-                @input="settings.notifications.privacy.bodyText = ($event.target as HTMLInputElement).value"
+          <section class="setting-group">
+            <SettingSwitch v-model="st.notifications.enabled" :label="t('notifyEnable')" />
+            <template v-if="st.notifications.enabled">
+              <SettingSwitch v-model="st.notifications.popup" :label="t('notifyPopup')" />
+              <SettingSwitch
+                v-model="st.notifications.suppressBanner"
+                :label="t('notifySuppress')"
+                :description="t('notifySuppressHint')"
               />
-            </div>
-          </div>
+            </template>
+          </section>
           <template v-if="st.notifications.enabled">
-            <div class="setting-row">
-              <div class="setting-label">{{ t('notifySuppress') }}</div>
-              <button
-                class="setting-toggle"
-                :class="{ on: st.notifications.suppressBanner }"
-                @click="settings.notifications.suppressBanner = !settings.notifications.suppressBanner"
-              >
-                <span class="setting-toggle-knob"></span>
-              </button>
-            </div>
-
-            <div class="setting-group-title wechat-divider">{{ t('wechatTitle') }}</div>
-            <div class="setting-row">
-              <div class="setting-label">{{ t('wechatEnable') }}</div>
-              <button
-                class="setting-toggle"
-                :class="{ on: st.notifications.wechat }"
-                @click="settings.notifications.wechat = !settings.notifications.wechat"
-              >
-                <span class="setting-toggle-knob"></span>
-              </button>
-            </div>
-            <div v-if="st.notifications.wechat" class="setting-row">
-              <div class="setting-label">
-                {{ t('wechatKey') }}
-                <span class="offset-value">{{ wechatHasKey ? t('wechatKeyHave') : t('wechatKeyNone') }}</span>
+            <section v-if="st.notifications.popup" class="setting-section">
+              <h2 class="setting-group-title">{{ t('settingsPrivacyTitle') }}</h2>
+              <div class="setting-group">
+                <SettingSwitch
+                  v-model="st.notifications.privacy.enabled"
+                  :label="t('notifyPrivacy')"
+                  :description="t('notifyPrivacyHint')"
+                />
+                <div v-if="st.notifications.privacy.enabled" class="setting-subgroup">
+                  <SettingSwitch
+                    v-model="st.notifications.privacy.blurAvatar"
+                    :label="t('notifyPrivacyAvatar')"
+                  />
+                  <SettingSwitch
+                    v-model="st.notifications.privacy.blurName"
+                    :label="t('notifyPrivacyName')"
+                  />
+                  <SettingSwitch
+                    v-model="st.notifications.privacy.replaceBody"
+                    :label="t('notifyPrivacyBody')"
+                  />
+                  <div v-if="st.notifications.privacy.replaceBody" class="setting-sub-input">
+                    <input
+                      v-model="st.notifications.privacy.bodyText"
+                      class="setting-text-input"
+                      type="text"
+                      maxlength="40"
+                      :aria-label="t('settingsPrivateText')"
+                      :placeholder="t('notifyPrivateBody')"
+                    />
+                  </div>
+                </div>
               </div>
-              <button class="setting-action-btn" :disabled="wechatAcquiring" @click="acquireWechatKey">
-                <i class="fa-solid" :class="wechatAcquiring ? 'fa-spinner fa-spin' : 'fa-key'"></i>
-                {{ wechatHasKey ? t('wechatReacquire') : t('wechatAcquire') }}
-              </button>
-            </div>
-            <div v-if="st.notifications.wechat && wechatMsg" class="setting-hint">{{ wechatMsg }}</div>
+            </section>
+            <section class="setting-section">
+              <h2 class="setting-group-title">{{ t('wechatTitle') }}</h2>
+              <div class="setting-group">
+                <SettingSwitch v-model="st.notifications.wechat" :label="t('wechatEnable')" />
+                <template v-if="st.notifications.wechat">
+                  <div class="setting-row">
+                    <div class="setting-label">{{ t('wechatKey') }}</div>
+                    <span class="setting-status">{{
+                      wechatHasKey ? t('wechatKeyHave') : t('wechatKeyNone')
+                    }}</span>
+                    <button
+                      class="setting-action-btn"
+                      :title="t('wechatHint')"
+                      :disabled="wechatAcquiring"
+                      @click="acquireWechatKey"
+                    >
+                      <i v-if="wechatAcquiring" class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                      {{
+                        wechatAcquiring
+                          ? t('wechatAcquiringBtn')
+                          : wechatHasKey
+                            ? t('wechatReacquire')
+                            : t('wechatAcquire')
+                      }}
+                    </button>
+                  </div>
+                  <p v-if="wechatMsg" class="setting-feedback" role="status">{{ wechatMsg }}</p>
+                </template>
+              </div>
+            </section>
           </template>
         </template>
 
-        <!-- 音乐 -->
         <template v-else-if="active === 'music'">
-          <div class="setting-group-title">{{ t('settingsMusicTitle') }}</div>
-          <div class="setting-hint">{{ t('settingsMusicHint') }}</div>
-          <div class="setting-row">
-            <div class="setting-label">
-              {{ t('musicNeteaseLabel') }}
-              <span v-if="st.music.neteaseBridge" class="offset-value">{{ bridgeStatusText }}</span>
+          <section class="setting-group">
+            <SettingSwitch v-model="st.diagnostics.musicPoll" :label="t('diagMusicPoll')" />
+          </section>
+          <section class="setting-section">
+            <h2 class="setting-group-title">{{ t('settingsMusicTitle') }}</h2>
+            <div class="setting-group">
+              <SettingSwitch
+                v-model="st.music.neteaseBridge"
+                :label="t('musicNeteaseLabel')"
+                :description="t('settingsMusicHint')"
+              >
+                <span
+                  v-if="st.music.neteaseBridge"
+                  class="setting-status"
+                  :title="bridgeStatusText"
+                  role="status"
+                  >{{ bridgeStatusText }}</span
+                >
+              </SettingSwitch>
             </div>
-            <button
-              class="setting-toggle"
-              :class="{ on: st.music.neteaseBridge }"
-              @click="settings.music.neteaseBridge = !settings.music.neteaseBridge"
-            >
-              <span class="setting-toggle-knob"></span>
-            </button>
-          </div>
+          </section>
         </template>
 
-        <!-- 诊断 -->
         <template v-else-if="active === 'diag'">
-          <div class="setting-group-title">{{ t('settingsDiagTitle') }}</div>
-          <div class="setting-hint">{{ t('settingsDiagHint') }}</div>
-          <div v-for="tg in diagToggles" :key="tg.key" class="setting-row">
-            <div class="setting-label">{{ t(tg.nameKey) }}</div>
-            <button
-              class="setting-toggle"
-              :class="{ on: st.diagnostics[tg.key] }"
-              @click="settings.diagnostics[tg.key] = !settings.diagnostics[tg.key]"
-            >
-              <span class="setting-toggle-knob"></span>
-            </button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('diagLogLabel') }}</div>
-            <button class="setting-action-btn" @click="api.diagReveal()">
-              <i class="fa-solid fa-folder-open"></i>{{ t('diagLogReveal') }}
-            </button>
-          </div>
+          <section class="setting-group">
+            <div class="setting-row">
+              <div class="setting-label">{{ t('diagLogLabel') }}</div>
+              <button class="setting-action-btn" @click="api.diagReveal()">{{ t('diagLogReveal') }}</button>
+            </div>
+            <SettingSwitch v-model="st.diagnostics.devOverlay" :label="t('diagDevOverlay')" />
+          </section>
+          <section class="setting-section">
+            <h2 class="setting-group-title">{{ t('settingsDataTitle') }}</h2>
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-label">{{ t('settingsResetLabel') }}</div>
+                <button class="setting-action-btn danger" :disabled="resetArmed" @click="armReset">
+                  {{ t('settingsResetBtn') }}
+                </button>
+              </div>
+              <div
+                v-if="resetArmed"
+                class="reset-prompt"
+                role="group"
+                :aria-label="t('settingsResetTitle')"
+                @keydown.esc.stop="resetArmed = false"
+              >
+                <p>{{ t('settingsResetHint') }}</p>
+                <p v-if="resetError" class="setting-error" role="alert">{{ resetError }}</p>
+                <div class="reset-confirm">
+                  <button
+                    ref="resetCancelEl"
+                    class="setting-action-btn"
+                    :disabled="resetBusy"
+                    @click="resetArmed = false"
+                  >
+                    {{ t('settingsResetCancel') }}
+                  </button>
+                  <button class="setting-action-btn danger" :disabled="resetBusy" @click="confirmReset">
+                    {{ t('settingsResetConfirm') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </template>
 
-          <div class="setting-group-title reset-divider">{{ t('settingsResetTitle') }}</div>
-          <div class="setting-hint">{{ t('settingsResetHint') }}</div>
-          <div class="setting-row">
-            <div class="setting-label">{{ t('settingsResetLabel') }}</div>
-            <button v-if="!resetArmed" class="setting-action-btn danger" @click="armReset">
-              <i class="fa-solid fa-trash-can"></i>{{ t('settingsResetBtn') }}
-            </button>
-            <div v-else class="reset-confirm">
-              <button class="setting-action-btn" @click="resetArmed = false">
-                {{ t('settingsResetCancel') }}
-              </button>
-              <button class="setting-action-btn danger" @click="confirmReset">
-                <i class="fa-solid fa-triangle-exclamation"></i>{{ t('settingsResetConfirm') }}
-              </button>
+        <template v-else-if="active === 'about'">
+          <div class="settings-app-identity">
+            <img class="settings-app-icon" :src="appIcon" alt="" />
+            <div>
+              <h2>Top Island</h2>
+              <p>{{ appVersionLabel }}</p>
             </div>
           </div>
+          <section class="setting-group">
+            <div class="setting-row">
+              <div class="setting-label" :title="updateMsg" role="status">
+                {{ updateMsg || t('settingsUpdateTitle') }}
+              </div>
+              <button class="setting-action-btn" :disabled="updateBusy" @click="checkForUpdate">
+                <i v-if="updateBusy" class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                {{ updateCanInstall ? t('updateRestart') : t('settingsCheckUpdate') }}
+              </button>
+            </div>
+          </section>
         </template>
       </main>
     </div>

@@ -3,6 +3,7 @@ pub mod appid;
 pub mod banner;
 pub mod clipboard;
 pub mod coreaudio;
+pub mod displays;
 pub mod error;
 pub mod input;
 pub mod smtc;

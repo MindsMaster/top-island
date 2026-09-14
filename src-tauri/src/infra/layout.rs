@@ -86,6 +86,7 @@ pub fn list_displays(app: &tauri::AppHandle) -> AppResult<Vec<DisplayInfo>> {
     let primary = win.primary_monitor().map_err(|e| e.to_string())?;
     let primary_name = primary.as_ref().and_then(|m| m.name().cloned());
     let monitors = win.available_monitors().map_err(|e| e.to_string())?;
+    let friendly = island_windows::displays::monitor_friendly_names();
     Ok(monitors
         .into_iter()
         .enumerate()
@@ -93,7 +94,7 @@ pub fn list_displays(app: &tauri::AppHandle) -> AppResult<Vec<DisplayInfo>> {
             let name = m.name().cloned().unwrap_or_else(|| format!("DISPLAY{}", i + 1));
             DisplayInfo {
                 primary: Some(&name) == primary_name.as_ref(),
-                label: name.clone(),
+                label: friendly.get(&name).cloned().unwrap_or_else(|| name.clone()),
                 id: name,
             }
         })

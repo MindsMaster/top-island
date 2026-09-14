@@ -1,6 +1,6 @@
-/* === 设置窗口（独立 BrowserWindow） === */
 #settings-window {
-  /* zoom 缩放；vw/vh 不被 zoom 折算，须除回 --app-scale */
+  --settings-surface: rgba(var(--ink), 0.035);
+  --settings-sidebar: rgba(var(--ink), 0.025);
   width: calc(100vw / var(--app-scale, 1));
   height: calc(100vh / var(--app-scale, 1));
   zoom: var(--app-scale, 1);
@@ -10,83 +10,90 @@
   overflow: hidden;
   background: var(--panel-bg);
   color: var(--island-text);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35);
   border: 1px solid var(--panel-border);
-  /* 打开进入动画：根节点 key 每次打开都换，动画随重建重播 */
-  animation: settings-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  font-family: 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  container: settings / inline-size;
+  animation: settings-in 0.16s ease-out;
+
+  button:focus-visible,
+  summary:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
 }
+
 @keyframes settings-in {
-  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
-  to { opacity: 1; transform: none; }
-}
-html[data-scheme='light'] #settings-window {
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.14);
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .settings-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 16px 10px;
+  padding: 12px 16px 12px 20px;
   flex-shrink: 0;
   -webkit-app-region: drag;
 }
-.settings-header-icon {
-  font-size: 13px;
-  color: rgba(var(--ink), 0.4);
-}
 .settings-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 .settings-close {
   margin-left: auto;
   background: none;
   border: none;
-  color: rgba(var(--ink), 0.4);
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  color: rgba(var(--ink), 0.65);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   font-size: 14px;
-  transition: color 0.2s, background 0.2s;
   -webkit-app-region: no-drag;
 }
 .settings-close:hover {
   color: var(--danger);
-  background: rgba(255, 107, 107, 0.12);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
-
 .settings-body {
   flex: 1;
   display: flex;
   min-height: 0;
-  padding: 0 12px 12px;
-  gap: 10px;
+  border-top: 1px solid var(--panel-border);
 }
 .settings-nav {
-  width: 108px;
+  width: 124px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 14px 8px;
+  background: var(--settings-sidebar);
+  border-right: 1px solid var(--panel-border);
 }
 .settings-nav-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  min-height: 36px;
+  padding: 8px 10px;
   border: none;
-  border-radius: 10px;
+  border-radius: 7px;
   background: none;
-  color: rgba(var(--ink), 0.55);
-  font-size: 13px;
+  color: rgba(var(--ink), 0.7);
+  font-size: 12px;
   font-family: inherit;
   cursor: pointer;
-  transition: color 0.2s, background 0.2s;
   text-align: left;
 }
 .settings-nav-btn i {
@@ -95,139 +102,161 @@ html[data-scheme='light'] #settings-window {
   text-align: center;
 }
 .settings-nav-btn:hover {
-  background: rgba(var(--ink), 0.06);
-  color: rgba(var(--ink), 0.85);
-}
-.settings-nav-btn.active {
-  background: rgba(var(--ink), 0.1);
+  background: rgba(var(--ink), 0.05);
   color: var(--island-text);
 }
-
+.settings-nav-btn.active {
+  background: rgba(var(--ink), 0.09);
+  color: var(--island-text);
+  font-weight: 600;
+  box-shadow: inset 3px 0 var(--accent);
+}
+.settings-nav-bottom {
+  margin-top: auto;
+}
 .settings-content {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  /* 说明 tooltip 绝对定位会撑出横向滚动条，显式裁掉 */
   overflow-x: hidden;
-  padding: 2px 10px 10px 6px;
+  padding: 20px 18px 24px;
+  scrollbar-gutter: stable;
 }
-
-/* 设置项层级：分组标题（小标签）< 行标签。组内发丝线分隔，组间靠标题的整行分隔线断开 */
+.settings-page-title {
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: 0 0 20px;
+}
+.setting-section {
+  margin-top: 22px;
+}
+.setting-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--island-text);
+  margin: 0 0 9px;
+  padding: 0 2px;
+}
+.setting-group {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--settings-surface);
+}
 .setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 11px 6px;
+  height: 50px;
+  padding: 9px 12px;
 }
-/* 组内相邻行的发丝分隔线（标题打断相邻性，不跨组连线） */
 .setting-row + .setting-row {
-  border-top: 1px solid rgba(var(--ink), 0.055);
+  border-top: 1px solid rgba(var(--ink), 0.075);
 }
 .setting-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(var(--ink), 0.88);
-  flex-shrink: 0;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--island-text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-/* 分组标题：小号、降灰，当分组标签，不与行标签争主次 */
-.setting-group-title {
+.setting-label label {
+  cursor: pointer;
+}
+.setting-status {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: rgba(var(--ink), 0.42);
-  padding: 15px 6px 9px;
-  margin-top: 8px;
-  border-top: 1px solid rgba(var(--ink), 0.09);
-}
-.setting-group-title:first-child {
-  margin-top: 2px;
-  padding-top: 2px;
-  border-top: none;
-}
-/* 说明图标：hover 弹出应用内 tooltip，替代整段说明文字 */
-.setting-help {
-  position: relative;
-  display: inline-block;
-  margin-left: 5px;
-  color: rgba(var(--ink), 0.3);
-  font-size: 11px;
-  cursor: help;
-  transition: color 0.15s;
-  -webkit-app-region: no-drag;
-}
-.setting-help:hover {
   color: rgba(var(--ink), 0.6);
 }
-.setting-help-tip {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: -6px;
-  z-index: 60;
-  width: 300px;
-  padding: 8px 11px;
-  border-radius: 10px;
-  background: var(--island-bg);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  color: rgba(var(--ink), 0.7);
+.setting-feedback {
+  margin: 0;
+  padding: 0 12px 12px;
   font-size: 11px;
-  font-weight: 400;
-  line-height: 1.55;
-  white-space: normal;
-  opacity: 0;
-  transform: translateY(-4px);
-  pointer-events: none;
-  transition: opacity 0.15s, transform 0.15s;
-}
-.setting-help:hover .setting-help-tip {
-  opacity: 1;
-  transform: translateY(0);
-}
-html[data-scheme='light'] .setting-help-tip {
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
-}
-.setting-hint {
-  font-size: 11px;
-  color: rgba(var(--ink), 0.4);
-  padding: 0 4px 6px;
-  line-height: 1.5;
-}
-
-/* 子设置组：主开关下的从属项。accent 左导轨表示受上方开关控制；主开关关时整组不渲染 */
-.setting-subgroup {
-  margin: -2px 6px 8px;
-  padding-left: 14px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-}
-.setting-sub {
-  padding: 9px 6px;
-}
-/* 子项间更淡的分隔线 */
-.setting-sub + .setting-sub {
-  border-top: 1px solid rgba(var(--ink), 0.05);
-}
-.setting-sub .setting-label {
-  font-size: 12px;
-  font-weight: 500;
   color: rgba(var(--ink), 0.72);
+  overflow-wrap: anywhere;
+}
+.setting-subgroup {
+  padding: 0 12px;
+  background: rgba(var(--ink), 0.025);
+  border-top: 1px solid var(--panel-border);
+  border-radius: 0 0 10px 10px;
+
+  .setting-row {
+    padding-inline: 0;
+  }
+  .setting-label {
+    color: rgba(var(--ink), 0.8);
+  }
 }
 .setting-sub-input {
-  padding: 4px 6px 8px;
+  padding: 2px 0 12px;
 }
 .setting-sub-input .setting-text-input {
   width: 100%;
   margin-left: 0;
 }
+.reset-prompt {
+  padding: 0 12px 14px;
+  font-size: 12px;
+  color: rgba(var(--ink), 0.8);
+
+  p {
+    margin: 0 0 14px;
+    line-height: 1.7;
+  }
+  .setting-error {
+    color: var(--danger);
+  }
+}
+.settings-app-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 0 24px;
+
+  h2 {
+    margin: 0 0 3px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  p {
+    margin: 0;
+    font-size: 12px;
+    color: rgba(var(--ink), 0.65);
+  }
+}
+.settings-app-icon {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: block;
+  border-radius: 12px;
+}
 
 .setting-select {
   position: relative;
+  width: 132px;
+  flex-shrink: 0;
+  max-width: 52%;
+  min-width: 0;
 }
 .setting-select-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 130px;
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  white-space: nowrap;
   border: 1px solid rgba(var(--ink), 0.14);
   border-radius: 10px;
   background: rgba(var(--ink), 0.06);
@@ -236,7 +265,9 @@ html[data-scheme='light'] .setting-help-tip {
   font-family: inherit;
   padding: 6px 12px;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 .setting-select-btn:hover {
   background: rgba(var(--ink), 0.1);
@@ -246,6 +277,10 @@ html[data-scheme='light'] .setting-help-tip {
 }
 .setting-select-btn span {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: left;
 }
 .setting-select-caret {
@@ -261,6 +296,7 @@ html[data-scheme='light'] .setting-help-tip {
   top: calc(100% + 4px);
   right: 0;
   min-width: 100%;
+  max-width: 280px;
   z-index: 10;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -277,10 +313,8 @@ html[data-scheme='light'] .setting-help-tip {
 .setting-select-group {
   font-size: 10px;
   font-weight: 600;
-  color: rgba(var(--ink), 0.4);
+  color: rgba(var(--ink), 0.65);
   padding: 5px 10px 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
 }
 .setting-select-group:not(:first-child) {
   margin-top: 3px;
@@ -299,7 +333,9 @@ html[data-scheme='light'] .setting-help-tip {
   padding: 6px 10px;
   border-radius: 7px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   text-align: left;
   white-space: nowrap;
 }
@@ -310,6 +346,9 @@ html[data-scheme='light'] .setting-help-tip {
 }
 .setting-select-item span {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .setting-select-item:hover {
   background: rgba(var(--ink), 0.08);
@@ -324,15 +363,17 @@ html[data-scheme='light'] .setting-help-tip {
 }
 
 .offset-row {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 8px 4px;
+  gap: 12px;
 }
 .offset-row .setting-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex: 1;
+}
+.offset-row .offset-control {
+  width: 132px;
+  max-width: 52%;
+}
+.offset-row .offset-slider {
+  min-width: 0;
 }
 .offset-value {
   font-size: 12px;
@@ -364,6 +405,8 @@ html[data-scheme='light'] .setting-help-tip {
 }
 
 .custom-palette {
+  height: auto;
+  min-height: 68px;
   align-items: center;
   gap: 14px;
 }
@@ -415,7 +458,9 @@ html[data-scheme='light'] .setting-help-tip {
   border: 1px solid rgba(var(--ink), 0.18);
   cursor: pointer;
   padding: 0;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
 }
 .custom-swatch:hover {
   transform: scale(1.08);
@@ -453,8 +498,7 @@ html[data-scheme='light'] .setting-help-tip {
   touch-action: none;
   /* 白->透明（横向饱和度）+ 黑->透明（纵向明度），底色为当前色相 */
   background-image:
-    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
-    linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)), linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
 }
 .cp-sv-thumb {
   position: absolute;
@@ -462,7 +506,9 @@ html[data-scheme='light'] .setting-help-tip {
   height: 12px;
   border-radius: 50%;
   border: 2px solid #fff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 1px 4px rgba(0, 0, 0, 0.3);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -529,6 +575,7 @@ html[data-scheme='light'] .setting-help-tip {
 }
 .setting-num-input {
   width: 56px;
+  height: 30px;
   background: rgba(var(--ink), 0.06);
   border: 1px solid rgba(var(--ink), 0.12);
   border-radius: 8px;
@@ -572,29 +619,38 @@ html[data-scheme='light'] .setting-help-tip {
   border-radius: 50%;
   /* “关”态旋钮收敛，让“开”态 accent 更跳 */
   background: rgba(var(--ink), 0.55);
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 .setting-toggle.on {
   background: var(--accent);
 }
 .setting-toggle.on .setting-toggle-knob {
   transform: translateX(16px);
-  background: var(--island-text);
+  background: var(--on-accent);
 }
 
 .setting-action-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  flex-shrink: 0;
+  max-width: 58%;
+  height: 30px;
+  white-space: nowrap;
   border: 1px solid rgba(var(--ink), 0.14);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(var(--ink), 0.06);
   color: rgba(var(--ink), 0.75);
   font-size: 12px;
   font-family: inherit;
   padding: 6px 12px;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s;
 }
 .setting-action-btn:hover {
   background: rgba(var(--ink), 0.12);
@@ -605,22 +661,18 @@ html[data-scheme='light'] .setting-help-tip {
   cursor: default;
 }
 .setting-action-btn.danger {
-  border-color: color-mix(in srgb, #e5484d 55%, transparent);
-  background: color-mix(in srgb, #e5484d 12%, transparent);
-  color: #e5484d;
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: transparent;
+  color: var(--danger);
 }
-.setting-action-btn.danger:hover {
-  background: #e5484d;
-  color: #fff;
+.setting-action-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 .reset-confirm {
   display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
-}
-/* 与上方诊断项拉开距离，红色标题提示危险区 */
-.setting-group-title.reset-divider {
-  margin-top: 18px;
-  color: #e5484d;
 }
 
 .setting-text-input {
@@ -654,8 +706,46 @@ html[data-scheme='light'] .setting-help-tip {
   transition: width 0.2s;
 }
 
-/* --- 亮色系微调（其余由令牌自动适配） --- */
-html[data-scheme='light'] {
-  .setting-select-menu { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
-  .setting-toggle-knob { background: #fff; }
+@container settings (max-width: 440px) {
+  .settings-nav {
+    width: 104px;
+    padding-inline: 6px;
+  }
+  .settings-nav-btn {
+    gap: 6px;
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+  .settings-nav-btn i {
+    font-size: 11px;
+    width: 12px;
+  }
+  .settings-content {
+    padding: 18px 12px 24px;
+  }
+  .custom-palette {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .setting-select-menu {
+    min-width: 160px;
+  }
+  .custom-preview {
+    flex: auto;
+  }
+  .custom-swatches {
+    justify-content: space-around;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #settings-window {
+    animation: none;
+  }
+  #settings-window *,
+  #settings-window *::before,
+  #settings-window *::after {
+    transition: none;
+    animation: none;
+  }
 }
