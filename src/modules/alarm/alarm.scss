@@ -1,0 +1,653 @@
+/* === 面板5: 闹钟（定时 + 倒计时） === */
+.alarm-panel {
+  gap: 10px;
+  justify-content: flex-start !important;
+  padding-top: 6px;
+}
+
+.alarm-mode-select {
+  display: flex;
+  gap: 0;
+  width: 100%;
+  max-width: 260px;
+  background: rgba(var(--ink), 0.05);
+  border-radius: 10px;
+  padding: 3px;
+}
+.alarm-mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: rgba(var(--ink), 0.5);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s;
+  -webkit-app-region: no-drag;
+}
+.alarm-mode-btn i {
+  font-size: 11px;
+}
+.alarm-mode-btn.active {
+  background: rgba(var(--ink), 0.1);
+  color: var(--island-text);
+}
+
+.alarm-ring-wrap {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  flex-shrink: 0;
+}
+.alarm-ring {
+  width: 104px;
+  height: 104px;
+}
+.alarm-ring circle:last-child {
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.alarm-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.alarm-time-display {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+.alarm-state-label {
+  font-size: 10px;
+  color: rgba(var(--ink), 0.4);
+}
+
+.alarm-presets {
+  display: flex;
+  gap: 6px;
+}
+.alarm-preset {
+  border: 1px solid rgba(var(--ink), 0.12);
+  background: rgba(var(--ink), 0.05);
+  color: rgba(var(--ink), 0.6);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alarm-preset:hover {
+  background: rgba(var(--ink), 0.1);
+}
+.alarm-preset.active {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+.alarm-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 260px;
+}
+.alarm-min-input {
+  width: 44px;
+  flex-shrink: 0;
+  background: rgba(var(--ink), 0.06);
+  border: 1px solid rgba(var(--ink), 0.1);
+  color: var(--island-text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 3px 4px;
+  border-radius: 8px;
+  outline: none;
+  font-family: inherit;
+  -webkit-app-region: no-drag;
+}
+.alarm-min-input:focus {
+  border-color: var(--accent);
+}
+.alarm-min-unit {
+  font-size: 10px;
+  color: rgba(var(--ink), 0.4);
+  flex-shrink: 0;
+}
+
+.alarm-slider {
+  width: 100%;
+  max-width: 260px;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(var(--ink), 0.12);
+  outline: none;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.alarm-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--island-text);
+  cursor: pointer;
+}
+
+.alarm-action-btn {
+  width: 100%;
+  max-width: 260px;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #fff));
+  border: none;
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 0;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.5px;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 32%, transparent);
+  -webkit-app-region: no-drag;
+}
+.alarm-action-btn:hover {
+  transform: scale(1.02);
+}
+.alarm-action-btn:active {
+  transform: scale(0.98);
+}
+.alarm-action-btn.secondary {
+  background: rgba(var(--ink), 0.08);
+  color: rgba(var(--ink), 0.75);
+  box-shadow: none;
+}
+.alarm-running-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 260px;
+}
+.alarm-running-actions .alarm-action-btn {
+  flex: 1;
+}
+
+.alarm-list {
+  flex: 1;
+  width: 100%;
+  max-width: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 90px;
+}
+.alarm-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: rgba(var(--ink), 0.3);
+}
+.alarm-empty i {
+  font-size: 20px;
+}
+.alarm-empty span {
+  font-size: 11px;
+}
+.alarm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: rgba(var(--ink), 0.04);
+  cursor: pointer;
+  transition: background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alarm-row:hover {
+  background: rgba(var(--ink), 0.08);
+}
+.alarm-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.alarm-row-time {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  line-height: 1.1;
+}
+.alarm-row-sub {
+  font-size: 10px;
+  color: rgba(var(--ink), 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.alarm-row.off .alarm-row-time,
+.alarm-row.off .alarm-row-sub {
+  color: rgba(var(--ink), 0.35);
+}
+.alarm-row-toggle {
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.alarm-fab {
+  position: absolute;
+  right: 18px;
+  bottom: 44px;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  border: none;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: transform 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alarm-fab:hover {
+  transform: scale(1.08);
+}
+
+.alarm-add-label {
+  flex: 1;
+  min-width: 0;
+  background: rgba(var(--ink), 0.06);
+  border: 1px solid rgba(var(--ink), 0.1);
+  color: var(--island-text);
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  outline: none;
+  font-family: inherit;
+  -webkit-app-region: no-drag;
+}
+.alarm-add-label:focus {
+  border-color: rgba(var(--ink), 0.22);
+}
+.alarm-add-label::placeholder {
+  color: rgba(var(--ink), 0.3);
+}
+
+/* 面板贴底，下拉一律向上弹出 */
+.alarm-panel .setting-select-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+  max-height: 200px;
+}
+
+/* === 编辑抽屉（覆盖面板） === */
+.alarm-editor {
+  position: absolute;
+  inset: 0;
+  background: var(--island-bg);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px 10px;
+  -webkit-app-region: no-drag;
+}
+.alarm-editor-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.alarm-editor-seg {
+  border: none;
+  border-radius: 9px;
+  background: rgba(var(--ink), 0.06);
+  color: rgba(var(--ink), 0.7);
+  font-size: 26px;
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  width: 58px;
+  text-align: center;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alarm-editor-seg.active {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--island-text);
+}
+.alarm-editor-colon {
+  font-size: 24px;
+  font-weight: 700;
+  color: rgba(var(--ink), 0.5);
+}
+
+.time-dial {
+  cursor: pointer;
+  touch-action: none;
+}
+.time-dial .dial-bg {
+  fill: rgba(var(--ink), 0.06);
+}
+.time-dial .dial-hand {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.time-dial .dial-knob {
+  fill: var(--accent);
+}
+.time-dial .dial-center {
+  fill: var(--accent);
+}
+.time-dial .dial-num {
+  fill: rgba(var(--ink), 0.65);
+  font-size: 11px;
+  font-family: inherit;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.time-dial .dial-num.inner {
+  fill: rgba(var(--ink), 0.45);
+  font-size: 10px;
+}
+.time-dial .dial-num.sel {
+  fill: var(--on-accent);
+}
+
+.alarm-editor-days {
+  display: flex;
+  gap: 5px;
+}
+.alarm-day-chip {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--ink), 0.14);
+  background: transparent;
+  color: rgba(var(--ink), 0.55);
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.alarm-day-chip.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+.alarm-editor-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.alarm-editor-del {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(var(--ink), 0.35);
+  font-size: 12px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+.alarm-editor-del:hover {
+  color: var(--danger);
+  background: rgba(255, 63, 63, 0.12);
+}
+.alarm-editor-btn {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.alarm-editor-btn:hover {
+  transform: scale(1.04);
+}
+.alarm-editor-btn.ghost {
+  background: rgba(var(--ink), 0.08);
+  color: rgba(var(--ink), 0.7);
+}
+
+.alarm-sound-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-bottom: 2px;
+}
+.alarm-sound-row .setting-select-btn {
+  min-width: 150px;
+  padding: 5px 10px;
+}
+.alarm-preview-btn {
+  background: rgba(var(--ink), 0.08);
+  border: none;
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  color: rgba(var(--ink), 0.6);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alarm-preview-btn:hover {
+  color: var(--island-text);
+  background: rgba(var(--ink), 0.14);
+}
+
+.alarm-quick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  height: 100%;
+  padding: 0 12px;
+  color: var(--island-text);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+.alarm-quick-ring {
+  flex-shrink: 0;
+}
+.alarm-quick-time {
+  flex: none;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+}
+/* capfade transition for countdown ring */
+.capfade-enter-active {
+  transition: opacity 0.25s ease 0.14s, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.14s;
+}
+.capfade-leave-active {
+  transition: opacity 0.12s ease;
+}
+.capfade-enter-from {
+  opacity: 0;
+  transform: scale(0.85);
+}
+.capfade-leave-to {
+  opacity: 0;
+}
+.alarm-quick-stop {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(var(--ink), 0.4);
+  font-size: 11px;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alarm-quick-stop:hover {
+  color: var(--island-text);
+  background: rgba(var(--ink), 0.1);
+}
+#island.capsule-alarm {
+  width: 200px !important;
+}
+
+.alarm-mini {
+  position: absolute;
+  top: 13px;
+  height: 34px;
+  width: 34px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--island-bg);
+  color: var(--island-text);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  transition:
+    scale 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    box-shadow 0.2s,
+    translate 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.alarm-mini:hover {
+  scale: 1.08;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+.alarm-mini .alarm-quick-ring circle:first-child {
+  stroke: rgba(var(--ink), 0.18);
+}
+.alarm-mini.capfade-enter-from,
+.alarm-mini.capfade-leave-to {
+  opacity: 0;
+  scale: 0.5;
+}
+.alarm-mini.capfade-enter-active {
+  transition:
+    opacity 0.22s ease 0.1s,
+    scale 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.1s;
+}
+.alarm-mini.capfade-leave-active {
+  transition: opacity 0.12s ease, scale 0.12s ease;
+}
+.alarm-mini-pop {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% -3px;
+  padding-top: 7px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.16s ease, translate 0.2s ease, visibility 0.16s;
+}
+.alarm-mini:hover .alarm-mini-pop {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  translate: -50% 0;
+  transition-delay: 0.15s;
+}
+.alarm-mini-pop-card {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px 5px 12px;
+  border-radius: 12px;
+  background: rgba(18, 18, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+.alarm-mini-time {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #fff;
+}
+.alarm-mini-stop {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  -webkit-app-region: no-drag;
+}
+.alarm-mini-stop:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+html[data-scheme='light'] .alarm-mini {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
