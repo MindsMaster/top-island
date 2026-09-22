@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import { api } from '../api';
+import { storeApi } from '@/platform/store';
 
 export interface TaskItem {
   id: string;
@@ -28,12 +28,12 @@ export const tasksState = reactive({
 let reminderTimer: number | null = null;
 
 export async function initTasks() {
-  tasksState.tasks = (await api.storeGet<TaskItem[]>('tasks')) || [];
+  tasksState.tasks = (await storeApi.get<TaskItem[]>('tasks')) || [];
 }
 
 /** 持久化：整个任务列表落盘。reactive 对 JSON.stringify 透明，无需先取 raw */
 function save() {
-  api.storeSet('tasks', JSON.parse(JSON.stringify(tasksState.tasks)));
+  storeApi.set('tasks', JSON.parse(JSON.stringify(tasksState.tasks)));
 }
 
 export function addTask(

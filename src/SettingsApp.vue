@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { api } from './api';
+import { musicApi } from '@/platform/music';
+import { settingsApi } from '@/platform/settings';
+import { storeApi } from '@/platform/store';
+import { systemApi } from '@/platform/system';
+import { updateApi } from '@/platform/update';
+import { wechatApi } from '@/platform/wechat';
+import { windowApi } from '@/platform/window';
 import { useI18n } from './i18n';
 import { hexLuminance, THEMES, initSettings, setCustomColor, settings } from './store/settings';
 import SettingSelect from './components/SettingSelect.vue';
 import ColorPicker from './components/ColorPicker.vue';
 import SettingSwitch from './components/SettingSwitch.vue';
 import appIcon from './assets/app-icon.png';
-import type { BridgeStatus, DisplayInfo, LangPref, ThemeId, UpdateCheckResult } from '../shared/ipc';
+import type { BridgeStatus, DisplayInfo, LangPref, ThemeId, UpdateCheckResult } from '@/platform/types';
 
 const { t, initI18n } = useI18n();
 /** 读直接渲染（reactive 自动追踪）；写也直接改字段，持久化/广播由 store 的 watch 统一处理 */
@@ -116,7 +122,7 @@ function onPeekInput(e: Event) {
 
 /** 每次打开设置窗 +1：根节点换 key 重建以重播进入动画（窗口常驻不销毁，Vue 不会自己重挂载） */
 const enterKey = ref(0);
-api.onSettingsOpened(() => {
+settingsApi.onOpened(() => {
   resetArmed.value = false;
   openPicker.value = null;
   enterKey.value++;
@@ -134,7 +140,7 @@ const bridgeStatusText = computed(() => t(BRIDGE_STATUS_KEY[bridgeStatus.value])
 
 async function refreshBridgeStatus() {
   if (!settings.music.neteaseBridge) return;
-  bridgeStatus.value = await api.musicBridgeStatus().catch(() => 'notDetected' as BridgeStatus);
+  bridgeStatus.value = await musicApi.bridgeStatus().catch(() => 'notDetected' as BridgeStatus);
 }
 
 const wechatHasKey = ref(false);
@@ -146,7 +152,7 @@ const updateMsg = ref('');
 const updateCanInstall = ref(false);
 
 async function refreshWechatKey() {
-  wechatHasKey.value = await api.wechatHasKey().catch(() => false);
+  wechatHasKey.value = await wechatApi.hasKey().catch(() => false);
 }
 
 function applyUpdateResult(r: UpdateCheckResult) {
@@ -162,13 +168,13 @@ function applyUpdateResult(r: UpdateCheckResult) {
 
 async function checkForUpdate() {
   if (updateCanInstall.value) {
-    void api.installUpdate();
+    void updateApi.install();
     return;
   }
   updateBusy.value = true;
   updateMsg.value = t('settingsUpdateChecking');
   try {
-    applyUpdateResult(await api.checkUpdate());
+    applyUpdateResult(await updateApi.check());
   } catch (e) {
     applyUpdateResult({ status: 'error', message: e instanceof Error ? e.message : String(e) });
   } finally {
@@ -180,9 +186,7 @@ async function acquireWechatKey() {
   if (wechatAcquiring.value) return;
   wechatAcquiring.value = true;
   wechatMsg.value = t('wechatAcquiring');
-  const r = await api
-    .wechatAcquireKey()
-    .catch(() => ({ ok: false, error: 'error' }) as { ok: boolean; wxid?: string; error?: string });
+  const r = await wechatApi.acquireKey().catch(() => ({ ok: false, error: 'error' }));
   wechatAcquiring.value = false;
   if (r.ok) {
     wechatHasKey.value = true;
@@ -210,7 +214,7 @@ async function confirmReset() {
   if (resetBusy.value) return;
   resetBusy.value = true;
   try {
-    await api.storeClear();
+    await storeApi.clear();
   } catch {
     resetError.value = t('settingsResetError');
   } finally {
@@ -227,7 +231,7 @@ function onWindowFocus() {
 
 function onWindowBlur() {
   if (Date.now() - focusedAt < FOCUS_BLUR_GRACE_MS) return;
-  api.closeSelf();
+  windowApi.closeSelf();
 }
 
 let bridgeTimer: number | undefined;
@@ -246,12 +250,12 @@ onMounted(async () => {
   window.addEventListener('blur', onWindowBlur);
   window.addEventListener('focus', onWindowFocus);
   document.addEventListener('mousedown', onDocMouseDownPicker);
-  displays.value = await api.displaysList().catch(() => []);
+  displays.value = await systemApi.displays().catch(() => []);
   await refreshWechatKey();
-  const ver = await api.getVersion().catch(() => ({ version: '', gitHash: '', packaged: true }));
+  const ver = await systemApi.version().catch(() => ({ version: '', gitHash: '', packaged: true }));
   appVersionLabel.value = ver.gitHash ? `${ver.version} (${ver.gitHash})` : ver.version;
-  api.onUpdateDownloaded((info) => applyUpdateResult({ status: 'downloaded', version: info.version }));
-  applyUpdateResult(await api.getUpdateStatus().catch(() => ({ status: ver.packaged ? 'checking' : 'dev' })));
+  updateApi.onDownloaded((info) => applyUpdateResult({ status: 'downloaded', version: info.version }));
+  applyUpdateResult(await updateApi.status().catch(() => ({ status: ver.packaged ? 'checking' : 'dev' })));
   void refreshBridgeStatus();
   bridgeTimer = window.setInterval(() => void refreshBridgeStatus(), 2000);
 });
@@ -261,7 +265,7 @@ onMounted(async () => {
   <div id="settings-window" :key="enterKey">
     <header class="settings-header">
       <span class="settings-title">{{ t('settingsTitle') }}</span>
-      <button class="settings-close" :aria-label="t('settingsClose')" @click="api.closeSelf()">
+      <button class="settings-close" :aria-label="t('settingsClose')" @click="windowApi.closeSelf()">
         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
     </header>
@@ -508,7 +512,9 @@ onMounted(async () => {
           <section class="setting-group">
             <div class="setting-row">
               <div class="setting-label">{{ t('diagLogLabel') }}</div>
-              <button class="setting-action-btn" @click="api.diagReveal()">{{ t('diagLogReveal') }}</button>
+              <button class="setting-action-btn" @click="systemApi.revealDataDir()">
+                {{ t('diagLogReveal') }}
+              </button>
             </div>
             <SettingSwitch v-model="st.diagnostics.devOverlay" :label="t('diagDevOverlay')" />
           </section>

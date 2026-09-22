@@ -1,5 +1,6 @@
 import { reactive, toRaw, watch } from 'vue';
-import { api } from '../api';
+import { settingsApi } from '@/platform/settings';
+import { storeApi } from '@/platform/store';
 import { useI18n } from '../i18n';
 import type {
   AppSettings,
@@ -10,7 +11,7 @@ import type {
   NotificationsConfig,
   NotificationsPrivacy,
   ThemeId,
-} from '../../shared/ipc';
+} from '@/platform/types';
 
 export type ThemeGroup = 'solid' | 'gradient' | 'custom';
 
@@ -196,7 +197,7 @@ export async function initSettings() {
   if (loaded) return;
   let saved: Partial<AppSettings> | null = null;
   try {
-    saved = await api.storeGet<Partial<AppSettings>>('settings');
+    saved = await storeApi.get<Partial<AppSettings>>('settings');
   } catch {
     // 后端 store 还没就绪（webview 可能先于 setup 加载）：稍后重试，
     // 不标记 loaded，否则主题会永远停在默认值
@@ -225,11 +226,11 @@ export async function initSettings() {
     const json = JSON.stringify(settings);
     if (json === lastSynced) return;
     lastSynced = json;
-    api.settingsUpdate(JSON.parse(JSON.stringify(toRaw(settings))) as AppSettings).catch(() => {});
+    settingsApi.update(JSON.parse(JSON.stringify(toRaw(settings))) as AppSettings).catch(() => {});
   });
 
   // 其他窗口的修改 -> 灌进本窗口（subscribe 的副作用部分照跑，持久化被 lastSynced 挡下）
-  api.onSettingsChanged((s) => {
+  settingsApi.onChanged((s) => {
     applyRemote(s);
     lastSynced = JSON.stringify(settings);
   });

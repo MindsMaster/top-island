@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { api } from './api';
+import { systemApi } from '@/platform/system';
 import type { Lang, Messages } from './i18n/types';
 import zhCN from './i18n/locales/zh-CN';
 import enUS from './i18n/locales/en-US';
@@ -33,7 +33,7 @@ async function applyLangPref(pref: 'auto' | Lang) {
     return;
   }
   try {
-    const locale = await api.getLocale();
+    const locale = await systemApi.locale();
     lang.value = locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
   } catch {
     lang.value = (navigator.language || '').startsWith('zh') ? 'zh-CN' : 'en-US';

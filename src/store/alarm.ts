@@ -1,9 +1,10 @@
 import { reactive, watch } from 'vue';
-import { api } from '../api';
+import { alarmApi } from '@/platform/alarm';
+import { storeApi } from '@/platform/store';
 import { showAlert, dismissAlert } from './alert';
 import { pauseIfPlaying, resumePlay } from './music';
 import { useI18n } from '../i18n';
-import type { AlarmSound } from '../../shared/ipc';
+import type { AlarmSound } from '@/platform/types';
 
 const { t } = useI18n();
 
@@ -63,15 +64,11 @@ function save() {
   lastSavedJson = json;
   // 深拷贝去 Proxy：Proxy 过 contextBridge 会抛 "could not be cloned"，
   // 且此错误在回调里会炸掉调度器 flush，整个界面停更
-  api.storeSet('alarmData', JSON.parse(json) as AlarmStore).catch(() => {});
+  storeApi.set('alarmData', JSON.parse(json) as AlarmStore).catch(() => {});
 }
 
 export async function initAlarm() {
-  // alarmSoundList 防御：preload 版本落后时不至于中断整个初始化链
-  const [saved, defs] = await Promise.all([
-    api.storeGet<AlarmStore>('alarmData'),
-    typeof api.alarmSoundList === 'function' ? api.alarmSoundList() : Promise.resolve([]),
-  ]);
+  const [saved, defs] = await Promise.all([storeApi.get<AlarmStore>('alarmData'), alarmApi.listSounds()]);
   alarmState.defaultSounds = defs;
   if (saved) {
     alarmState.alarms = saved.alarms || [];
@@ -86,7 +83,7 @@ export async function initAlarm() {
 async function soundDataUrl(path: string): Promise<string | null> {
   const cached = soundCache.get(path);
   if (cached) return cached;
-  const data = await api.alarmSoundData(path);
+  const data = await alarmApi.soundData(path);
   if (data) soundCache.set(path, data);
   return data;
 }
@@ -121,7 +118,7 @@ export async function preview() {
 }
 
 export async function pickCustomSound() {
-  const picked = await api.alarmSoundPick();
+  const picked = await alarmApi.pickSound();
   if (picked) alarmState.sound = picked;
 }
 

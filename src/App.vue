@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { api } from './api';
+import { settingsApi } from '@/platform/settings';
+import { updateApi } from '@/platform/update';
+import { windowApi } from '@/platform/window';
 import { useI18n } from './i18n';
 import { useClock } from './composables/useClock';
 import { THEMES, initSettings, settings, toggleTheme } from './store/settings';
@@ -362,7 +364,7 @@ onMounted(async () => {
   window.addEventListener('focusout', onFocusOut);
   window.addEventListener('blur', onWindowBlur);
 
-  api.onUpdateDownloaded((info) => {
+  updateApi.onDownloaded((info) => {
     showAlert({
       icon: 'fa-arrow-up',
       text: t('updateReady', info.version),
@@ -370,7 +372,7 @@ onMounted(async () => {
       dismissible: true,
       actionLabel: t('updateRestart'),
       actionHandler: () => {
-        void api.installUpdate();
+        void updateApi.install();
       },
     });
   });
@@ -400,7 +402,7 @@ onBeforeUnmount(() => {
 });
 
 function closeWindow() {
-  api.closeWindow();
+  windowApi.quit();
 }
 </script>
 
@@ -524,7 +526,7 @@ function closeWindow() {
           <span class="quick-time">{{ currentTime }}</span>
           <span class="quick-date">{{ currentDate }}</span>
           <div class="quick-right">
-            <button class="quick-settings-btn" :title="t('openSettings')" @click.stop="api.openSettings()">
+            <button class="quick-settings-btn" :title="t('openSettings')" @click.stop="settingsApi.open()">
               <i class="fa-solid fa-gear"></i>
             </button>
             <button class="quick-theme-btn" :title="t('themeCycle')" @click.stop="toggleTheme">
@@ -580,7 +582,7 @@ function closeWindow() {
           <i :class="'fa-solid ' + p.icon"></i>
         </button>
         <div class="panel-indicator-sep"></div>
-        <button class="panel-nav-btn" :title="t('openSettings')" @click.stop="api.openSettings()">
+        <button class="panel-nav-btn" :title="t('openSettings')" @click.stop="settingsApi.open()">
           <i class="fa-solid fa-gear"></i>
         </button>
       </div>

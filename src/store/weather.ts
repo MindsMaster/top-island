@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import { api } from '../api';
+import { weatherApi } from '@/platform/weather';
 import { useI18n } from '../i18n';
 
 const WEATHER_ICONS: Record<number, string> = {
@@ -57,7 +57,7 @@ let refreshTimer: number | null = null;
 
 async function tryFetchIpCity() {
   try {
-    const data = await api.weatherIpCity();
+    const data = await weatherApi.ipCity();
     if (data.city) {
       weatherState.city = data.city;
       if (data.lat != null && data.lon != null) {
@@ -83,7 +83,7 @@ export async function fetchWeather() {
       latitude = ipLat;
       longitude = ipLon;
     } else {
-      const geo = await api.weatherGeocode(FALLBACK_CITY, 'zh');
+      const geo = await weatherApi.geocode(FALLBACK_CITY, 'zh');
       if (!geo.results || !geo.results.length) {
         weatherState.error = t('weatherFetchError');
         weatherState.loading = false;
@@ -93,7 +93,7 @@ export async function fetchWeather() {
       longitude = geo.results[0].longitude;
       if (!weatherState.city) weatherState.city = FALLBACK_CITY;
     }
-    const data = await api.weatherQuery(latitude, longitude, {
+    const data = await weatherApi.query(latitude, longitude, {
       daily: 'temperature_2m_max,temperature_2m_min',
       forecastDays: 1,
     });

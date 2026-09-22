@@ -1,3 +1,5 @@
+//! 与 Rust 侧 serde 形状一一对应的数据契约。手写镜像，vue-tsc 在构建时挡漂移。
+
 /** 锚点式播放状态：positionMs 是 anchorEpochMs 时刻的位置，渲染层按 rate 本地外推 */
 export interface MusicState {
   /** 'ncm-bridge' | 'smtc' | '' */
@@ -217,82 +219,4 @@ export interface HotRect {
   y: number;
   width: number;
   height: number;
-}
-
-/** preload 通过 contextBridge 暴露给渲染层的 API 形状（Tauri 版由 src/api.ts 用 invoke/listen 实现同一形状） */
-export interface IslandApi {
-  /** 上报岛窗热区：interactive 切穿透（null = 全程可交互），hover 判岛悬停（null = 与交互区同） */
-  setHotRect(interactive: HotRect | null, hover: HotRect | null): Promise<void>;
-  closeWindow(): Promise<void>;
-  /** 仅关闭调用方所在窗口（设置窗等辅助窗口用；closeWindow 是退出整个应用） */
-  closeSelf(): Promise<void>;
-  /**
-   * 全局光标位置（相对调用方窗口内容区的坐标）。
-   * 悬停看门狗用：鼠标快速划出屏幕/切到其他显示器时 mouseleave 可能永远
-   * 不触发，需要不依赖事件的兜底校验。
-   */
-  getCursorPoint(): Promise<{ x: number; y: number }>;
-  /** 订阅 Rust 钩子判定的光标进出热区（穿透态下唯一可靠的悬停来源） */
-  onIslandHover(cb: (inside: boolean) => void): void;
-  /** 窗口移动/缩放/DPI 变化（热区物理坐标变了，需要重报） */
-  onWindowGeometryChanged(cb: () => void): void;
-  /** 打开（或聚焦已打开的）设置窗口 */
-  openSettings(): Promise<void>;
-  /** 设置窗每次被打开时触发（窗口常驻不销毁，靠它重播进入动画） */
-  onSettingsOpened(cb: () => void): void;
-  /** 持久化设置并广播给其他窗口 */
-  settingsUpdate(settings: AppSettings): Promise<void>;
-  /** 订阅其他窗口引起的设置变更 */
-  onSettingsChanged(cb: (settings: AppSettings) => void): void;
-  openExternal(url: string): Promise<void>;
-  getLocale(): Promise<string>;
-  clipboardReadText(): Promise<string>;
-  clipboardWriteText(text: string): Promise<void>;
-  /** 仅探测剪贴板是否含图片（availableFormats，零解码；绝不解码位图——主进程同步解码会拖垮全局鼠标钩子） */
-  clipboardHasImage(): Promise<boolean>;
-  clipboardReadFilePaths(): Promise<string[]>;
-  /** 订阅系统剪贴板变化（winbridge 事件驱动，替代轮询；回调里自行读取内容） */
-  onClipboardChanged(cb: () => void): void;
-  /** 在资源管理器中定位诊断日志文件 */
-  diagReveal(): Promise<void>;
-  musicPoll(): Promise<MusicState>;
-  /** 订阅主进程推送的音乐状态（SMTC 变化即时到达，轮询之外的低延迟通道） */
-  onMusicState(cb: (state: MusicState) => void): void;
-  musicControl(action: MusicAction, level?: number): Promise<string>;
-  musicSeek(positionMs: number): Promise<boolean>;
-  /** 按 hash 取当前曲目封面；hash 不匹配（已切歌）时返回 null */
-  musicArtwork(hash: string): Promise<MusicArtwork | null>;
-  /** 按 lyricsId 取当前曲目歌词；id 不匹配（已切歌）时返回 null */
-  musicLyrics(id: string): Promise<LyricsData | null>;
-  musicBridgeStatus(): Promise<BridgeStatus>;
-  weatherIpCity(): Promise<IpCityInfo>;
-  weatherGeocode(city: string, lang: string): Promise<GeocodeResult>;
-  weatherQuery(lat: number, lon: number, opts?: WeatherQueryOptions): Promise<WeatherResult>;
-  storeGet<T>(key: string): Promise<T | null>;
-  storeSet(key: string, value: unknown): Promise<void>;
-  /** 清空全部本地数据并重启应用（不可撤销） */
-  storeClear(): Promise<void>;
-  /** 列出系统默认闹钟音（%windir%\Media\Alarm*.wav） */
-  alarmSoundList(): Promise<AlarmSound[]>;
-  /** 读取音频文件为 data URL（渲染层 file:// 受限，经主进程转运） */
-  alarmSoundData(path: string): Promise<string | null>;
-  /** 打开文件对话框选择自定义音频；取消返回 null */
-  alarmSoundPick(): Promise<AlarmSound | null>;
-  /** 枚举显示器（岛落屏设置用） */
-  displaysList(): Promise<DisplayInfo[]>;
-  /** 订阅新到达的系统通知 */
-  onNotifications(cb: (items: NotificationItem[]) => void): void;
-  /** 复现点击：激活来源应用（能拿到深链就跳到具体会话）。返回激活方式 */
-  notifyActivate(item: Pick<NotificationItem, 'aumid' | 'launch' | 'atype'>): Promise<string>;
-  /** 读取通知图片/头像为 data URL（本地路径经主进程转运；不可解析返回 null） */
-  notifyImage(src: string): Promise<string | null>;
-  /** 获取并缓存微信解密密钥（扫内存，需 Weixin.exe 在运行）。返回结果与账号 */
-  wechatAcquireKey(): Promise<{ ok: boolean; wxid?: string; error?: string }>;
-  /** 是否已有可用的微信密钥缓存 */
-  wechatHasKey(): Promise<boolean>;
-  getVersion(): Promise<AppVersionInfo>;
-  getUpdateStatus(): Promise<UpdateCheckResult>;
-  checkUpdate(): Promise<UpdateCheckResult>;
-  installUpdate(): Promise<void>;
-  onUpdateDownloaded(cb: (info: { version: string }) => void): void;
 }

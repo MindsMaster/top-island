@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
-import { api } from '../api';
+import { musicApi } from '@/platform/music';
 import { settings } from './settings';
-import type { LyricLine, MusicAction, MusicState } from '../../shared/ipc';
+import type { LyricLine, MusicAction, MusicState } from '@/platform/types';
 import {
   builtinLyricOffset,
   extrapolate as extrapolateAnchor,
@@ -77,8 +77,8 @@ function clearState() {
 
 function loadLyrics(id: string) {
   lyricsIdLoaded = id;
-  api
-    .musicLyrics(id)
+  musicApi
+    .lyrics(id)
     .then((data) => {
       if (data && lyricsIdLoaded === id) musicState.lyricLines = data.lines;
     })
@@ -87,8 +87,8 @@ function loadLyrics(id: string) {
 
 function loadArtwork(hash: string) {
   artworkHashLoaded = hash;
-  api
-    .musicArtwork(hash)
+  musicApi
+    .artwork(hash)
     .then((art) => {
       if (art && artworkHashLoaded === hash) musicState.artworkUrl = art.dataUrl;
     })
@@ -157,7 +157,7 @@ function handleState(data: MusicState) {
 async function poll() {
   if (!settings.diagnostics.musicPoll) return;
   try {
-    handleState(await api.musicPoll());
+    handleState(await musicApi.poll());
   } catch {}
 }
 
@@ -181,7 +181,7 @@ export function startMusicPoll() {
   stopMusicPoll();
   if (!stateListenerRegistered) {
     stateListenerRegistered = true;
-    api.onMusicState((state) => {
+    musicApi.onState((state) => {
       if (settings.diagnostics.musicPoll) handleState(state);
     });
   }
@@ -209,7 +209,7 @@ export function stopMusicPoll() {
 }
 
 function control(action: MusicAction, level?: number) {
-  api.musicControl(action, level).catch(() => {});
+  musicApi.control(action, level).catch(() => {});
 }
 
 export function togglePlay() {
@@ -249,7 +249,7 @@ export function seek(ms: number) {
   const target = Math.max(0, Math.min(ms, musicState.durationMs || Number.MAX_SAFE_INTEGER));
   lastSeekAction = Date.now();
   setAnchor(target, Date.now(), musicState.isPlaying ? rate || 1 : 0);
-  api.musicSeek(target).catch(() => {});
+  musicApi.seek(target).catch(() => {});
 }
 
 /* ---- 响应式派生：组件里包 computed(fn(state)) 用 ---- */

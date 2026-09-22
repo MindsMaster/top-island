@@ -1,4 +1,4 @@
-import type { LyricLine } from '../../shared/ipc';
+import type { LyricLine } from '@/platform/types';
 
 export interface Anchor {
   positionMs: number;

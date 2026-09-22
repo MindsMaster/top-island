@@ -1,5 +1,5 @@
 import { ref, watchEffect } from 'vue';
-import { api } from '../api';
+import { windowApi } from '@/platform/window';
 
 export type IslandMode = 'still' | 'quick' | 'large';
 
@@ -37,7 +37,7 @@ export function useIslandMode(options: IslandModeOptions) {
   function reportRect() {
     const interactive = options.keepInteractive() ? null : (options.getRect?.() ?? null);
     const hover = options.getHoverRect?.() ?? null;
-    void api.setHotRect(interactive, hover).catch(() => {});
+    void windowApi.setHotRect(interactive, hover).catch(() => {});
   }
 
   watchEffect(() => {
@@ -48,9 +48,9 @@ export function useIslandMode(options: IslandModeOptions) {
   });
 
   // 窗口移动/缩放/DPI 变化会改变热区的物理坐标，DOM 矩形本身不变，需要重报
-  api.onWindowGeometryChanged(reportRect);
+  windowApi.onGeometryChanged(reportRect);
 
-  api.onIslandHover((inside) => {
+  windowApi.onHover((inside) => {
     if (inside) onEnter();
     else onLeave();
   });

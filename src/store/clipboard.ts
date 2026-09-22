@@ -1,5 +1,7 @@
 import { reactive } from 'vue';
-import { api } from '../api';
+import { clipboardApi } from '@/platform/clipboard';
+import { storeApi } from '@/platform/store';
+import { systemApi } from '@/platform/system';
 import { showAlert } from '../store/alert';
 import { useI18n } from '../i18n';
 import { settings } from '../store/settings';
@@ -44,7 +46,7 @@ export function openUrl(url: string) {
   if (!/^https?:\/\/|mailto:|tel:|file:\/\//i.test(url)) {
     finalUrl = 'file://' + (url.startsWith('/') ? '' : '/') + url;
   }
-  api.openExternal(finalUrl).catch(() => {});
+  systemApi.openExternal(finalUrl).catch(() => {});
 }
 
 export function firstUrl(text: string): string | null {
@@ -53,21 +55,21 @@ export function firstUrl(text: string): string | null {
 }
 
 export async function initClipboard() {
-  clipboardState.history = ((await api.storeGet<ClipItem[]>('clipboardHistory')) || []).filter(
+  clipboardState.history = ((await storeApi.get<ClipItem[]>('clipboardHistory')) || []).filter(
     (h) => h && typeof h.text === 'string'
   );
   clipboardState.history.forEach((h) => {
     if (!h.type) h.type = detectContentType(h.text || '');
   });
-  clipboardState.pinned = (await api.storeGet<string[]>('clipboardPinned')) || [];
+  clipboardState.pinned = (await storeApi.get<string[]>('clipboardPinned')) || [];
 }
 
 function save() {
-  api.storeSet('clipboardHistory', JSON.parse(JSON.stringify(clipboardState.history)));
+  storeApi.set('clipboardHistory', JSON.parse(JSON.stringify(clipboardState.history)));
 }
 
 function savePinned() {
-  api.storeSet('clipboardPinned', JSON.parse(JSON.stringify(clipboardState.pinned)));
+  storeApi.set('clipboardPinned', JSON.parse(JSON.stringify(clipboardState.pinned)));
 }
 
 function alertForItem(item: ClipItem) {
@@ -127,14 +129,14 @@ export function addItem(text: string, source: ClipItem['source']) {
 
 export async function readCurrent() {
   try {
-    const filePaths = await api.clipboardReadFilePaths();
+    const filePaths = await clipboardApi.readFilePaths();
     if (filePaths && filePaths.length > 0) {
       for (const fp of filePaths) addItem(fp, 'system');
       return;
     }
   } catch {}
   try {
-    const text = await api.clipboardReadText();
+    const text = await clipboardApi.readText();
     if (text) {
       addItem(text, 'system');
       return;
@@ -142,7 +144,7 @@ export async function readCurrent() {
   } catch {}
   try {
     // 不用 readImage：主进程同步解码位图会拖垮全局鼠标钩子致系统级卡顿
-    if (await api.clipboardHasImage()) addItem(t('clipboardImagePlaceholder'), 'system');
+    if (await clipboardApi.hasImage()) addItem(t('clipboardImagePlaceholder'), 'system');
   } catch {}
 }
 
@@ -150,13 +152,13 @@ export function startClipboardWatch() {
   if (watching) return;
   watching = true;
   // 事件驱动：剪贴板变化才读一次（不再轮询）；诊断开关关时忽略。readCurrent 内部去重
-  api.onClipboardChanged(() => {
+  clipboardApi.onChanged(() => {
     if (settings.diagnostics.clipboardPoll) void readCurrent();
   });
 }
 
 export function write(text: string) {
-  api.clipboardWriteText(text).catch(() => {});
+  clipboardApi.writeText(text).catch(() => {});
 }
 
 export function copy(text: string) {

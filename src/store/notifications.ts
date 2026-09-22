@@ -1,9 +1,10 @@
 import { reactive } from 'vue';
-import { api } from '../api';
+import { notifyApi } from '@/platform/notify';
+import { storeApi } from '@/platform/store';
 import { showAlert } from '../store/alert';
 import { settings } from '../store/settings';
 import { useI18n } from '../i18n';
-import type { NotificationItem } from '../../shared/ipc';
+import type { NotificationItem } from '@/platform/types';
 
 const { t } = useI18n();
 
@@ -54,7 +55,7 @@ let subscribed = false;
 let pruneTimer: number | null = null;
 
 function save() {
-  api.storeSet('notificationHistory', JSON.parse(JSON.stringify(notifyState.items))).catch(() => {});
+  storeApi.set('notificationHistory', JSON.parse(JSON.stringify(notifyState.items))).catch(() => {});
 }
 
 function entryKey(n: NotificationItem): string {
@@ -65,7 +66,7 @@ async function resolveImage(e: NotifEntry) {
   if (notifyState.images[e.key]) return;
   for (const src of [e.image, e.icon]) {
     if (!src) continue;
-    const data = await api.notifyImage(src).catch(() => null);
+    const data = await notifyApi.image(src).catch(() => null);
     if (data) {
       notifyState.images[e.key] = data;
       return;
@@ -75,7 +76,7 @@ async function resolveImage(e: NotifEntry) {
 
 /** 激活来源应用；失败给提示 */
 export async function activate(n: NotificationItem) {
-  const method = await api.notifyActivate({ aumid: n.aumid, launch: n.launch, atype: n.atype });
+  const method = await notifyApi.activate({ aumid: n.aumid, launch: n.launch, atype: n.atype });
   if (method === 'failed') {
     showAlert({ icon: 'fa-triangle-exclamation', text: t('notifyOpenFailed'), duration: 3000 });
   }
@@ -150,7 +151,7 @@ function onIncoming(batch: NotificationItem[]) {
 }
 
 export async function initNotifications() {
-  const saved = await api.storeGet<NotifEntry[]>('notificationHistory');
+  const saved = await storeApi.get<NotifEntry[]>('notificationHistory');
   if (saved && Array.isArray(saved)) {
     notifyState.items = saved.filter((s) => s && typeof s.id === 'number');
     // 历史头像按需解析（列表可见范围足够）
@@ -158,7 +159,7 @@ export async function initNotifications() {
   }
   if (!subscribed) {
     subscribed = true;
-    api.onNotifications(onIncoming);
+    notifyApi.onIncoming(onIncoming);
   }
   if (pruneTimer === null) pruneTimer = window.setInterval(prunePopups, 400);
 }
