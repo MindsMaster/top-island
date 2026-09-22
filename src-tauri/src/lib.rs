@@ -61,60 +61,18 @@ pub fn run() {
             let settings = infra::persist::get("settings")
                 .map(AppSettings::from_value)
                 .unwrap_or_default();
-            infra::layout::apply_island_layout(app.handle(), &settings.island)?;
-            infra::autolaunch::sync(settings.auto_launch)?;
+            // 必须在 init_input 之前：它按窗口位置算初始热区
+            services::apply_settings(app.handle(), &settings)?;
 
             let win = app.get_webview_window("island").expect("island window");
             win.set_ignore_cursor_events(true)?;
             infra::watchdog::start(app.handle().clone());
             init_input(app.handle());
             infra::tray::build(app.handle())?;
-
-            services::music::sync(app.handle(), &settings);
-            services::notify::sync(app.handle(), &settings);
-            services::wechat::sync(app.handle(), &settings);
             services::update::start(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            ipc::store_get,
-            ipc::store_set,
-            ipc::store_clear,
-            ipc::settings_update,
-            ipc::settings_open,
-            ipc::weather_ip_city,
-            ipc::weather_geocode,
-            ipc::weather_query,
-            ipc::app_get_locale,
-            ipc::app_get_version,
-            ipc::displays_list,
-            ipc::shell_open_external,
-            ipc::window_close,
-            ipc::window_close_self,
-            ipc::window_get_cursor_point,
-            ipc::window_set_hot_rect,
-            ipc::update_status,
-            ipc::update_check,
-            ipc::update_install,
-            ipc::diag_reveal,
-            ipc::music::music_poll,
-            ipc::music::music_control,
-            ipc::music::music_seek,
-            ipc::music::music_artwork,
-            ipc::music::music_lyrics,
-            ipc::music::music_bridge_status,
-            ipc::notify::notify_activate,
-            ipc::notify::notify_image,
-            ipc::clipboard::clipboard_read_text,
-            ipc::clipboard::clipboard_write_text,
-            ipc::clipboard::clipboard_has_image,
-            ipc::clipboard::clipboard_read_file_paths,
-            ipc::alarm::alarm_sound_list,
-            ipc::alarm::alarm_sound_data,
-            ipc::alarm::alarm_sound_pick,
-            ipc::wechat::wechat_acquire_key,
-            ipc::wechat::wechat_has_key,
-        ])
+        .invoke_handler(crate::ipc_handlers!())
         .run(tauri::generate_context!())
         .expect("top island run");
 }

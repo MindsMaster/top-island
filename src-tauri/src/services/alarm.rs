@@ -78,7 +78,7 @@ pub fn sound_data_url(path: &str) -> AppResult<Option<String>> {
 
 /// 打开文件对话框选自定义音频；取消返回 None
 pub fn pick_sound() -> AppResult<Option<AlarmSound>> {
-    let Some(path) = island_windows::clipboard::pick_open_file("", "Audio", &AUDIO_EXTENSIONS)?
+    let Some(path) = island_windows::dialog::pick_open_file("", "Audio", &AUDIO_EXTENSIONS)?
     else {
         return Ok(None);
     };
