@@ -1,8 +1,4 @@
-//! 网易云音乐进程内 bridge。
-//!
-//! 以代理 `msimg32.dll` 的身份放在网易云安装目录里，`cloudmusic.exe` 及其 CEF 子进程都会
-//! 先于系统目录加载它。msimg32 的五个导出用 naked `jmp` 原样转发给真实实现，宿主感知不到；
-//! 渲染进程里再装 CEF hook（见 [`hooks`]）注入 bridge 脚本。
+//! msimg32.dll 代理 置于网易云安装目录
 
 mod cef;
 mod hooks;
@@ -20,7 +16,7 @@ use windows::Win32::System::Threading::GetCurrentProcessId;
 
 const DLL_PROCESS_ATTACH: u32 = 1;
 
-/// `jmp qword ptr [rip + slot]` 不动任何寄存器和栈，真实函数就像被直接调用一样
+/// 纯 jmp 不动寄存器与栈
 mod trampolines {
     use super::AtomicUsize;
 
@@ -58,8 +54,8 @@ extern "system" fn DllMain(module: HMODULE, reason: u32, _reserved: *mut c_void)
             let _ = DisableThreadLibraryCalls(module);
         }
 
-        // 必须在 loader lock 释放前把转发目标解析好，之后随时可能来 GDI 调用。
-        // 真实 msimg32 只依赖已加载的 gdi32/user32，在 loader lock 下 LoadLibrary 是安全的。
+        // 须在 loader lock 内备好转发目标
+        // 真 msimg32 仅依赖已加载模块 此时 LoadLibrary 安全
         let _ = load_real_msimg32();
 
         // 只有渲染进程创建 V8 上下文
@@ -70,7 +66,7 @@ extern "system" fn DllMain(module: HMODULE, reason: u32, _reserved: *mut c_void)
         };
 
         if diagnostics_enabled() {
-            // loader lock 下不能做文件 I/O，新线程要等锁释放后才会跑
+            // loader lock 下禁文件 IO 新线程待锁释放
             std::thread::spawn(move || record_host_process(outcome));
         }
     }
@@ -107,8 +103,8 @@ fn load_real_msimg32() -> bool {
     ok
 }
 
-/// 先用部署时放在旁边的 `msimg32_original.dll`，没有（被杀软隔离等）就回退到 System32。
-/// 回退必须用绝对路径，`LoadLibraryW("msimg32.dll")` 会解析回我们自己。
+/// 优先旁边的 msimg32_original.dll 回退 System32
+/// 回退须绝对路径 相对名会解析回自身
 fn load_forward_target() -> Option<HMODULE> {
     if let Ok(m) = unsafe { LoadLibraryW(w!("msimg32_original.dll")) } {
         if !m.is_invalid() {
@@ -132,7 +128,11 @@ fn load_forward_target() -> Option<HMODULE> {
 fn record_host_process(hook_outcome: Option<hooks::InstallOutcome>) {
     let pid = unsafe { GetCurrentProcessId() };
     let image = current_process_image().unwrap_or_else(|| "<unknown>".to_string());
-    let kind = if is_renderer_process() { "renderer" } else { "other" };
+    let kind = if is_renderer_process() {
+        "renderer"
+    } else {
+        "other"
+    };
     let hook = match hook_outcome {
         Some(o) => format!("{o:?}"),
         None => "-".to_string(),
@@ -140,7 +140,11 @@ fn record_host_process(hook_outcome: Option<hooks::InstallOutcome>) {
 
     let Some(marker) = marker_path() else { return };
     use std::io::Write;
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&marker) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&marker)
+    {
         let _ = writeln!(file, "{pid}\t{kind}\t{hook}\t{image}");
     }
 }

@@ -1,13 +1,25 @@
 #[derive(Debug)]
 pub enum WinError {
-    Api { context: &'static str, message: String },
-    Io { context: &'static str, source: std::io::Error },
-    Sqlite { context: &'static str, message: String },
+    Api {
+        context: &'static str,
+        message: String,
+    },
+    Io {
+        context: &'static str,
+        source: std::io::Error,
+    },
+    Sqlite {
+        context: &'static str,
+        message: String,
+    },
 }
 
 impl WinError {
     pub fn api(context: &'static str, e: impl std::fmt::Display) -> Self {
-        Self::Api { context, message: e.to_string() }
+        Self::Api {
+            context,
+            message: e.to_string(),
+        }
     }
 
     pub fn io(context: &'static str, source: std::io::Error) -> Self {
@@ -15,7 +27,10 @@ impl WinError {
     }
 
     pub fn sqlite(context: &'static str, e: rusqlite::Error) -> Self {
-        Self::Sqlite { context, message: e.to_string() }
+        Self::Sqlite {
+            context,
+            message: e.to_string(),
+        }
     }
 }
 

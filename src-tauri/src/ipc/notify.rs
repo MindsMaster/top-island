@@ -3,20 +3,22 @@ use crate::services;
 
 use super::off_thread;
 
-/// 复现点击：激活来源应用（protocol 直开 → COM activator → AAM → shell 兜底）。
-/// 返回实际生效方式；独立于托管开关——用户临时关了托管也应能点开已收到的消息。
 #[tauri::command]
 pub async fn notify_activate(aumid: String, launch: String, atype: String) -> AppResult<String> {
-    // 微信消息卡片：自绘应用无系统激活器，用协议唤起（沿用 Electron 版特例）
+    // 微信无系统激活器 走协议唤起
     if aumid == "wechat" {
         tauri_plugin_opener::open_url("weixin://", None::<&str>)
             .map_err(|e| AppError::new(format!("error.io: 唤起微信失败: {e}")))?;
         return Ok("wechat".into());
     }
-    off_thread(move || Ok(island_windows::activate::activate_toast(&aumid, &launch, &atype))).await
+    off_thread(move || {
+        Ok(island_windows::activate::activate_toast(
+            &aumid, &launch, &atype,
+        ))
+    })
+    .await
 }
 
-/// 通知图片/头像 → data URL。内容认不出是图片的来源返回 null，渲染层回退首字母块
 #[tauri::command]
 pub async fn notify_image(src: String) -> AppResult<Option<String>> {
     off_thread(move || Ok(services::notify::notify_image(&src))).await

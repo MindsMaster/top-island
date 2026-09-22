@@ -81,7 +81,7 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-// 饱和度/明度面板
+/** 饱和明度面板 */
 function svApply(e: PointerEvent) {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   s.value = clamp01((e.clientX - rect.left) / rect.width);
@@ -89,7 +89,7 @@ function svApply(e: PointerEvent) {
   emitColor();
 }
 
-// 色相条
+/** 色相条 */
 function hueApply(e: PointerEvent) {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   h.value = clamp01((e.clientX - rect.left) / rect.width) * 359.99;
@@ -124,7 +124,7 @@ function pickPreset(hex: string) {
 const hueColor = computed(() => `hsl(${h.value}, 100%, 50%)`);
 const hex = computed(() => hsvToHex(h.value, s.value, v.value));
 
-// hex 手动输入（精调）
+/** hex 手动输入 */
 const hexDraft = ref('');
 const hexEditing = ref(false);
 

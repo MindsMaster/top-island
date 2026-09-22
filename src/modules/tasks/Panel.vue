@@ -6,7 +6,6 @@ import { tasksState, addTask, toggleTask, deleteTask, formatTaskTime, toggleShow
 const { t } = useI18n();
 const snap = tasksState;
 
-// 派生数据留在组件：原 composable 的 computed 原样搬来，只把 tasks.value 换成 snap.tasks
 const pendingTaskCount = computed(() => snap.tasks.filter((t) => !t.done).length);
 const completedCount = computed(() => snap.tasks.filter((t) => t.done).length);
 const sortedTasks = computed(() => {

@@ -2,15 +2,14 @@ use tauri::{AppHandle, WebviewWindow};
 
 use crate::error::AppResult;
 
-/// 退出整个应用
 #[tauri::command]
 pub fn window_close(app: AppHandle) {
     app.exit(0);
 }
 
-/// 关闭调用方所在窗口：设置窗只隐藏（conf 声明的窗口关掉就没了，重开靠 show）
 #[tauri::command]
 pub fn window_close_self(window: WebviewWindow) {
+    // conf 窗口关闭不可重建 设置窗只隐藏
     if window.label() == "settings" {
         let _ = window.hide();
     } else {
@@ -18,8 +17,7 @@ pub fn window_close_self(window: WebviewWindow) {
     }
 }
 
-/// 全局光标位置（相对调用方窗口内容区）。
-/// 悬停看门狗用：mouseleave 不触发时的兜底校验。
+/// mouseleave 不触发时的兜底
 #[tauri::command]
 pub fn window_get_cursor_point(window: WebviewWindow) -> AppResult<(i32, i32)> {
     let (x, y) = island_windows::input::cursor_position();
@@ -27,7 +25,7 @@ pub fn window_get_cursor_point(window: WebviewWindow) -> AppResult<(i32, i32)> {
     Ok((x - origin.x, y - origin.y))
 }
 
-/// 岛窗交互热区（CSS 像素，相对窗口内容区）；None = 全程可交互（拖动等手势期间）
+/// CSS 像素 相对窗口内容区 空即全程可交互
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HotRect {
@@ -54,7 +52,9 @@ pub fn window_set_hot_rect(
     let passive = interactive.is_none();
     island_windows::input::set_hover_rect(interactive.map(to_phys), hover.map(to_phys));
     if passive {
-        window.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
+        window
+            .set_ignore_cursor_events(false)
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }

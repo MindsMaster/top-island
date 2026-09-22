@@ -4,14 +4,14 @@ export type ThemeGroup = 'solid' | 'gradient' | 'custom';
 
 export interface ThemeMeta {
   id: ThemeId;
-  /** custom 的明暗由背景亮度动态判定，这里的值仅占位 */
+  /** custom 主题仅占位 */
   scheme: 'dark' | 'light';
   group: ThemeGroup;
   nameKey: string;
   icon: string;
 }
 
-/** 新增主题：styles/_tokens.scss 加令牌块 + 这里登记一行 */
+/** 新增主题须同步 _tokens.scss 令牌块 */
 export const THEMES: ThemeMeta[] = [
   { id: 'dark', scheme: 'dark', group: 'solid', nameKey: 'settingsThemeDark', icon: 'fa-moon' },
   { id: 'light', scheme: 'light', group: 'solid', nameKey: 'settingsThemeLight', icon: 'fa-sun' },
@@ -59,7 +59,6 @@ export function nextThemeId(current: ThemeId): ThemeId {
   return THEMES[(idx + 1) % THEMES.length].id;
 }
 
-/** #rrggbb -> 相对亮度（0~1，sRGB 加权） */
 export function hexLuminance(hex: string): number {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return 0;
@@ -67,12 +66,11 @@ export function hexLuminance(hex: string): number {
   return (0.2126 * ((v >> 16) & 0xff) + 0.7152 * ((v >> 8) & 0xff) + 0.0722 * (v & 0xff)) / 255;
 }
 
-/** 自定义主题按背景平均亮度判定明暗系；预设主题用 _tokens.scss 的令牌块 */
 export function isLightCustom(custom: CustomTheme): boolean {
   return (hexLuminance(custom.a) + hexLuminance(custom.b)) / 2 > 0.55;
 }
 
-/** 只有 custom 主题需要 JS 注入内联令牌，切走时要逐个清掉 */
+/** custom 注入的令牌 切走时逐个清 */
 const CUSTOM_VARS = [
   '--island-bg',
   '--ink',

@@ -24,7 +24,7 @@ const DAY_ICONS: Record<number, string> = {
   99: 'fa-bolt',
 };
 
-/** 夜间只有晴/少云需要换月亮系图标，其余与白天同 */
+/** 夜间仅晴少云换月系图标 */
 const NIGHT_ICONS: Record<number, string> = {
   0: 'fa-moon',
   1: 'fa-cloud-moon',
@@ -32,7 +32,7 @@ const NIGHT_ICONS: Record<number, string> = {
   3: 'fa-cloud-moon',
 };
 
-/** IP 定位失败时的兜底城市（仅内部地理编码用，不提供用户自定义） */
+/** IP 定位失败的兜底 */
 const FALLBACK_CITY = '北京';
 
 const REFRESH_MS = 600000;
@@ -90,7 +90,6 @@ async function tryFetchIpCity() {
   }
 }
 
-/** 拿不到 IP 定位就退回兜底城市的地理编码；返回 null 表示本轮无法定位 */
 async function resolveLocation(): Promise<{ lat: number; lon: number } | null> {
   if (ipLat == null || ipLon == null) await tryFetchIpCity();
   if (ipLat != null && ipLon != null) return { lat: ipLat, lon: ipLon };

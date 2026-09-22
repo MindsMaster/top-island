@@ -14,56 +14,46 @@ export interface AlarmItem {
   time: string;
   enabled: boolean;
   label?: string;
-  /** 重复星期（0=周日…6=周六）；空/缺省 = 每天 */
+  /** 0=周日 6=周六 空为每天 */
   days?: number[];
 }
 
 interface AlarmStore {
   alarms: AlarmItem[];
-  /** 当前提示音（path 为空表示未选，回退默认列表第一个） */
   sound: AlarmSound | null;
 }
 
-/** 闹钟/倒计时全部窗口共享状态。组件模板直读字段（reactive 自动追踪），写走本文件 action */
 export const alarmState = reactive({
   alarms: [] as AlarmItem[],
-  /** 当前提示音（path 为空表示未选，回退默认列表第一个） */
   sound: null as AlarmSound | null,
   defaultSounds: [] as AlarmSound[],
   countdown: {
     running: false,
     paused: false,
-    /** 结束时刻（ms epoch；暂停时无效） */
     endAt: 0,
-    /** 暂停时冻结的剩余 ms */
     frozenRemainMs: 0,
     totalMs: 0,
-    /** 未运行时面板上选择的时长（分钟） */
     pickMinutes: 10,
   },
   ringing: null as null | { kind: 'alarm' | 'countdown'; label: string },
-  /** 每秒 tick 刷新；组件里的 remainMs/progress 等派生 computed 依赖它 */
+  /** 每秒 tick 驱动下面的派生 computed */
   now: Date.now(),
 });
 
 let tickTimer: number | null = null;
-/** 每个闹钟最近触发的日期+分钟戳，防止同一分钟内重复触发 */
 const lastFired = new Map<string, string>();
 let audioEl: HTMLAudioElement | null = null;
-/** path -> dataURL 缓存 */
 const soundCache = new Map<string, string>();
 let ringTimeout: number | null = null;
 
-/** 最近一次已持久化的 alarms+sound（JSON）。alarmState 每秒都因 now 变化触发 subscribe，
- *  只有这两字段内容变了才写盘 */
+/** now 每秒变会触发 watch 只有 alarms/sound 变了才写盘 */
 let lastSavedJson = '';
 
 function save() {
   const json = JSON.stringify({ alarms: alarmState.alarms, sound: alarmState.sound });
   if (json === lastSavedJson) return;
   lastSavedJson = json;
-  // 深拷贝去 Proxy：Proxy 过 contextBridge 会抛 "could not be cloned"，
-  // 且此错误在回调里会炸掉调度器 flush，整个界面停更
+  // reactive 代理不可结构化克隆 须先落成普通对象
   storeApi.set('alarmData', JSON.parse(json) as AlarmStore).catch(() => {});
 }
 
@@ -105,7 +95,6 @@ function stopSound() {
   }
 }
 
-/** 试听（响铃中不可用；再次调用停止上一次试听） */
 export async function preview() {
   if (alarmState.ringing) return;
   stopSound();
@@ -122,7 +111,6 @@ export async function pickCustomSound() {
   if (picked) alarmState.sound = picked;
 }
 
-/** 延后重响（Snooze）：静铃后 10 分钟原样重响，可反复延后 */
 const SNOOZE_MS = 10 * 60000;
 let snoozeTimer: number | null = null;
 
@@ -140,7 +128,7 @@ function fire(kind: 'alarm' | 'countdown', label: string) {
     actionLabel: t('alarmStop'),
     actionHandler: stopRinging,
   });
-  // 无人处理时 60s 自动停止
+  // 无人处理 60s 自动停
   if (ringTimeout) clearTimeout(ringTimeout);
   ringTimeout = window.setTimeout(stopRinging, 60000);
 }
@@ -167,7 +155,6 @@ export function stopRinging() {
   emitAppEvent('alarm:ringing', false);
 }
 
-/** 新增或更新闹钟（id 为空则新增），按时间排序 */
 export function upsertAlarm(data: { id?: string | null; time: string; label: string; days: number[] }) {
   const next = data.id
     ? alarmState.alarms.map((a) =>
@@ -229,7 +216,7 @@ function tick() {
     cd.running = false;
     fire('countdown', t('alarmCountdownDone'));
   }
-  // 分钟精度；同一分钟只触发一次
+  // 同一分钟只触发一次
   const d = new Date(alarmState.now);
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const stamp = `${d.toDateString()} ${hm}`;
@@ -264,11 +251,10 @@ export const displayRemain = computed(() => {
   return hh > 0 ? `${hh}:${p(mm)}:${p(ss)}` : `${p(mm)}:${p(ss)}`;
 });
 
-/** 面板上大号进度环的 dasharray/dashoffset（r=45） */
+/** 与 Panel.vue 进度环的 r=45 一致 */
 export const ringDash = computed(() => {
   const circumference = 2 * Math.PI * 45;
   return { circumference, offset: circumference * (1 - progress.value) };
 });
 
-/** 倒计时在跑或正在响铃时，岛要保持可交互 */
 export const keepInteractive = computed(() => alarmState.countdown.running || alarmState.ringing !== null);

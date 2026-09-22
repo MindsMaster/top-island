@@ -1,20 +1,17 @@
-//! 悬停热区与剪贴板监听。
-//!
-//! 悬停用 Raw Input（`RIDEV_INPUTSINK`）：窗口穿透态下收不到 DOM 事件，只能在系统层知道
-//! 鼠标动了。不用 `WH_MOUSE_LL`：低级钩子是同步回调，超时会被系统静默卸载。
-
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 
 use windows::core::w;
-use windows::Win32::Devices::HumanInterfaceDevice::{HID_USAGE_GENERIC_MOUSE, HID_USAGE_PAGE_GENERIC};
+use windows::Win32::Devices::HumanInterfaceDevice::{
+    HID_USAGE_GENERIC_MOUSE, HID_USAGE_PAGE_GENERIC,
+};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::DataExchange::AddClipboardFormatListener;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::{RegisterRawInputDevices, RAWINPUTDEVICE, RIDEV_INPUTSINK};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-/// 物理像素，屏幕坐标
+/// 物理像素 屏幕坐标
 #[derive(Debug, Clone, Copy)]
 pub struct Rect {
     pub left: i32,
@@ -53,7 +50,7 @@ pub struct HoverChange {
 }
 
 struct HoverState {
-    /// None 表示全程可交互（拖动等手势期间）
+    /// None 为全程可交互
     interactive: Option<Rect>,
     hover: Option<Rect>,
     interactive_inside: bool,
@@ -103,7 +100,7 @@ pub fn cursor_position() -> (i32, i32) {
     }
 }
 
-/// 回调会切窗口穿透并 emit 到 webview，放在独立线程上执行，突发时只取最后一个状态
+/// 回调切穿透且 emit 独立线程 突发取最新
 fn start_hover_dispatch(
     rx: std::sync::mpsc::Receiver<HoverChange>,
     on_change: Box<dyn Fn(HoverChange) + Send>,
@@ -133,17 +130,22 @@ fn start_clip_dispatch(rx: std::sync::mpsc::Receiver<()>, on_change: Box<dyn Fn(
         .expect("spawn island-clip");
 }
 
-unsafe extern "system" fn input_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn input_wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     unsafe {
         match msg {
             WM_INPUT => {
-                // Raw Input 给的是相对位移，命中判定直接读 GetCursorPos
+                // Raw Input 给相对位移 命中判定读 GetCursorPos
                 if let Ok(mut guard) = HOVER.try_lock() {
                     if let Some(st) = guard.as_mut() {
                         evaluate(st);
                     }
                 }
-                // WM_INPUT 必须交给 DefWindowProc 清理
+                // WM_INPUT 必须交 DefWindowProc 清理
                 DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             WM_CLIPBOARDUPDATE => {
@@ -220,6 +222,8 @@ pub fn start_input(handlers: InputHandlers) {
             )
             .expect("message window");
 
+            // 穿透态收不到 DOM 事件 只能系统层感知鼠标
+            // 不用 WH_MOUSE_LL 超时会被系统静默卸载
             if want_hover {
                 let device = RAWINPUTDEVICE {
                     usUsagePage: HID_USAGE_PAGE_GENERIC,
@@ -227,7 +231,9 @@ pub fn start_input(handlers: InputHandlers) {
                     dwFlags: RIDEV_INPUTSINK,
                     hwndTarget: hwnd,
                 };
-                if let Err(e) = RegisterRawInputDevices(&[device], std::mem::size_of::<RAWINPUTDEVICE>() as u32) {
+                if let Err(e) =
+                    RegisterRawInputDevices(&[device], std::mem::size_of::<RAWINPUTDEVICE>() as u32)
+                {
                     eprintln!("[input] 注册 Raw Input 鼠标失败，悬停不可用: {e}");
                 }
             }

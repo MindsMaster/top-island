@@ -2,7 +2,6 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { settings } from '@/core/settings';
 
-/** 帧耗时采样环形缓冲，算中位/p95/最差 */
 const BUF = 240;
 const deltas: number[] = [];
 

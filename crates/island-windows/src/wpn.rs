@@ -2,8 +2,7 @@ use rusqlite::{Connection, OpenFlags};
 
 use crate::error::{Result, WinError};
 
-// wpndatabase 的 Payload 是 BLOB：UTF-16LE（带 BOM 或次字节为 NUL）或 UTF-8，
-// 编码判别沿用 winbridge WpnDatabase.cs 的启发式。
+/// Payload 为 UTF-16LE 或 UTF-8 判别沿用 WpnDatabase.cs
 fn decode_payload(blob: &[u8]) -> String {
     if blob.len() >= 2 && blob[0] == 0xFF && blob[1] == 0xFE {
         return utf16(&blob[2..]);
@@ -11,21 +10,26 @@ fn decode_payload(blob: &[u8]) -> String {
     if blob.len() >= 2 && blob[1] == 0x00 {
         return utf16(blob);
     }
-    let skip = if blob.len() >= 3 && blob[..3] == [0xEF, 0xBB, 0xBF] { 3 } else { 0 };
+    let skip = if blob.len() >= 3 && blob[..3] == [0xEF, 0xBB, 0xBF] {
+        3
+    } else {
+        0
+    };
     String::from_utf8_lossy(&blob[skip..]).into_owned()
 }
 
 fn utf16(bytes: &[u8]) -> String {
-    let units: Vec<u16> =
-        bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
     String::from_utf16_lossy(&units)
 }
 
-// 只打开自己的临时拷贝，刻意用 READWRITE：拷贝出的 -wal 帧需写权限才能恢复合并，
-// READONLY 会打不开或看不到新数据。
+/// 刻意 READWRITE 恢复 -wal 帧需写权限
 fn copy_db() -> Result<std::path::PathBuf> {
-    let local = std::env::var("LOCALAPPDATA")
-        .map_err(|e| WinError::api("LOCALAPPDATA 环境变量", e))?;
+    let local =
+        std::env::var("LOCALAPPDATA").map_err(|e| WinError::api("LOCALAPPDATA 环境变量", e))?;
     let src = std::path::Path::new(&local).join(r"Microsoft\Windows\Notifications\wpndatabase.db");
     let dir = std::env::temp_dir().join("top-island-wpn");
     std::fs::create_dir_all(&dir).map_err(|e| WinError::io("创建通知库临时目录", e))?;
@@ -39,8 +43,7 @@ fn copy_db() -> Result<std::path::PathBuf> {
     Ok(dir.join("wpndatabase.db"))
 }
 
-/// 源库指纹：主库与 WAL 的 (修改时间, 长度)。轮询方每轮先比指纹，没变就跳过拷贝——
-/// 否则 1.5s 一次全量拷贝通知库，空闲时也压着磁盘读（1MB+/s）。
+/// 轮询先比指纹 没变跳过拷贝
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DbFingerprint {
     db: Option<(std::time::SystemTime, u64)>,
@@ -56,18 +59,20 @@ pub fn source_fingerprint() -> DbFingerprint {
         let meta = std::fs::metadata(path).ok()?;
         Some((meta.modified().ok()?, meta.len()))
     };
-    DbFingerprint { db: stamp(""), wal: stamp("-wal") }
+    DbFingerprint {
+        db: stamp(""),
+        wal: stamp("-wal"),
+    }
 }
 
 fn filetime_to_unix_ms(filetime: i64) -> i64 {
-    // FILETIME 是 1601 起的 100ns 计数；非法值（<=0）按 0 处理，同 WpnDatabase.cs
+    // FILETIME 1601 起 100ns <=0 按 0 同 WpnDatabase.cs
     if filetime <= 0 {
         return 0;
     }
     (filetime - 116_444_736_000_000_000) / 10_000
 }
 
-/// 带完整 payload 的 toast 行
 #[derive(Debug, Clone)]
 pub struct WpnToast {
     pub id: i64,
@@ -78,9 +83,7 @@ pub struct WpnToast {
     pub payload: String,
 }
 
-/// Id 大于 since_id 的全部 toast（按 Id 升序），附行级最大 Id。
-/// 水位必须按 raw_max 推进——它含被上层过滤的空壳 toast（进度条/更新器），
-/// 不按它推进的话空壳行每轮都会被重复扫出来。
+/// 水位必须按 raw_max 推进 其含上层过滤掉的空壳
 pub fn toasts_since(since_id: i64) -> Result<(Vec<WpnToast>, i64)> {
     let path = copy_db()?;
     let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_WRITE)
@@ -120,7 +123,7 @@ pub fn toasts_since(since_id: i64) -> Result<(Vec<WpnToast>, i64)> {
     Ok((items, raw_max))
 }
 
-/// 当前最大 toast Id（轮询水位基线：开启托管前堆积的历史不弹）
+/// 水位基线 历史通知不弹
 pub fn query_max_id() -> Result<i64> {
     let path = copy_db()?;
     let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_WRITE)

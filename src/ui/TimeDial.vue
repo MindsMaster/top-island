@@ -4,7 +4,7 @@ import { computed, ref } from 'vue';
 const props = defineProps<{ mode: 'hour' | 'minute'; modelValue: number }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', value: number): void;
-  /** 一次选择结束（松手）——hour 模式下父级可借此自动切到 minute */
+  /** 松手提交 */
   (e: 'commit'): void;
 }>();
 
@@ -21,7 +21,7 @@ function ringRadius(v: number): number {
 }
 
 function angleOf(v: number): number {
-  // 顶部为 0°，顺时针
+  // 顶部为 0 顺时针
   return props.mode === 'minute' ? v * 6 : (v % 12) * 30;
 }
 
@@ -43,7 +43,6 @@ const numbers = computed(() => {
 
 const knob = computed(() => posOf(props.modelValue));
 
-/** 分钟落在 5 的倍数上才与数字重合，此时数字反白 */
 function isSelected(v: number): boolean {
   return v === props.modelValue;
 }

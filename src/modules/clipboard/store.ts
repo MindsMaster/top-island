@@ -18,7 +18,6 @@ export interface ClipItem {
 
 const { t } = useI18n();
 
-/** 剪贴板历史。组件模板直读字段，写只走本文件导出的 action */
 export const clipboardState = reactive({
   history: [] as ClipItem[],
   pinned: [] as string[],
@@ -51,7 +50,7 @@ export function openUrl(url: string) {
 
 export function firstUrl(text: string): string | null {
   const m = /https?:\/\/[^\s<>"'`]+/i.exec(text || '');
-  return m ? m[0].replace(/[.,;:!?)\]}'"]+$/, '') : null; // 去掉尾部误粘的标点
+  return m ? m[0].replace(/[.,;:!?)\]}'"]+$/, '') : null; // 去尾部误粘标点
 }
 
 export async function initClipboard() {
@@ -73,7 +72,7 @@ function savePinned() {
 }
 
 function alertForItem(item: ClipItem) {
-  // 多个链接只弹第一个
+  // 多链接只弹第一个
   const url = item.type === 'url' ? item.text.trim() : firstUrl(item.text);
   if (url) {
     showAlert({
@@ -100,7 +99,7 @@ export function addItem(text: string, source: ClipItem['source']) {
   if (!text) return;
   const latest = clipboardState.history[0];
   if (latest && latest.text === text) {
-    // 内容未变则跳过，不重复落盘；只补历史遗留条目缺失的字段
+    // 未变则只补遗留字段
     let changed = false;
     if (!latest.source) {
       latest.source = source || 'manual';
@@ -143,7 +142,7 @@ export async function readCurrent() {
     }
   } catch {}
   try {
-    // 不用 readImage：主进程同步解码位图会拖垮全局鼠标钩子致系统级卡顿
+    // 只探测不解码 解码拖垮鼠标钩子
     if (await clipboardApi.hasImage()) addItem(t('clipboardImagePlaceholder'), 'system');
   } catch {}
 }
@@ -151,7 +150,7 @@ export async function readCurrent() {
 export function startClipboardWatch() {
   if (watching) return;
   watching = true;
-  // 事件驱动：剪贴板变化才读一次（不再轮询）；诊断开关关时忽略。readCurrent 内部去重
+  // 重复事件内部去重
   clipboardApi.onChanged(() => {
     if (settings.diagnostics.clipboardPoll) void readCurrent();
   });
@@ -194,7 +193,7 @@ export function clearAll() {
   write('');
 }
 
-/** 搜索框 v-model 的写入端：模板只读 snap，输入经此回写 */
+/** v-model 回写端 */
 export function setSearch(v: string) {
   clipboardState.search = v;
 }
@@ -237,7 +236,6 @@ export function canOpenPath(item: ClipItem): boolean {
   return /^(https?:\/\/|file:\/\/|\/|[A-Za-z]:[\\/])/.test(item.text.trim());
 }
 
-/** 置顶在前，再按搜索词过滤 */
 export const filteredClips = computed(() => {
   const { history, pinned, search } = clipboardState;
   const all = [

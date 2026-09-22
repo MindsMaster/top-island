@@ -10,13 +10,14 @@ use island_core::AppSettings;
 use island_windows::{InputHandlers, Rect};
 
 fn init_input(app: &AppHandle) {
-    let Some(win) = app.get_webview_window("island") else { return };
-    let (Ok(pos), Ok(size), Ok(dpi)) =
-        (win.outer_position(), win.outer_size(), win.scale_factor())
+    let Some(win) = app.get_webview_window("island") else {
+        return;
+    };
+    let (Ok(pos), Ok(size), Ok(dpi)) = (win.outer_position(), win.outer_size(), win.scale_factor())
     else {
         return;
     };
-    // 前端挂载前先用胶囊高度当初始热区，挂载后由 window_set_hot_rect 接管
+    // 前端接管前的初始热区
     let region = Rect {
         left: pos.x,
         top: pos.y,
@@ -49,7 +50,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // 首屏加载完再清 Electron 残留：启动路径上不做磁盘扫描
+        // 首屏后再清 Electron 残留
         .on_page_load(|webview, payload| {
             if webview.label() == "island" && payload.event() == PageLoadEvent::Finished {
                 infra::legacy::start();
@@ -61,7 +62,7 @@ pub fn run() {
             let settings = infra::persist::get("settings")
                 .map(AppSettings::from_value)
                 .unwrap_or_default();
-            // 必须在 init_input 之前：它按窗口位置算初始热区
+            // 须先于 init_input 摆好窗位
             services::apply_settings(app.handle(), &settings)?;
 
             let win = app.get_webview_window("island").expect("island window");

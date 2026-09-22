@@ -1,6 +1,3 @@
-//! 系统媒体会话（SMTC）源，兜住所有登记了媒体会话的播放器。
-//! 不上报时间轴的应用（如关掉 media session 的网易云）退化为只有标题、艺术家、播放态。
-
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -9,7 +6,7 @@ use island_windows::smtc::{MediaAction, SmtcClient};
 use super::provider::{now_epoch_ms, Capabilities, Control, MusicProvider, ProviderState};
 use crate::error::AppResult;
 
-/// query 是阻塞 WinRT 调用，推送又常成串到达，缓存把查询频率压到约 1 次/TTL
+/// query 是阻塞 WinRT 调用
 const SNAPSHOT_TTL: Duration = Duration::from_millis(900);
 
 #[derive(Debug)]
@@ -20,7 +17,10 @@ pub struct SmtcProvider {
 
 impl SmtcProvider {
     pub const fn new() -> Self {
-        Self { client: Mutex::new(SmtcClient::new()), cache: Mutex::new(None) }
+        Self {
+            client: Mutex::new(SmtcClient::new()),
+            cache: Mutex::new(None),
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, SmtcClient> {
@@ -42,7 +42,11 @@ impl SmtcProvider {
             song_id: None,
             position_ms: if has_timeline { info.position_ms } else { 0 },
             anchor_epoch_ms: now_epoch_ms(),
-            rate: if info.playing && has_timeline { 1.0 } else { 0.0 },
+            rate: if info.playing && has_timeline {
+                1.0
+            } else {
+                0.0
+            },
             duration_ms: has_timeline.then_some(info.duration_ms),
             seek_supported: info.seek_supported && has_timeline,
             artwork_url: None,
@@ -64,18 +68,28 @@ impl MusicProvider for SmtcProvider {
                 }
             }
         }
-        // control()/thumbnail() 持锁做阻塞调用时可能要几秒，不等，用缓存的旧值
+        // 持锁方可能在阻塞 回旧缓存
         let Ok(mut client) = self.client.try_lock() else {
-            return self.cache.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|(_, s)| s.clone());
+            return self
+                .cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .and_then(|(_, s)| s.clone());
         };
         let state = Self::state_from(client.query());
         drop(client);
-        *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), state.clone()));
+        *self.cache.lock().unwrap_or_else(|e| e.into_inner()) =
+            Some((Instant::now(), state.clone()));
         state
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { skip: true, artwork_bitmap: true, fallback: true }
+        Capabilities {
+            skip: true,
+            artwork_bitmap: true,
+            fallback: true,
+        }
     }
 
     fn control(&self, action: Control) -> AppResult<bool> {

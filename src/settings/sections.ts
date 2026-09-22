@@ -11,11 +11,9 @@ export interface SettingsSection {
   icon: string;
   titleKey: string;
   component: Component;
-  /** 钉在侧栏底部 */
   bottom?: boolean;
 }
 
-/** 新增设置分区：加一个组件 + 在这里加一行。分区自己管自己的状态和副作用。 */
 export const sections: SettingsSection[] = [
   { id: 'general', icon: 'fa-sliders', titleKey: 'settingsGeneral', component: GeneralSection },
   {

@@ -1,28 +1,21 @@
-//! 微信 4.x 账号目录发现。
-//!
-//! Electron 版硬编码盘符 C:–G:（盘符超过 G 的机器直接漏扫），还遍历
-//! `X:\Users\*\Documents` 扫到别的用户的数据（隐私 + 权限噪音）。
-//! 改为 GetLogicalDrives + GetDriveTypeW 枚举固定盘；用户目录只看当前用户的
-//! Documents（SHGetKnownFolderPath，兼容被移动到非默认位置的 Documents）。
-
 use std::path::{Path, PathBuf};
 
 use windows::core::PCWSTR;
 use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
-use windows::Win32::UI::Shell::{SHGetKnownFolderPath, FOLDERID_Documents, KF_FLAG_DEFAULT};
+use windows::Win32::UI::Shell::{FOLDERID_Documents, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
 
-/// DRIVE_FIXED：只扫固定盘（跳过 U 盘/光驱/网络盘——网络盘深扫既慢又可能触发离线文件回读）
+/// DRIVE_FIXED 只扫固定盘
 const DRIVE_FIXED: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct Account {
-    /// 纯 wxid（账号目录名去掉 `_xxxx` 后缀）
+    /// 账号目录名去 _xxxx 后缀
     pub wxid: String,
     /// db_storage 目录
     pub data_dir: PathBuf,
 }
 
-// 扫描各盘直接子目录时跳过的系统/无关目录（提速、避噪）
+/// 扫盘时跳过的系统目录
 const SCAN_SKIP_NAMES: [&str; 12] = [
     "windows",
     "program files",
@@ -38,7 +31,6 @@ const SCAN_SKIP_NAMES: [&str; 12] = [
     "node_modules",
 ];
 
-/// 枚举固定盘根目录（C:\、D:\ …）
 pub fn fixed_drive_roots() -> Vec<PathBuf> {
     let mask = unsafe { GetLogicalDrives() };
     let mut roots = vec![];
@@ -49,7 +41,7 @@ pub fn fixed_drive_roots() -> Vec<PathBuf> {
         let letter = (b'A' + i) as char;
         let root = format!("{letter}:\\");
         let wide: Vec<u16> = root.encode_utf16().chain(std::iter::once(0)).collect();
-        // 失败按 0 处理，不等于 DRIVE_FIXED 自然被跳过，无需展开错误
+        // 失败按 0 自然跳过
         let dtype = unsafe { GetDriveTypeW(PCWSTR(wide.as_ptr())) };
         if dtype == DRIVE_FIXED {
             roots.push(PathBuf::from(root));
@@ -58,16 +50,20 @@ pub fn fixed_drive_roots() -> Vec<PathBuf> {
     roots
 }
 
-/// 当前用户的 Documents（已知文件夹 API，兼容重定向；失败回退 %USERPROFILE%\Documents）
+/// 兼容重定向 失败回退 %USERPROFILE%\Documents
 pub fn current_documents_dir() -> Option<PathBuf> {
     let from_shell = unsafe {
-        SHGetKnownFolderPath(&FOLDERID_Documents, KF_FLAG_DEFAULT, windows::Win32::Foundation::HANDLE::default())
-            .ok()
-            .map(|p| {
-                let s = p.to_string().unwrap_or_default();
-                windows::Win32::System::Com::CoTaskMemFree(Some(p.0 as *const _));
-                s
-            })
+        SHGetKnownFolderPath(
+            &FOLDERID_Documents,
+            KF_FLAG_DEFAULT,
+            windows::Win32::Foundation::HANDLE::default(),
+        )
+        .ok()
+        .map(|p| {
+            let s = p.to_string().unwrap_or_default();
+            windows::Win32::System::Com::CoTaskMemFree(Some(p.0 as *const _));
+            s
+        })
     };
     from_shell
         .filter(|s| !s.is_empty())
@@ -86,9 +82,7 @@ fn safe_subdirs(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// 可能“是”或“包含” xwechat_files 的候选路径（浅层，不做全盘深扫）。
-/// 覆盖：当前用户 Documents\xwechat_files、各固定盘根\xwechat_files、
-/// 各盘直接子目录\xwechat_files（如 D:\wechatMSG\xwechat_files 这类自定义数据目录）。
+/// 浅层候选 不做全盘深扫
 pub fn xwechat_dir_candidates(docs: Option<&Path>, roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = vec![];
     let mut seen = std::collections::HashSet::new();
@@ -105,7 +99,11 @@ pub fn xwechat_dir_candidates(docs: Option<&Path>, roots: &[PathBuf]) -> Vec<Pat
     for root in roots {
         consider(root.join("xwechat_files"));
         for child in safe_subdirs(root) {
-            let name = child.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+            let name = child
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_lowercase();
             if SCAN_SKIP_NAMES.contains(&name.as_str()) {
                 continue;
             }
@@ -115,7 +113,7 @@ pub fn xwechat_dir_candidates(docs: Option<&Path>, roots: &[PathBuf]) -> Vec<Pat
     out
 }
 
-/// 账号目录里 db_storage/message/message_*.db 的最新 mtime（毫秒；不是有效账号则 0）
+/// 消息库最新 mtime ms 无则 0
 fn account_newest_mtime(account_dir: &Path) -> u64 {
     let msg_dir = account_dir.join("db_storage").join("message");
     let Ok(entries) = std::fs::read_dir(&msg_dir) else {
@@ -129,7 +127,11 @@ fn account_newest_mtime(account_dir: &Path) -> u64 {
         }
         if let Ok(meta) = e.metadata() {
             if let Ok(t) = meta.modified() {
-                m = m.max(t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0));
+                m = m.max(
+                    t.duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0),
+                );
             }
         }
     }
@@ -138,12 +140,16 @@ fn account_newest_mtime(account_dir: &Path) -> u64 {
 
 pub fn is_message_db_name(name: &str) -> bool {
     let n = name.to_lowercase();
-    let Some(stem) = n.strip_prefix("message_") else { return false };
-    let Some(digits) = stem.strip_suffix(".db") else { return false };
+    let Some(stem) = n.strip_prefix("message_") else {
+        return false;
+    };
+    let Some(digits) = stem.strip_suffix(".db") else {
+        return false;
+    };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// 账号目录名去掉尾部 `_<4位hex>` 后缀（微信 4.x 账号目录约定）
+/// 去尾部 _4位hex 后缀 微信 4.x 约定
 pub fn strip_wxid_suffix(name: &str) -> String {
     if let Some(idx) = name.rfind('_') {
         let suffix = &name[idx + 1..];
@@ -154,16 +160,19 @@ pub fn strip_wxid_suffix(name: &str) -> String {
     name.to_string()
 }
 
-/// 在给定的 xwechat_files 候选里选消息库最新的账号。
-/// 判据是账号目录下确有 db_storage/message/message_*.db（名字不必 wxid_ 开头——微信允许自定义号）。
+/// 目录名不必 wxid_ 开头 微信允许自定义号
 pub fn discover_in(candidates: &[PathBuf]) -> Option<Account> {
     let mut best: Option<Account> = None;
     let mut best_time = 0u64;
     for xw in candidates {
         for account_dir in safe_subdirs(xw) {
-            let name = account_dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = account_dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if name.eq_ignore_ascii_case("all_users") {
-                continue; // 共享目录，非账号
+                continue; // 共享目录非账号
             }
             let mtime = account_newest_mtime(&account_dir);
             if mtime > best_time {
@@ -178,7 +187,6 @@ pub fn discover_in(candidates: &[PathBuf]) -> Option<Account> {
     best
 }
 
-/// 发现最新的微信 4.x 账号
 pub fn discover_account() -> Option<Account> {
     let docs = current_documents_dir();
     let roots = fixed_drive_roots();
@@ -205,13 +213,21 @@ mod tests {
         dir
     }
 
-    fn make_account(xwechat: &Path, dir_name: &str, msg_files: &[&str], mtime: SystemTime) -> PathBuf {
+    fn make_account(
+        xwechat: &Path,
+        dir_name: &str,
+        msg_files: &[&str],
+        mtime: SystemTime,
+    ) -> PathBuf {
         let msg_dir = xwechat.join(dir_name).join("db_storage").join("message");
         std::fs::create_dir_all(&msg_dir).expect("账号消息目录必须能创建");
         for f in msg_files {
             let path = msg_dir.join(f);
             std::fs::write(&path, vec![0u8; 64]).expect("测试消息库必须能写入");
-            let file = std::fs::File::options().write(true).open(&path).expect("必须能打开测试库");
+            let file = std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .expect("必须能打开测试库");
             file.set_modified(mtime).expect("必须能设置测试库 mtime");
         }
         xwechat.join(dir_name)
@@ -228,11 +244,11 @@ mod tests {
 
         let cands = xwechat_dir_candidates(Some(&docs), &[root.clone()]);
         let has = |p: PathBuf| cands.iter().any(|c| *c == p);
-        assert!(has(docs.join("xwechat_files")), "必须包含当前用户 Documents\\xwechat_files");
-        assert!(has(root.join("xwechat_files")), "必须包含固定盘根的 xwechat_files");
-        assert!(has(root.join("wechatMSG").join("xwechat_files")), "必须包含自定义数据目录的 xwechat_files");
-        assert!(!has(root.join("Windows").join("xwechat_files")), "系统目录必须被跳过，避免无意义深扫");
-        assert!(!has(root.join("$RECYCLE.BIN").join("xwechat_files")), "回收站必须被跳过");
+        assert!(has(docs.join("xwechat_files")));
+        assert!(has(root.join("xwechat_files")));
+        assert!(has(root.join("wechatMSG").join("xwechat_files")));
+        assert!(!has(root.join("Windows").join("xwechat_files")));
+        assert!(!has(root.join("$RECYCLE.BIN").join("xwechat_files")));
 
         std::fs::remove_dir_all(&base).unwrap();
     }
@@ -245,11 +261,11 @@ mod tests {
         let new = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2_000_000);
         make_account(&xw, "wxid_old_aaaa", &["message_0.db"], old);
         make_account(&xw, "wxid_new_b1c2", &["message_0.db"], new);
-        make_account(&xw, "not_an_account", &[], new); // 无 message_*.db，不算账号
+        make_account(&xw, "not_an_account", &[], new); // 无消息库不算账号
 
         let acct = discover_in(&[xw]).expect("有效账号必须被发现");
-        assert_eq!(acct.wxid, "wxid_new", "必须选消息库最新的账号，且目录名的 _xxxx 后缀必须剥掉");
-        assert!(acct.data_dir.ends_with("db_storage"), "data_dir 必须是账号的 db_storage 目录");
+        assert_eq!(acct.wxid, "wxid_new");
+        assert!(acct.data_dir.ends_with("db_storage"));
 
         std::fs::remove_dir_all(&base).unwrap();
     }
@@ -260,24 +276,24 @@ mod tests {
         let xw = base.join("xwechat_files");
         make_account(&xw, "all_users", &["message_0.db"], SystemTime::now());
 
-        assert!(discover_in(&[xw]).is_none(), "all_users 是共享目录不是账号，必须跳过");
+        assert!(discover_in(&[xw]).is_none());
         std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]
     fn strip_wxid_suffix_only_strips_four_hex_chars() {
-        assert_eq!(strip_wxid_suffix("wxid_abc_a1b2"), "wxid_abc", "尾部 _4位hex 是版本后缀必须剥掉");
-        assert_eq!(strip_wxid_suffix("wxid_abc_12345"), "wxid_abc_12345", "5 位后缀不符合约定必须保留");
-        assert_eq!(strip_wxid_suffix("plain_name"), "plain_name", "非 hex 后缀（如下划线自定义名）必须保留");
-        assert_eq!(strip_wxid_suffix("nounderscore"), "nounderscore", "无下划线必须原样保留");
+        assert_eq!(strip_wxid_suffix("wxid_abc_a1b2"), "wxid_abc");
+        assert_eq!(strip_wxid_suffix("wxid_abc_12345"), "wxid_abc_12345");
+        assert_eq!(strip_wxid_suffix("plain_name"), "plain_name");
+        assert_eq!(strip_wxid_suffix("nounderscore"), "nounderscore");
     }
 
     #[test]
     fn is_message_db_name_matches_message_number_db() {
-        assert!(is_message_db_name("message_0.db"), "标准消息库名必须匹配");
-        assert!(is_message_db_name("MESSAGE_12.DB"), "大小写不敏感必须匹配");
-        assert!(!is_message_db_name("message_.db"), "缺序号不能算消息库");
-        assert!(!is_message_db_name("message_x.db"), "非数字序号不能算消息库");
-        assert!(!is_message_db_name("biz_message_0.db"), "biz 官号库不属于个人消息库");
+        assert!(is_message_db_name("message_0.db"));
+        assert!(is_message_db_name("MESSAGE_12.DB"));
+        assert!(!is_message_db_name("message_.db"));
+        assert!(!is_message_db_name("message_x.db"));
+        assert!(!is_message_db_name("biz_message_0.db"));
     }
 }

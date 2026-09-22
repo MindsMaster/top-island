@@ -6,10 +6,7 @@ import { notificationsModule } from './notifications';
 import { tasksModule } from './tasks';
 import { weatherModule } from './weather';
 
-/**
- * 全部功能模块。顺序决定面板页序和 expandTarget 的优先级。
- * 新增功能：在 modules/ 下建一个目录，然后在这里加一行。
- */
+/** 顺序决定面板页序与优先级 */
 export const modules: IslandModule[] = [
   weatherModule,
   musicModule,

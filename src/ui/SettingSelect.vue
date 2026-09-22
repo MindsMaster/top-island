@@ -5,14 +5,14 @@ export interface SelectOption {
   value: string;
   label: string;
   icon?: string;
-  /** 可选分组键；提供 groupLabels 时按组渲染小节标题 */
+  /** 分组键 配合 groupLabels */
   group?: string;
 }
 
 const props = defineProps<{
   modelValue: string;
   options: SelectOption[];
-  /** 分组键 -> 标题文案；缺省则不渲染分组 */
+  /** 分组键到标题 缺省不分组 */
   groupLabels?: Record<string, string>;
   labelledBy?: string;
 }>();
@@ -63,7 +63,6 @@ function onFocusOut(event: FocusEvent) {
 
 const current = computed(() => props.options.find((o) => o.value === props.modelValue) ?? props.options[0]);
 
-/** 按选项出现顺序聚合分组（无 groupLabels 时整体为单组、无标题） */
 const grouped = computed(() => {
   if (!props.groupLabels) return [{ label: '', options: props.options }];
   const order: string[] = [];

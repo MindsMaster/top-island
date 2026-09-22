@@ -1,15 +1,3 @@
-//! 把 bridge 脚本注入渲染进程的 V8 上下文。
-//!
-//! 渲染进程启动早期会调 `cef_execute_process(args, app, ...)`，detour 它，在 `app` 经过时
-//! 换掉两个函数指针字段：
-//!
-//! ```text
-//! cef_execute_process(app)
-//!   └─ app.get_render_process_handler
-//!        └─ handler.on_context_created
-//!             └─ frame.execute_java_script(bridge.js)
-//! ```
-
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
@@ -17,9 +5,7 @@ use std::sync::OnceLock;
 use retour::GenericDetour;
 use windows::core::{s, w, PCSTR};
 use windows::Win32::Foundation::HMODULE;
-use windows::Win32::System::LibraryLoader::{
-    GetModuleHandleW, GetProcAddress, LoadLibraryW,
-};
+use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
 
 use crate::cef::{
     BorrowedCefString, CefApp, CefFrame, CefRenderProcessHandler, GetRenderProcessHandlerFn,
@@ -28,15 +14,12 @@ use crate::cef::{
 
 const BOOTSTRAP_JS: &str = include_str!("../js/bridge.js");
 
-type ExecuteProcessFn =
-    unsafe extern "system" fn(*const c_void, *mut CefApp, *const c_void) -> i32;
+type ExecuteProcessFn = unsafe extern "system" fn(*const c_void, *mut CefApp, *const c_void) -> i32;
 
 static EXECUTE_PROCESS_DETOUR: OnceLock<GenericDetour<ExecuteProcessFn>> = OnceLock::new();
 static ORIG_GET_RPH: AtomicUsize = AtomicUsize::new(0);
 static ORIG_ON_CONTEXT_CREATED: AtomicUsize = AtomicUsize::new(0);
 
-/// libcef 已加载就同步 hook；否则起线程等它出现。libcef 没加载时 cef_execute_process 也不可能
-/// 已经跑过，等待线程来得及。
 pub fn install() -> InstallOutcome {
     if let Some(module) = libcef_if_loaded() {
         return do_install(module);
@@ -61,8 +44,7 @@ pub enum InstallOutcome {
     Hooked,
     Deferred,
     Failed,
-    /// CEF 主版本不在白名单。`cef.rs` 的结构体布局钉在 CEF 91，对别的版本装 hook 可能崩掉宿主；
-    /// 退避后 GDI 转发照常，网易云正常运行，只是没有 bridge。
+    /// 布局钉在 CEF 91 非白名单版本会崩宿主
     Incompatible {
         #[allow(dead_code)]
         major: i32,
@@ -73,7 +55,7 @@ const COMPATIBLE_MAJORS: &[i32] = &[91];
 
 type VersionInfoFn = unsafe extern "system" fn(i32) -> i32;
 
-/// `cef_version_info(0)` 是 CEF 主版本，`(4)` 是 Chromium 主版本
+/// cef_version_info(0)=CEF 主版本 (4)=Chromium 主版本
 fn cef_version_verdict(module: HMODULE) -> (bool, i32) {
     let Some(f) = export(module, s!("cef_version_info")) else {
         return (false, -1);
@@ -81,7 +63,11 @@ fn cef_version_verdict(module: HMODULE) -> (bool, i32) {
     let version_info: VersionInfoFn = unsafe { std::mem::transmute(f) };
     let cef_major = unsafe { version_info(0) };
     let chrome_major = unsafe { version_info(4) };
-    let reported = if chrome_major > 0 { chrome_major } else { cef_major };
+    let reported = if chrome_major > 0 {
+        chrome_major
+    } else {
+        cef_major
+    };
     (is_compatible_major(cef_major, chrome_major), reported)
 }
 
@@ -126,7 +112,7 @@ fn do_install(module: HMODULE) -> InstallOutcome {
         let Ok(detour) = GenericDetour::new(exec_target, hook_execute_process) else {
             return InstallOutcome::Failed;
         };
-        // 先放进 cell 再 enable：enable 之后 hook 随时可能被调，那时必须能拿到 trampoline
+        // enable 后 hook 随时被调 须先存好 trampoline
         if EXECUTE_PROCESS_DETOUR.set(detour).is_err() {
             return InstallOutcome::Hooked;
         }
@@ -146,11 +132,13 @@ unsafe extern "system" fn hook_execute_process(
     sandbox: *const c_void,
 ) -> i32 {
     wrap_app(app);
-    let d = EXECUTE_PROCESS_DETOUR.get().expect("detour published before enable");
+    let d = EXECUTE_PROCESS_DETOUR
+        .get()
+        .expect("detour published before enable");
     unsafe { d.call(args, app, sandbox) }
 }
 
-/// 在 CEF 的 C 回调里，Rust panic 展开到宿主是未定义行为，一律 catch_unwind
+/// panic 展开进 C 回调是 UB 一律 catch_unwind
 fn wrap_app(app: *mut CefApp) {
     if app.is_null() {
         return;
@@ -183,8 +171,10 @@ unsafe extern "system" fn hook_get_render_process_handler(
             let h = &mut *handler;
             let ours = hook_on_context_created as *const () as usize;
             if h.on_context_created.map_or(0, |f| f as usize) != ours {
-                ORIG_ON_CONTEXT_CREATED
-                    .store(h.on_context_created.map_or(0, |f| f as usize), Ordering::Release);
+                ORIG_ON_CONTEXT_CREATED.store(
+                    h.on_context_created.map_or(0, |f| f as usize),
+                    Ordering::Release,
+                );
                 h.on_context_created = Some(hook_on_context_created);
             }
         }
@@ -210,7 +200,7 @@ unsafe extern "system" fn hook_on_context_created(
     inject_bootstrap(frame);
 }
 
-/// 只注入主帧；脚本自身会在非 orpheus:// 页面直接返回
+/// 只注入主帧 非 orpheus 页面脚本自返
 fn inject_bootstrap(frame: *mut CefFrame) {
     if frame.is_null() {
         return;
@@ -221,7 +211,9 @@ fn inject_bootstrap(frame: *mut CefFrame) {
         if is_main(frame) == 0 {
             return;
         }
-        let Some(execute) = f.execute_java_script else { return };
+        let Some(execute) = f.execute_java_script else {
+            return;
+        };
 
         let code = BorrowedCefString::new(BOOTSTRAP_JS);
         let url = BorrowedCefString::new("topisland://bridge/bootstrap.js");

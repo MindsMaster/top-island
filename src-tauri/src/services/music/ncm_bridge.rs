@@ -1,10 +1,7 @@
-//! 网易云进程内 bridge 的 WebSocket 服务端。bridge（`island-cloudmusic-bridge/js/bridge.js`）
-//! 作客户端连进来，上报锚点式播放状态，接收 play/pause/seek。
-//!
-//! 协议（JSON 文本帧）：
-//! - bridge → 岛：`{type:"state", songId, playId, title, artist, album, coverUrl,
-//!   durationMs, positionMs, anchorEpochMs, playing}`，首帧带 `token`
-//! - 岛 → bridge：`{type:"control", action:"play"|"pause"|"seek", positionMs?}`
+//! 网易云 bridge 的 WebSocket 服务端 协议须与 bridge.js 同步
+//! bridge → 岛 `{type:"state", songId, playId, title, artist, album, coverUrl,
+//!   durationMs, positionMs, anchorEpochMs, playing}` 首帧带 token
+//! 岛 → bridge `{type:"control", action:"play"|"pause"|"seek", positionMs?}`
 
 use std::collections::VecDeque;
 use std::io::ErrorKind;
@@ -20,7 +17,7 @@ use tungstenite::Message;
 use super::provider::{now_epoch_ms, Capabilities, Control, MusicProvider, ProviderState};
 use crate::error::AppResult;
 
-/// 与 bridge.js 保持一致
+/// 端口与 token 须与 bridge.js 一致
 pub const BRIDGE_PORT: u16 = 52847;
 pub const BRIDGE_TOKEN: &str = "top-island-ncm-bridge-v1";
 
@@ -28,7 +25,6 @@ pub const BRIDGE_TOKEN: &str = "top-island-ncm-bridge-v1";
 struct BridgeInner {
     state: Mutex<Option<ProviderState>>,
     connected: AtomicBool,
-    /// 待下发的控制帧，连接线程取走发出
     outbox: Mutex<VecDeque<String>>,
 }
 
@@ -38,7 +34,6 @@ pub struct NcmBridgeProvider {
 }
 
 impl NcmBridgeProvider {
-    /// `on_change` 在收到新状态帧或断连时触发
     pub fn start(on_change: impl Fn() + Send + 'static) -> Self {
         let inner = Arc::new(BridgeInner::default());
         let server_inner = Arc::clone(&inner);
@@ -65,11 +60,19 @@ impl MusicProvider for NcmBridgeProvider {
         if !self.inner.connected.load(Ordering::Acquire) {
             return None;
         }
-        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { skip: false, artwork_bitmap: false, fallback: false }
+        Capabilities {
+            skip: false,
+            artwork_bitmap: false,
+            fallback: false,
+        }
     }
 
     fn control(&self, action: Control) -> AppResult<bool> {
@@ -79,7 +82,9 @@ impl MusicProvider for NcmBridgeProvider {
         let frame = match action {
             Control::Play => json!({ "type": "control", "action": "play" }),
             Control::Pause => json!({ "type": "control", "action": "pause" }),
-            Control::Seek(ms) => json!({ "type": "control", "action": "seek", "positionMs": ms.max(0) }),
+            Control::Seek(ms) => {
+                json!({ "type": "control", "action": "seek", "positionMs": ms.max(0) })
+            }
             Control::Next | Control::Prev => return Ok(false),
         };
         self.inner
@@ -91,7 +96,7 @@ impl MusicProvider for NcmBridgeProvider {
     }
 }
 
-/// 拒绝网页来源。WebSocket 不受 CORS 约束，任意网页都能连 127.0.0.1；bridge 是 orpheus:// 源
+/// WebSocket 不受 CORS 约束 任意网页都能连本机 bridge 是 orpheus:// 源
 fn refuse_web_origin(req: &Request, resp: Response) -> Result<Response, ErrorResponse> {
     if let Some(origin) = req.headers().get("origin") {
         let o = origin.to_str().unwrap_or("");
@@ -106,7 +111,7 @@ fn refuse_web_origin(req: &Request, resp: Response) -> Result<Response, ErrorRes
     Ok(resp)
 }
 
-/// 串行处理单连接；只有网易云一个渲染进程会连进来
+/// 串行单连接 只有网易云渲染进程会连
 fn serve(inner: Arc<BridgeInner>, on_change: impl Fn()) {
     let listener = match TcpListener::bind((Ipv4Addr::LOCALHOST, BRIDGE_PORT)) {
         Ok(l) => l,
@@ -118,7 +123,7 @@ fn serve(inner: Arc<BridgeInner>, on_change: impl Fn()) {
     for stream in listener.incoming() {
         match stream {
             Ok(tcp) => {
-                // 连接内的 panic 只断这条连接，服务端线程死了 bridge 就永久失联
+                // panic 只断本连接 线程死了 bridge 永久失联
                 let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     handle_conn(&inner, tcp, &on_change)
                 }));
@@ -130,7 +135,11 @@ fn serve(inner: Arc<BridgeInner>, on_change: impl Fn()) {
         }
         let was_connected = inner.connected.swap(false, Ordering::AcqRel);
         *inner.state.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        inner.outbox.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        inner
+            .outbox
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         if was_connected {
             on_change();
         }
@@ -138,7 +147,7 @@ fn serve(inner: Arc<BridgeInner>, on_change: impl Fn()) {
 }
 
 fn handle_conn(inner: &Arc<BridgeInner>, tcp: TcpStream, on_change: &impl Fn()) {
-    // 读超时让循环能周期性地去发 outbox；tungstenite 在 WouldBlock 时保留半包状态
+    // 读超时让循环能发 outbox WouldBlock 时 tungstenite 保留半包
     if let Err(e) = tcp.set_read_timeout(Some(Duration::from_millis(150))) {
         eprintln!("[music:bridge] 设置读超时失败: {e}");
         return;
@@ -152,11 +161,15 @@ fn handle_conn(inner: &Arc<BridgeInner>, tcp: TcpStream, on_change: &impl Fn()) 
     };
 
     let mut authed = false;
-    // 不鉴权的连接不能一直占着这唯一的连接位
+    // 未鉴权连接不得久占唯一连接位
     let auth_deadline = Instant::now() + Duration::from_secs(5);
     loop {
         loop {
-            let next = inner.outbox.lock().unwrap_or_else(|e| e.into_inner()).pop_front();
+            let next = inner
+                .outbox
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .pop_front();
             let Some(text) = next else { break };
             if ws.send(Message::text(text)).is_err() {
                 return;
@@ -192,7 +205,6 @@ enum Inbound {
     State(ProviderState),
 }
 
-/// 任一帧带正确 token 即完成鉴权
 fn classify_frame(text: &str, authed: &mut bool, now_ms: i64) -> Inbound {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
         return Inbound::Ignored;
@@ -231,10 +243,17 @@ fn handle_frame(inner: &Arc<BridgeInner>, text: &str, authed: &mut bool) -> bool
 
 fn parse_state_frame(v: &serde_json::Value, now_ms: i64) -> ProviderState {
     let str_of = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
-    // JS 侧 秒*1000 常是非整数，serde_json 对非整数 as_i64 返回 None
-    let num_of = |k: &str| v.get(k).and_then(serde_json::Value::as_f64).map(|f| f.round() as i64);
+    // JS 侧毫秒常非整数 as_i64 会返回 None
+    let num_of = |k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_f64)
+            .map(|f| f.round() as i64)
+    };
 
-    let playing = v.get("playing").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let playing = v
+        .get("playing")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     ProviderState {
         is_playing: playing,
         title: str_of("title").unwrap_or_default(),
@@ -264,7 +283,9 @@ mod tests {
         let s = frame(r#"{"type":"state","songId":"1","positionMs":63992.5,"playing":true}"#);
         assert_eq!(s.position_ms, 63993);
 
-        let s = frame(r#"{"type":"state","songId":"1","positionMs":144096.00000000003,"playing":true}"#);
+        let s = frame(
+            r#"{"type":"state","songId":"1","positionMs":144096.00000000003,"playing":true}"#,
+        );
         assert_eq!(s.position_ms, 144096);
 
         let s = frame(r#"{"type":"state","songId":"1","positionMs":64322,"playing":true}"#);
@@ -273,7 +294,9 @@ mod tests {
 
     #[test]
     fn fractional_duration_and_anchor_are_read() {
-        let s = frame(r#"{"type":"state","songId":"1","durationMs":177899.99,"anchorEpochMs":1788691227437.7}"#);
+        let s = frame(
+            r#"{"type":"state","songId":"1","durationMs":177899.99,"anchorEpochMs":1788691227437.7}"#,
+        );
         assert_eq!(s.duration_ms, Some(177900));
         assert_eq!(s.anchor_epoch_ms, 1788691227438);
     }
@@ -312,7 +335,11 @@ mod tests {
         let hello = format!(r#"{{"type":"hello","token":"{BRIDGE_TOKEN}"}}"#);
         assert_eq!(classify_frame(&hello, &mut authed, 0), Inbound::Ignored);
         assert!(authed);
-        let r = classify_frame(r#"{"type":"state","songId":"7","positionMs":1234}"#, &mut authed, 0);
+        let r = classify_frame(
+            r#"{"type":"state","songId":"7","positionMs":1234}"#,
+            &mut authed,
+            0,
+        );
         match r {
             Inbound::State(s) => {
                 assert_eq!(s.song_id.as_deref(), Some("7"));
@@ -326,7 +353,10 @@ mod tests {
     fn token_on_first_state_frame_also_authenticates() {
         let mut authed = false;
         let f = format!(r#"{{"type":"state","token":"{BRIDGE_TOKEN}","positionMs":42}}"#);
-        assert!(matches!(classify_frame(&f, &mut authed, 0), Inbound::State(_)));
+        assert!(matches!(
+            classify_frame(&f, &mut authed, 0),
+            Inbound::State(_)
+        ));
         assert!(authed);
     }
 
@@ -334,6 +364,9 @@ mod tests {
     fn malformed_json_and_unknown_types_are_ignored() {
         let mut authed = true;
         assert_eq!(classify_frame("not json", &mut authed, 0), Inbound::Ignored);
-        assert_eq!(classify_frame(r#"{"type":"whatever"}"#, &mut authed, 0), Inbound::Ignored);
+        assert_eq!(
+            classify_frame(r#"{"type":"whatever"}"#, &mut authed, 0),
+            Inbound::Ignored
+        );
     }
 }

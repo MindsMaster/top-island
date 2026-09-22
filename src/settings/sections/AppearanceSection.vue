@@ -49,7 +49,7 @@ const displays = ref<DisplayInfo[]>([]);
 const displayOptions = computed(() => {
   const counts = new Map<string, number>();
   for (const d of displays.value) counts.set(d.label, (counts.get(d.label) ?? 0) + 1);
-  // 同型号双屏友好名相同，用 GDI 名（DISPLAY2）区分
+  // 同型号名相同 附 GDI 名区分
   return displays.value.map((d) => ({
     value: d.id,
     label: counts.get(d.label)! > 1 ? `${d.label} (${d.id.replace(/^\\+\.\\/, '')})` : d.label,
@@ -64,7 +64,7 @@ const displayValue = computed(() =>
 );
 
 function onDisplayPick(id: string) {
-  // 选中主显示器时存 'primary'（跨重插拔更稳）
+  // 主显示器存 primary 抗重插拔
   settings.island.displayId = displays.value.find((d) => d.id === id)?.primary ? 'primary' : id;
 }
 

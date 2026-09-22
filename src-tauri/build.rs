@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-/// 把 island-cloudmusic-bridge 的 cdylib 产物嵌进 app，运行时释放部署到网易云目录。
-/// 两者没有 cargo 依赖边（bridge 不能链进 app），所以从 target 目录找产物；
-/// 找不到就嵌空并警告，app 照常构建，只是自动部署失效。构建顺序由 xtask 保证。
+/// 无 cargo 依赖边 故从 target 找产物
 fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));

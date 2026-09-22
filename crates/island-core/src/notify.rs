@@ -1,31 +1,28 @@
 use serde::{Deserialize, Serialize};
 
-/// 消息托管：来自系统通知中心（wpndatabase.db）的一条通知
+/// 与 src/platform/types.ts 的 NotificationItem 一一对应
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationItem {
-    /// wpndatabase.db 中的 Notification.Id（单调递增，作去重水位与激活定位）
+    /// Notification.Id 单调递增 去重水位
     pub id: i64,
-    /// 来源应用 AUMID（激活时用）
     pub aumid: String,
-    /// 应用显示名（缺省回退 AUMID）
+    /// HandlerAssets.DisplayName 缺省回退 AUMID
     pub app: String,
-    /// 应用图标 URI；win32 应用库里没有 URI，此时为 aumid:<AUMID>，由 notify_image 反查解析
+    /// HandlerAssets.IconUri 无 URI 时为 aumid: 前缀 由 notify_image 反查
     pub icon: String,
-    /// toast 内嵌图片（聊天应用的发送人头像，多为本地文件路径），优先于 icon 展示
+    /// toast 内嵌图 多为本地路径 优先于 icon
     pub image: String,
     pub title: String,
     pub body: String,
-    /// toast 深链参数，复现点击时回灌给应用
+    /// toast 深链参数 激活时回灌
     pub launch: String,
-    /// foreground | background | protocol；protocol 时 launch 为 URI
+    /// foreground|background|protocol protocol 时 launch 为 URI
     pub atype: String,
-    /// 到达时间（unix ms）
+    /// unix ms
     pub arrival: i64,
 }
 
-/// toast payload XML 提取结果。image：聊天类应用（微信/QQ/Phone Link）把发信人头像
-/// 放在 <image placement="appLogoOverride">，优先取它（ToastPayload.cs 的考据）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ToastPayload {
     pub launch: String,
@@ -35,20 +32,15 @@ pub struct ToastPayload {
     pub image: String,
 }
 
-/// 从 toast payload XML 提取 launch/activationType/标题/正文/图片。
-/// 手写扫描器而不是 XML 库：island-core 不许加系统/重依赖，且 toast XML 是通知平台
-/// 机器生成的扁平结构，扫标签足够；扫描器天然容错，破损 XML 走 best-effort，
-/// 不需要 ToastPayload.cs 那样再备一套正则兜底。
 pub fn parse_toast_payload(xml: &str) -> ToastPayload {
     let mut payload = ToastPayload::default();
     let mut texts: Vec<String> = Vec::new();
-    // (src, placement)
     let mut images: Vec<(String, String)> = Vec::new();
 
     let mut rest = xml;
     while let Some(lt) = rest.find('<') {
         rest = &rest[lt + 1..];
-        // 声明/注释/闭合标签都不是数据
+        // 跳过声明注释闭合标签
         if rest.starts_with('?') || rest.starts_with('!') || rest.starts_with('/') {
             match rest.find('>') {
                 Some(gt) => rest = &rest[gt + 1..],
@@ -107,11 +99,12 @@ pub fn parse_toast_payload(xml: &str) -> ToastPayload {
 }
 
 fn attr(attrs: &[(&str, String)], name: &str) -> Option<String> {
-    attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone())
+    attrs
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, v)| v.clone())
 }
 
-/// 解析标签属性串直到 '>' 或 '/>'，返回 (属性表, 是否自闭合, 剩余输入)。
-/// 属性值支持双/单引号；引号未闭合（截断的 XML）视作标签结束，尽量保住已解析部分。
 fn parse_attrs(input: &str) -> (Vec<(&str, String)>, bool, &str) {
     let mut attrs = Vec::new();
     let mut rest = input;
@@ -132,7 +125,7 @@ fn parse_attrs(input: &str) -> (Vec<(&str, String)>, bool, &str) {
         let name = &rest[..name_end];
         rest = &rest[name_end..];
         let Some(after) = rest.trim_start().strip_prefix('=') else {
-            // 无值属性（toast XML 里实际不出现），跳过
+            // 无值属性 toast XML 不出现
             continue;
         };
         rest = after.trim_start();
@@ -152,7 +145,6 @@ fn parse_attrs(input: &str) -> (Vec<(&str, String)>, bool, &str) {
     }
 }
 
-/// XML 实体反转义：命名实体 + &#NN; / &#xHH; 数值字符引用
 fn unescape(text: &str) -> String {
     if !text.contains('&') {
         return text.to_string();
@@ -182,7 +174,7 @@ fn unescape(text: &str) -> String {
                 rest = &rest[semi + 1..];
             }
             None => {
-                // 未知实体原样保留（含 & 和 ;），不丢信息
+                // 未知实体原样保留
                 out.push('&');
                 out.push_str(entity);
                 out.push(';');
@@ -196,7 +188,10 @@ fn unescape(text: &str) -> String {
 
 fn decode_numeric(entity: &str) -> Option<char> {
     let digits = entity.strip_prefix('#')?;
-    let value = if let Some(hex) = digits.strip_prefix('x').or_else(|| digits.strip_prefix('X')) {
+    let value = if let Some(hex) = digits
+        .strip_prefix('x')
+        .or_else(|| digits.strip_prefix('X'))
+    {
         u32::from_str_radix(hex, 16).ok()?
     } else {
         digits.parse::<u32>().ok()?
@@ -220,14 +215,13 @@ mod tests {
   </visual>
 </toast>"##;
         let p = parse_toast_payload(xml);
-        assert_eq!(p.launch, "weixin://chat?id=wxid_abc&type=1", "launch 属性里的实体应被反转义");
-        assert_eq!(p.atype, "protocol", "activationType 应原样提取");
-        assert_eq!(p.title, "张三", "第一个 <text> 是标题");
-        assert_eq!(p.body, "晚上一起吃饭？", "第二个 <text> 是正文");
+        assert_eq!(p.launch, "weixin://chat?id=wxid_abc&type=1");
+        assert_eq!(p.atype, "protocol");
+        assert_eq!(p.title, "张三");
+        assert_eq!(p.body, "晚上一起吃饭？");
         assert_eq!(
             p.image,
-            r"C:\Users\me\AppData\Local\Packages\Tencent.WeChat_abc\LocalCache\avatar.png",
-            "appLogoOverride 头像应优先作为图片"
+            r"C:\Users\me\AppData\Local\Packages\Tencent.WeChat_abc\LocalCache\avatar.png"
         );
     }
 
@@ -238,7 +232,7 @@ mod tests {
         </binding></visual></toast>"#;
         let p = parse_toast_payload(xml);
         assert_eq!(p.title, "群聊");
-        assert_eq!(p.body, "李四: 收到  王五: 好的", "多行正文应以两个空格拼接（与 winbridge 一致）");
+        assert_eq!(p.body, "李四: 收到  王五: 好的");
     }
 
     #[test]
@@ -249,7 +243,7 @@ mod tests {
           <text>t</text>
         </binding></visual></toast>"#;
         let p = parse_toast_payload(xml);
-        assert_eq!(p.image, "avatar.jpg", "appLogoOverride 应优先于其他 image");
+        assert_eq!(p.image, "avatar.jpg");
     }
 
     #[test]
@@ -258,7 +252,7 @@ mod tests {
           <image src="http://example.com/a.png"/><text>t</text><text>b</text>
         </binding></visual></toast>"#;
         let p = parse_toast_payload(xml);
-        assert_eq!(p.image, "http://example.com/a.png", "没有头像时应取第一张图");
+        assert_eq!(p.image, "http://example.com/a.png");
     }
 
     #[test]
@@ -267,7 +261,7 @@ mod tests {
           <text></text><text>  </text><text>真正的标题</text><text>正文</text>
         </binding></visual></toast>"#;
         let p = parse_toast_payload(xml);
-        assert_eq!(p.title, "真正的标题", "空 text 元素不应占标题位");
+        assert_eq!(p.title, "真正的标题");
         assert_eq!(p.body, "正文");
     }
 
@@ -275,37 +269,37 @@ mod tests {
     fn parse_handles_single_quoted_attributes() {
         let xml = "<toast launch='myapp://open' activationType='background'><visual><binding template='ToastGeneric'><text>t</text></binding></visual></toast>";
         let p = parse_toast_payload(xml);
-        assert_eq!(p.launch, "myapp://open", "单引号属性同样要识别");
+        assert_eq!(p.launch, "myapp://open");
         assert_eq!(p.atype, "background");
     }
 
     #[test]
     fn parse_tolerates_truncated_xml_without_panicking() {
         let p = parse_toast_payload(r#"<toast launch="broken"#);
-        assert_eq!(p.launch, "", "截断的属性不应产出半个值");
+        assert_eq!(p.launch, "");
         let p = parse_toast_payload(r#"<toast launch="ok"><visual><binding><text>没闭合"#);
-        assert_eq!(p.launch, "ok", "已解析的根属性应保住");
-        assert_eq!(p.title, "", "未闭合的 text 不应产出内容");
+        assert_eq!(p.launch, "ok");
+        assert_eq!(p.title, "");
     }
 
     #[test]
     fn parse_returns_empty_payload_for_empty_input() {
         let p = parse_toast_payload("");
-        assert_eq!(p, Default::default(), "空输入应得到全空 payload");
+        assert_eq!(p, Default::default());
         let p = parse_toast_payload("not xml at all");
-        assert_eq!(p, Default::default(), "非 XML 输入应得到全空 payload");
+        assert_eq!(p, Default::default());
     }
 
     #[test]
     fn parse_unescapes_entities_in_text() {
         let xml = r"<toast><visual><binding><text>Tom &amp; Jerry &lt;3 &#65;&#x42;</text></binding></visual></toast>";
         let p = parse_toast_payload(xml);
-        assert_eq!(p.title, "Tom & Jerry <3 AB", "命名与数值实体都应反转义");
+        assert_eq!(p.title, "Tom & Jerry <3 AB");
     }
 
     #[test]
     fn unescape_keeps_unknown_entities_verbatim() {
-        assert_eq!(unescape("a &bogus; b"), "a &bogus; b", "未知实体应原样保留而不是丢弃");
-        assert_eq!(unescape("100% & rest"), "100% & rest", "裸 & 不应吞掉后续文本");
+        assert_eq!(unescape("a &bogus; b"), "a &bogus; b");
+        assert_eq!(unescape("100% & rest"), "100% & rest");
     }
 }

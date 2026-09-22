@@ -1,14 +1,10 @@
-//! CEF 91（Chromium 91.0.4472，网易云自带 libcef 91.2.2）C API 的最小手写绑定，
-//! 只覆盖从 `cef_execute_process` 到注入 JS 这条路径上用到的结构体。
-//!
-//! 布局是 ABI 关键：CEF C API 就是一张函数指针表，每个结构体以 `CefBaseRefCounted` 开头，
-//! 后面按声明顺序每个方法一个指针槽。字段顺序必须和 CEF 91 头文件逐字节一致，
-//! 用不到的方法保留为 `usize` 占位以维持偏移。
+//! CEF 91 C API 绑定 布局须逐字节一致
+//! usize 占位保偏移
 
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-/// Windows 上 `cef_string_t` 是 UTF-16 版本。`dtor` 为 None 表示不拥有缓冲区。
+/// cef_string_t 为 UTF-16 dtor None 不拥有缓冲区
 #[repr(C)]
 pub struct CefStringUtf16 {
     pub str_: *mut u16,
@@ -97,14 +93,16 @@ pub struct CefFrame {
     pub send_process_message: usize,
 }
 
-/// 借用调用方持有的 UTF-16 缓冲区。CEF 会同步拷贝输入字符串，缓冲区只需活过调用。
+/// CEF 同步拷贝 缓冲区只需活过调用
 pub struct BorrowedCefString {
     buf: Vec<u16>,
 }
 
 impl BorrowedCefString {
     pub fn new(s: &str) -> Self {
-        Self { buf: s.encode_utf16().collect() }
+        Self {
+            buf: s.encode_utf16().collect(),
+        }
     }
 
     pub fn as_cef(&self) -> CefStringUtf16 {

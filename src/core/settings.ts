@@ -41,11 +41,7 @@ const DEFAULT_NOTIFICATIONS: NotificationsConfig = {
 
 const DEFAULT_MUSIC: MusicConfig = { neteaseBridge: true };
 
-/**
- * 全部窗口共享的设置。组件直读字段渲染、直写字段修改；
- * 持久化、跨窗口广播和副作用由本文件的 watch 统一负责。
- * 加字段只需改默认值常量和 platform/types 的类型。
- */
+/** 加字段须同步 platform/types 与默认值常量 */
 export const settings = reactive<AppSettings>({
   theme: 'dark',
   customTheme: { ...DEFAULT_CUSTOM_THEME },
@@ -57,7 +53,7 @@ export const settings = reactive<AppSettings>({
   autoLaunch: true,
 });
 
-/** 兼容旧版 privacy:boolean */
+/** 兼容旧版 boolean */
 function normalizePrivacy(raw: unknown): NotificationsPrivacy {
   if (typeof raw === 'boolean') return { ...DEFAULT_PRIVACY, enabled: raw };
   if (raw && typeof raw === 'object')
@@ -65,7 +61,6 @@ function normalizePrivacy(raw: unknown): NotificationsPrivacy {
   return { ...DEFAULT_PRIVACY };
 }
 
-/** 远端（持久化/其他窗口）数据灌进本窗口，缺省字段补全 */
 function applyRemote(s: Partial<AppSettings> | null) {
   if (!s) return;
   if (s.theme && THEMES.some((t) => t.id === s.theme)) settings.theme = s.theme;
@@ -84,7 +79,7 @@ function applyRemote(s: Partial<AppSettings> | null) {
   if (typeof s.autoLaunch === 'boolean') settings.autoLaunch = s.autoLaunch;
 }
 
-/** 岛布局 -> CSS 变量（缩放走 zoom；隐藏位移按露出高度换算，岛高 40px） */
+/** 岛高 40 与 _base.scss 一致 */
 function applyIslandStyle() {
   const root = document.documentElement;
   root.style.setProperty('--app-scale', String(settings.island.scale / 100));
@@ -99,10 +94,7 @@ function applyAll() {
   void useI18n().applyLangPref(settings.lang);
 }
 
-/**
- * 最近一次与远端同步过的内容快照。watch 回调是批处理异步触发的，
- * 用标志位挡不住回声，只能靠内容比对。
- */
+/** 防回声 只比内容 */
 let lastSynced = '';
 let loaded = false;
 
@@ -112,7 +104,7 @@ export async function initSettings() {
   try {
     saved = await storeApi.get<Partial<AppSettings>>('settings');
   } catch {
-    // 后端 store 尚未就绪（webview 可能先于 setup 加载）。不标记 loaded，否则主题永远停在默认值
+    // store 未就绪 不标 loaded 否则停在默认值
     window.setTimeout(() => void initSettings(), 500);
     return;
   }
@@ -142,7 +134,6 @@ export function toggleTheme() {
   settings.theme = nextThemeId(settings.theme);
 }
 
-/** 改色并即时切到 custom 主题 */
 export function setCustomColor(part: keyof CustomTheme, hex: string) {
   settings.customTheme[part] = hex;
   if (settings.theme !== 'custom') settings.theme = 'custom';

@@ -1,122 +1,203 @@
-/* === 面板8: 消息托管 === */
 .messages-panel {
   gap: 4px;
   justify-content: flex-start !important;
   padding-top: 8px;
 }
 .msg-header {
-  display: flex; align-items: center; gap: 8px;
-  width: 100%; padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 10px;
 }
-.msg-icon { font-size: 14px; color: rgba(120, 180, 255, 0.75); }
-.msg-title { font-size: 14px; font-weight: 600; }
-.msg-count { font-size: 11px; color: rgba(var(--ink), 0.35); }
+.msg-icon {
+  font-size: 14px;
+  color: rgba(120, 180, 255, 0.75);
+}
+.msg-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.msg-count {
+  font-size: 11px;
+  color: rgba(var(--ink), 0.35);
+}
 .msg-clear-btn {
   margin-left: auto;
-  background: none; border: none;
+  background: none;
+  border: none;
   color: rgba(var(--ink), 0.3);
-  font-size: 10px; cursor: pointer;
-  width: 22px; height: 22px; border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  transition: color 0.2s, background 0.2s;
+  font-size: 10px;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.2s,
+    background 0.2s;
   -webkit-app-region: no-drag;
 }
-.msg-clear-btn:hover { color: var(--danger); background: rgba(255, 107, 107, 0.1); }
+.msg-clear-btn:hover {
+  color: var(--danger);
+  background: rgba(255, 107, 107, 0.1);
+}
 
 .msg-list {
-  flex: 1; width: 100%;
-  overflow-y: auto; overflow-x: hidden;
+  flex: 1;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--ink), 0.2) transparent;
 }
 .msg-empty {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 8px; height: 100%;
-  color: rgba(var(--ink), 0.3); font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: rgba(var(--ink), 0.3);
+  font-size: 12px;
 }
-.msg-empty i { font-size: 24px; }
+.msg-empty i {
+  font-size: 24px;
+}
 
 .msg-row {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 8px 10px; border-radius: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s;
   -webkit-app-region: no-drag;
 }
-.msg-row:hover { background: rgba(var(--ink), 0.06); }
-.msg-row:hover .msg-del { opacity: 0.5; }
+.msg-row:hover {
+  background: rgba(var(--ink), 0.06);
+}
+.msg-row:hover .msg-del {
+  opacity: 0.5;
+}
 
 .msg-avatar {
   position: relative;
-  width: 34px; height: 34px; flex-shrink: 0;
-  border-radius: 9px; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, rgba(120, 180, 255, 0.35), rgba(160, 130, 255, 0.35));
 }
 .msg-avatar img {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%; object-fit: cover;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .msg-avatar-fallback {
-  font-size: 15px; font-weight: 600;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--island-text);
   text-transform: uppercase;
 }
 
-.msg-content { flex: 1; min-width: 0; }
+.msg-content {
+  flex: 1;
+  min-width: 0;
+}
 .msg-top {
-  display: flex; align-items: baseline; gap: 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .msg-app {
-  font-size: 12px; font-weight: 600;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--island-text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .msg-time {
-  margin-left: auto; flex-shrink: 0;
-  font-size: 10px; color: rgba(var(--ink), 0.35);
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: rgba(var(--ink), 0.35);
 }
 .msg-text-title {
-  font-size: 12px; font-weight: 500;
+  font-size: 12px;
+  font-weight: 500;
   color: rgba(var(--ink), 0.9);
   margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .msg-text-body {
-  font-size: 11px; color: rgba(var(--ink), 0.6);
+  font-size: 11px;
+  color: rgba(var(--ink), 0.6);
   margin-top: 1px;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .msg-del {
   flex-shrink: 0;
-  background: none; border: none;
+  background: none;
+  border: none;
   color: rgba(var(--ink), 0.4);
-  font-size: 12px; cursor: pointer;
-  width: 20px; height: 20px; border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    background 0.15s;
   -webkit-app-region: no-drag;
 }
-.msg-del:hover { opacity: 1 !important; color: var(--danger); background: rgba(255, 107, 107, 0.12); }
+.msg-del:hover {
+  opacity: 1 !important;
+  color: var(--danger);
+  background: rgba(255, 107, 107, 0.12);
+}
 
-/* === 消息弹窗卡片（岛下方弹出） === */
+/* 消息弹卡 */
 .notify-stack {
   position: absolute;
-  top: 58px; /* 岛 top 10 + 高 40 + 间距 8 */
+  top: 58px; /* 岛下沿 顶10 高40 距8 */
   left: 50%;
   transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   z-index: 30;
-  pointer-events: none; /* 命中区域只在卡片上，空白处保持穿透 */
-  /* top 与岛高度形变同一条弹簧曲线，通知栈全程贴着岛下沿走 */
-  transition: opacity 0.28s ease, visibility 0.28s,
-              top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none; /* 空白处保持穿透 */
+  /* top 与岛形变同一弹簧 */
+  transition:
+    opacity 0.28s ease,
+    visibility 0.28s,
+    top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 .notify-stack.dock-large {
-  top: 378px; /* 岛 top 10 + 大视图高 360 + 间距 8 */
+  top: 378px; /* 岛下沿 大视图高360 */
 }
 .notify-stack.dock-hidden {
   top: calc(58px + var(--island-hidden-shift, -34px));
@@ -124,7 +205,9 @@
 .notify-card {
   pointer-events: auto;
   position: relative;
-  display: flex; align-items: flex-start; gap: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   width: 360px;
   padding: 10px 12px;
   border-radius: 18px;
@@ -134,13 +217,15 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s;
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.2s;
 }
 .notify-card:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.48);
 }
-/* 栈底折叠行：底部 ::before/::after 垫两道细边模拟“一叠” */
+/* 伪元素垫细边模拟叠层 */
 .notify-fold {
   pointer-events: auto;
   position: relative;
@@ -152,7 +237,8 @@
   color: rgba(var(--ink), 0.55);
   border: 1px solid var(--panel-border);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
-  font-size: 11px; font-weight: 500;
+  font-size: 11px;
+  font-weight: 500;
   text-align: center;
   -webkit-app-region: no-drag;
 }
@@ -160,7 +246,9 @@
 .notify-fold::after {
   content: '';
   position: absolute;
-  left: 10px; right: 10px; bottom: -4px;
+  left: 10px;
+  right: 10px;
+  bottom: -4px;
   height: 8px;
   border-radius: 0 0 14px 14px;
   background: var(--island-bg);
@@ -169,7 +257,9 @@
   z-index: -1;
 }
 .notify-fold::after {
-  left: 18px; right: 18px; bottom: -8px;
+  left: 18px;
+  right: 18px;
+  bottom: -8px;
   opacity: 0.6;
 }
 html[data-scheme='light'] .notify-fold {
@@ -184,50 +274,78 @@ html[data-scheme='light'] .notify-card:hover {
 
 .notify-avatar {
   position: relative;
-  width: 38px; height: 38px; flex-shrink: 0;
-  border-radius: 10px; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, rgba(120, 180, 255, 0.35), rgba(160, 130, 255, 0.35));
 }
 .notify-avatar img {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%; object-fit: cover;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .notify-avatar-fallback {
-  font-size: 16px; font-weight: 600;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--island-text);
   text-transform: uppercase;
 }
 
-.notify-body { flex: 1; min-width: 0; }
+.notify-body {
+  flex: 1;
+  min-width: 0;
+}
 .notify-meta {
-  display: flex; align-items: baseline; gap: 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .notify-app {
-  font-size: 11px; font-weight: 600;
+  font-size: 11px;
+  font-weight: 600;
   color: rgba(var(--ink), 0.55);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .notify-time {
-  margin-left: auto; flex-shrink: 0;
-  font-size: 10px; color: rgba(var(--ink), 0.4);
-  /* 悬停时给关闭按钮让位 */
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: rgba(var(--ink), 0.4);
+  /* 悬停给关闭钮让位 */
   transition: opacity 0.15s;
 }
-.notify-card:hover .notify-time { opacity: 0; }
+.notify-card:hover .notify-time {
+  opacity: 0;
+}
 .notify-title {
-  font-size: 13px; font-weight: 600;
+  font-size: 13px;
+  font-weight: 600;
   margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .notify-text {
-  font-size: 12px; color: rgba(var(--ink), 0.65);
-  margin-top: 1px; line-height: 1.35;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  font-size: 12px;
+  color: rgba(var(--ink), 0.65);
+  margin-top: 1px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;
 }
-/* 隐私模式：头像/人名高斯模糊，正文另由 JS 替换为通用文案 */
+/* 隐私模式 正文由 JS 换文案 */
 .notify-blur {
   filter: blur(7px);
   user-select: none;
@@ -235,32 +353,52 @@ html[data-scheme='light'] .notify-card:hover {
 }
 .notify-title.notify-blur {
   filter: blur(5px);
-  width: fit-content; /* 模糊只罩住文字本身，不铺满整行 */
+  width: fit-content; /* 模糊只罩文字 */
 }
 .notify-text-private {
   color: rgba(var(--ink), 0.5);
   font-style: italic;
 }
 .notify-close {
-  position: absolute; top: 8px; right: 10px;
-  width: 20px; height: 20px; border-radius: 7px;
-  border: none; background: rgba(var(--ink), 0.08);
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 7px;
+  border: none;
+  background: rgba(var(--ink), 0.08);
   color: rgba(var(--ink), 0.55);
-  font-size: 11px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
   -webkit-app-region: no-drag;
 }
-.notify-card:hover .notify-close { opacity: 1; }
-.notify-close:hover { background: rgba(var(--ink), 0.16); color: var(--island-text); }
+.notify-card:hover .notify-close {
+  opacity: 1;
+}
+.notify-close:hover {
+  background: rgba(var(--ink), 0.16);
+  color: var(--island-text);
+}
 
 .npop-enter-active {
-  transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+  transition:
+    transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    opacity 0.3s ease;
 }
 .npop-leave-active {
-  transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s ease;
-  position: absolute; /* 离场不占位，下方卡片平滑上移 */
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 1, 1),
+    opacity 0.2s ease;
+  position: absolute; /* 离场不占位 */
   width: 360px;
 }
 .npop-enter-from {

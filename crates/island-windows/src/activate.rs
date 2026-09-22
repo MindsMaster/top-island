@@ -1,4 +1,4 @@
-use windows::core::{HSTRING, Interface, PCWSTR};
+use windows::core::{Interface, HSTRING, PCWSTR};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{
     CLSIDFromString, CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
@@ -8,15 +8,13 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-/// 应用注册的 toast activator CLSID
 fn custom_activator(aumid: &str) -> Option<String> {
     crate::appid::registry_value(aumid, "CustomActivator")
 }
 
-// INotificationActivationCallback：应用注册的 toast 点击回调接口
-// （IID 53E31837-6600-4A81-9395-75CFFE746F94，vtable 布局考据自 ToastActivation.cs）。
-// windows::core::interface 宏生成的代码按 ::windows_core 绝对路径引用，本 crate 不直接
-// 依赖 windows-core（Cargo.toml 不在本域清单内），改为手写 vtable + 手动实现 Interface。
+/// INotificationActivationCallback IID 53E31837-6600-4A81-9395-75CFFE746F94
+/// vtable 布局考据自 ToastActivation.cs
+/// interface 宏引用 ::windows_core 本 crate 无直接依赖 故手写 vtable
 #[repr(transparent)]
 #[derive(Clone)]
 struct NotificationActivationCallback(windows::core::IUnknown);
@@ -40,21 +38,20 @@ unsafe impl Interface for NotificationActivationCallback {
 }
 
 impl NotificationActivationCallback {
-    /// 复现系统点击回调；key/value 数据对不转发（winbridge 也没传）
+    /// key/value 数据对不转发 与 winbridge 一致
     unsafe fn activate(&self, aumid: PCWSTR, invoked_args: PCWSTR) -> windows::core::HRESULT {
         unsafe { (self.vtable().activate)(self.as_raw(), aumid, invoked_args, std::ptr::null(), 0) }
     }
 }
 
-/// toast <action> 的 key/value 对。我们复现点击时不转发它们（winbridge 也没传），
-/// 但 vtable 签名里这个指针类型要摆在正确的位置上。
+/// vtable 占位 数据不转发
 #[repr(C)]
 struct NOTIFICATION_USER_INPUT_DATA {
     key: PCWSTR,
     value: PCWSTR,
 }
 
-/// ShellExecute 返回值 > 32 才是成功（<=32 是历史遗留的错误码，不是 HINSTANCE）
+/// ShellExecute 返回值 >32 才成功 <=32 是错误码
 fn shell_open(file: &str, params: Option<&str>) -> bool {
     let verb = HSTRING::from("open");
     let file = HSTRING::from(file);
@@ -64,7 +61,9 @@ fn shell_open(file: &str, params: Option<&str>) -> bool {
             HWND::default(),
             &verb,
             &file,
-            params.as_ref().map_or(PCWSTR::null(), |p| PCWSTR(p.as_ptr())),
+            params
+                .as_ref()
+                .map_or(PCWSTR::null(), |p| PCWSTR(p.as_ptr())),
             PCWSTR::null(),
             SW_SHOWNORMAL,
         )
@@ -72,12 +71,9 @@ fn shell_open(file: &str, params: Option<&str>) -> bool {
     result.0 as usize > 32
 }
 
-/// 复现一次 toast 点击。链路与系统行为一致（ToastActivation.cs）：
-/// protocol 直开 → 应用注册的 COM activator（深链，能定位到会话）→
-/// IApplicationActivationManager（带参前台启动）→ shell:AppsFolder 兜底（仅拉起应用）。
-/// 返回实际生效的方式：protocol/com/aam/shell/failed。
+/// 链路与 ToastActivation.cs 一致
 pub fn activate_toast(aumid: &str, launch: &str, atype: &str) -> String {
-    // COM 回调要求套间线程；重复初始化返回 S_FALSE，无害
+    // 重复 CoInitializeEx 返回 S_FALSE 无害
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
     }
@@ -108,7 +104,9 @@ pub fn activate_toast(aumid: &str, launch: &str, atype: &str) -> String {
                         }
                         eprintln!("[notify] COM 激活回调返回失败({aumid}): {hr:?}");
                     }
-                    Err(e) => eprintln!("[notify] 创建 toast activator 失败({aumid}, {clsid}): {e}"),
+                    Err(e) => {
+                        eprintln!("[notify] 创建 toast activator 失败({aumid}, {clsid}): {e}")
+                    }
                 }
             }
             Err(e) => eprintln!("[notify] CustomActivator CLSID 非法({aumid}): {clsid}: {e}"),
@@ -125,11 +123,7 @@ pub fn activate_toast(aumid: &str, launch: &str, atype: &str) -> String {
     match manager {
         Ok(manager) => {
             let activated = unsafe {
-                manager.ActivateApplication(
-                    &HSTRING::from(aumid),
-                    &HSTRING::from(launch),
-                    AO_NONE,
-                )
+                manager.ActivateApplication(&HSTRING::from(aumid), &HSTRING::from(launch), AO_NONE)
             };
             match activated {
                 Ok(_) => return "aam".into(),

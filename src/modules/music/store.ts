@@ -13,7 +13,7 @@ import {
 
 export { formatTimeMs };
 
-/** positionMs 由 tick 从锚点外推；组件拖动进度条时直接写 isScrubbing/positionMs */
+/** 拖动进度时组件直写 isScrubbing positionMs */
 export const musicState = reactive({
   provider: '',
   isPlaying: false,
@@ -119,7 +119,7 @@ function handleState(data: MusicState) {
   musicState.songId = data.songId || '';
   musicState.hasMusic = true;
 
-  // 刚点过播放/暂停的 2s 内以本地为准，免得轮询回跳；切了歌本地那次点击就作废
+  // 点击后暂以本地为准 防轮询回跳
   const holdPlayState = !trackChanged && Date.now() - lastPlayAction < 2000;
   if (!holdPlayState) musicState.isPlaying = data.isPlaying;
 
@@ -140,7 +140,7 @@ function handleState(data: MusicState) {
     lyricsIdLoaded = '';
   }
 
-  // 拖动中或刚 seek 过时保留本地锚点，别被服务端还没追上的旧位置拽回去
+  // 防服务端旧位置拽回锚点
   const effectiveRate = musicState.isPlaying ? data.rate || 1 : 0;
   if (!musicState.isScrubbing && Date.now() - lastSeekAction > 3000) {
     setAnchor(data.positionMs, data.anchorEpochMs, effectiveRate);
@@ -166,7 +166,7 @@ function tick() {
   musicState.positionMs = extrapolate(Date.now());
 }
 
-// webview 被后台节流后 setInterval 可能长时间不触发，心跳停了就重建
+/** webview 后台节流停跳则重建 */
 function watchdog() {
   if (tickTimer !== null && lastTickAt > 0 && Date.now() - lastTickAt > 2000) {
     clearInterval(tickTimer);
@@ -186,7 +186,7 @@ export function startMusicPoll() {
   }
   poll();
   pollTimer = window.setInterval(poll, 2000);
-  // 100ms：歌词切行的量化延迟上限。250ms 时平均多 ~125ms 滞后，肉眼可感
+  // 歌词切行延迟上限
   lastTickAt = Date.now();
   tickTimer = window.setInterval(tick, 100);
   watchdogTimer = window.setInterval(watchdog, 3000);
@@ -216,11 +216,11 @@ export function togglePlay() {
   control(next ? 'play' : 'pause');
   musicState.isPlaying = next;
   lastPlayAction = Date.now();
-  // 本地立即改速率，进度不跳变：以当前外推位置重设锚点
+  // 重设锚点防进度跳变
   setAnchor(extrapolate(Date.now()), Date.now(), next ? rate || 1 : 0);
 }
 
-/** 闹钟响铃期间让位：铃响时暂停，铃停后只恢复由我们暂停的那次播放 */
+/** 只恢复自己暂停的那次 */
 let pausedForRinging = false;
 
 onAppEvent('alarm:ringing', (ringing) => {
@@ -248,7 +248,6 @@ export function skipTrack(dir: number) {
   setTimeout(poll, 1200);
 }
 
-/** 拖动进度条改变实际播放位置（仅在源支持 seek 时可用） */
 export function seek(ms: number) {
   const target = Math.max(0, Math.min(ms, musicState.durationMs || Number.MAX_SAFE_INTEGER));
   lastSeekAction = Date.now();
@@ -262,13 +261,11 @@ export const marqueeText = computed(
   () => musicState.currentTrack + (musicState.currentArtist ? '  •  ' + musicState.currentArtist : '')
 );
 
-/** 当前源是否上报时间轴；无时间轴则进度条禁用 */
 export const hasTimeline = computed(() => musicState.durationMs > 0);
 
-/** 进度条可拖动：会话声明支持 seek 且有真实时间轴 */
 export const seekable = computed(() => musicState.seekSupported && hasTimeline.value);
 
-/** 当前歌词行索引；无歌词/未到首句为 -1 */
+/** 未到首句为 -1 */
 export const lyricIndex = computed(() =>
   lyricIndexAt(musicState.lyricLines, musicState.positionMs + builtinLyricOffset(musicState.currentSourceApp))
 );

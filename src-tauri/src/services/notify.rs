@@ -9,16 +9,16 @@ use island_core::{AppSettings, NotificationItem};
 
 use crate::infra::persist;
 
-// 无 UserNotificationListener 时的退化节奏，同 winbridge NotifyService
+/// 同 winbridge 轮询节奏
 const POLL_INTERVAL: Duration = Duration::from_millis(1500);
 const MAX_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 const IMAGE_CACHE_CAP: usize = 200;
-// 沿用 Electron 版 store.json 的键：被改过横幅的应用 → 原值（-1 = 原本没有该值，还原=删除）
+/// 沿用 store.json 键 -1 为无原值
 const SUPPRESS_KEY: &str = "notifySuppressedApps";
 
 #[derive(Debug, Default)]
 struct ServiceState {
-    /// 递增即作废旧监视线程（停用/重启都靠它让线程自行退出）
+    /// 换代作废旧线程
     generation: u64,
     watching: bool,
     suppress: bool,
@@ -34,10 +34,9 @@ fn lock_state() -> MutexGuard<'static, ServiceState> {
     STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 按设置幂等启停消息托管 + 横幅接管（启动与 settings:changed 时调用）
 pub fn sync(app: &AppHandle, settings: &AppSettings) {
     let enabled = settings.notifications.enabled;
-    // 整体关托管时也视为关接管：右下角横幅是系统弹窗，不该由我们替用户压着
+    // 托管关则横幅还原
     let suppress = enabled && settings.notifications.suppress_banner;
     let (spawn, generation, need_restore) = {
         let mut st = lock_state();
@@ -67,7 +66,7 @@ pub fn sync(app: &AppHandle, settings: &AppSettings) {
 }
 
 fn watch_loop(app: AppHandle, generation: u64) {
-    // 开启托管前堆积的历史通知不弹：基线取当前最大 Id
+    // 基线不弹历史
     let mut watermark = match island_windows::wpn::query_max_id() {
         Ok(max) => max,
         Err(e) => {
@@ -78,7 +77,7 @@ fn watch_loop(app: AppHandle, generation: u64) {
     let mut last_fp = island_windows::wpn::source_fingerprint();
     island_windows::appid::prewarm();
     loop {
-        // 分段 sleep：停用时 100ms 内退出，不用等满一个轮询周期
+        // 分段睡便于即停
         let mut stopped = false;
         for _ in 0..(POLL_INTERVAL.as_millis() / 100) {
             std::thread::sleep(Duration::from_millis(100));
@@ -91,7 +90,7 @@ fn watch_loop(app: AppHandle, generation: u64) {
         if stopped {
             return;
         }
-        // 库没变就跳过：否则每轮全量拷贝 wpndatabase+WAL，空闲也压着磁盘
+        // 库没变跳过
         let fp = island_windows::wpn::source_fingerprint();
         if fp == last_fp {
             continue;
@@ -117,7 +116,7 @@ fn watch_loop(app: AppHandle, generation: u64) {
                     eprintln!("[notify] 推送新通知失败: {e}");
                 }
             }
-            // 拷库撞上系统写入属常态（WpnDatabase.cs），记日志后下轮重试
+            // 撞系统写入 下轮重试
             Err(e) => eprintln!("[notify] 扫描通知库失败: {e}"),
         }
     }
@@ -125,12 +124,11 @@ fn watch_loop(app: AppHandle, generation: u64) {
 
 fn row_to_item(row: island_windows::wpn::WpnToast) -> Option<NotificationItem> {
     let payload = island_core::parse_toast_payload(&row.payload);
-    // 空壳 toast（进度条/更新器）不上岛；水位已在 raw_max 推进，不会重扫
+    // 空壳 toast 不上岛
     if payload.title.is_empty() && payload.body.is_empty() {
         return None;
     }
-    // 库里只有 UWP 应用带名字/图标；win32 应用的名字这里立刻解析，图标留 aumid: 占位
-    // 交给 notify_image 按需取（历史面板会持久化 item，不能把图标字节塞进去）
+    // 库里仅 UWP 带名字 图标留 aumid: 占位按需取
     let app = if !row.display_name.is_empty() {
         row.display_name
     } else {
@@ -162,14 +160,12 @@ fn suppressed_map() -> HashMap<String, i32> {
     match serde_json::from_value(value) {
         Ok(map) => map,
         Err(e) => {
-            // 解析失败按空表继续，但必须留痕：还原记录丢了横幅就永远关着
             eprintln!("[notify] 横幅原值记录损坏，按空表处理: {e}");
             HashMap::new()
         }
     }
 }
 
-/// 关掉某应用的右下角横幅（仍进通知中心）。原值记进 store 以便还原；已处理过的跳过。
 fn suppress_banner_for(aumid: &str) {
     if aumid.is_empty() {
         return;
@@ -181,7 +177,7 @@ fn suppress_banner_for(aumid: &str) {
     let prior = match island_windows::banner::get_banner(aumid) {
         Ok(v) => v.unwrap_or(-1),
         Err(e) => {
-            // 读不到原值就不改，免得以后还原不了
+            // 无原值不改 否则还原不了
             eprintln!("[notify] 读取横幅原值失败({aumid}): {e}");
             return;
         }
@@ -211,10 +207,7 @@ fn restore_all_banners() {
     }
 }
 
-// ---- 通知图片（白名单 + LRU 缓存） ----
-
-/// 图片缓存：容量 200 的 LRU 逐出（Electron 版是超 200 全量清空，会把正在用的头像也冲掉）。
-/// 命中与否都缓存——失败结果同样占坑，避免每条消息重复拉取坏图。
+/// 失败结果也缓存
 #[derive(Debug, Default)]
 struct ImageLru {
     map: HashMap<String, Option<String>>,
@@ -262,10 +255,7 @@ fn lock_cache() -> MutexGuard<'static, ImageLru> {
     IMAGE_CACHE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 通知图片/头像 → data URL。http(s) 经网络拉取；本地文件读进来按魔数认格式，
-/// 认不出是受支持图片的一律拒绝（记日志）返回 None，渲染层回退首字母块。
-/// 不做扩展名/目录白名单：toast 里的路径由来源应用自己写——QQ NT 头像没有扩展名、
-/// Edge 通知资源是 .tmp、缓存目录还可能不在系统盘，白名单只会误伤正常头像。
+/// 认魔数不认扩展名或目录
 pub fn notify_image(src: &str) -> Option<String> {
     let src = src.trim();
     if src.is_empty() {
@@ -313,7 +303,7 @@ fn fetch_http(url: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
         .unwrap_or("image/png")
         .to_string();
-    // 上限 +1 字节：借此区分「刚好 2MB」和「超限」
+    // +1 区分超限
     let limit = (MAX_IMAGE_BYTES + 1) as u64;
     match resp.body_mut().with_config().limit(limit).read_to_vec() {
         Ok(bytes) if !bytes.is_empty() && bytes.len() <= MAX_IMAGE_BYTES => {
@@ -331,9 +321,12 @@ fn fetch_http(url: &str) -> Option<String> {
 }
 
 fn read_local(path_text: &str) -> Option<String> {
-    // 包资源 URI（ms-appx/ms-appdata/ms-resource）解不到真实文件，静默回退（同 Electron 版）
+    // 包资源 URI 静默回退
     let lower = path_text.to_ascii_lowercase();
-    if lower.starts_with("ms-appx:") || lower.starts_with("ms-appdata:") || lower.starts_with("ms-resource:") {
+    if lower.starts_with("ms-appx:")
+        || lower.starts_with("ms-appdata:")
+        || lower.starts_with("ms-resource:")
+    {
         return None;
     }
     let path = Path::new(path_text);
@@ -342,8 +335,7 @@ fn read_local(path_text: &str) -> Option<String> {
             eprintln!("[notify] 拒绝通知图片（超过 2MB）: {}", path.display());
             return None;
         }
-        // 通知资源是瞬态文件（Edge 的 Notification Resources 发完就删），
-        // 前端来取时已不在属正常路径，不刷日志
+        // 瞬态文件不刷日志
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return None;
         }
@@ -364,13 +356,15 @@ fn read_local(path_text: &str) -> Option<String> {
         }
     };
     let Some(mime) = sniff_image_mime(&bytes) else {
-        eprintln!("[notify] 拒绝通知图片（内容不是受支持的图片）: {}", path.display());
+        eprintln!(
+            "[notify] 拒绝通知图片（内容不是受支持的图片）: {}",
+            path.display()
+        );
         return None;
     };
     Some(format!("data:{mime};base64,{}", base64_encode(&bytes)))
 }
 
-/// 按魔数识别图片格式，认不出返回 None
 fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Some("image/png");
@@ -393,13 +387,11 @@ fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
     None
 }
 
-/// file:// 前缀剥离（toast 图片多为裸路径，file:// 只是防御性兼容）
 fn strip_file_scheme(src: &str) -> String {
     if !src.to_ascii_lowercase().starts_with("file://") {
         return src.to_string();
     }
     let rest = &src[7..];
-    // file:///C:/... → C:/...
     let rest = rest.strip_prefix('/').unwrap_or(rest);
     percent_decode(&rest.replace('/', "\\"))
 }
@@ -436,8 +428,16 @@ fn base64_encode(data: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         out.push(B64[(n >> 18) as usize & 63] as char);
         out.push(B64[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { B64[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { B64[n as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            B64[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            B64[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -449,10 +449,10 @@ mod tests {
     #[test]
     fn base64_encode_matches_known_vectors() {
         assert_eq!(base64_encode(b""), "");
-        assert_eq!(base64_encode(b"f"), "Zg==", "单字节尾部应补两个 =");
-        assert_eq!(base64_encode(b"fo"), "Zm8=", "双字节尾部应补一个 =");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
         assert_eq!(base64_encode(b"foo"), "Zm9v");
-        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy", "RFC 4648 标准向量");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
     }
 
     #[test]
@@ -462,13 +462,9 @@ mod tests {
             lru.insert(format!("k{i}"), Some(format!("v{i}")));
         }
         lru.insert("overflow".into(), Some("x".into()));
-        assert_eq!(lru.get("k0"), None, "最早插入的 k0 应被逐出");
-        assert_eq!(
-            lru.get("overflow"),
-            Some(Some("x".to_string())),
-            "新插入的条目必须保留"
-        );
-        assert_eq!(lru.map.len(), IMAGE_CACHE_CAP, "缓存容量不应超过上限");
+        assert_eq!(lru.get("k0"), None);
+        assert_eq!(lru.get("overflow"), Some(Some("x".to_string())));
+        assert_eq!(lru.map.len(), IMAGE_CACHE_CAP);
     }
 
     #[test]
@@ -477,23 +473,19 @@ mod tests {
         for i in 0..IMAGE_CACHE_CAP {
             lru.insert(format!("k{i}"), Some(format!("v{i}")));
         }
-        // 摸一下 k0 让它变成最近使用
+        // 摸 k0 刷新热度
         let _ = lru.get("k0");
         lru.insert("overflow".into(), Some("x".into()));
-        assert_eq!(
-            lru.get("k0"),
-            Some(Some("v0".to_string())),
-            "刚访问过的 k0 不应被逐出，逐出的应是更久没用的 k1"
-        );
-        assert_eq!(lru.get("k1"), None, "k1 才是当前最久未用的条目");
+        assert_eq!(lru.get("k0"), Some(Some("v0".to_string())));
+        assert_eq!(lru.get("k1"), None);
     }
 
     #[test]
     fn image_lru_caches_negative_results() {
         let mut lru = ImageLru::default();
         lru.insert("bad".into(), None);
-        assert_eq!(lru.get("bad"), Some(None), "失败结果也要能命中（避免重复拉坏图）");
-        assert_eq!(lru.get("missing"), None, "未缓存的键返回未命中");
+        assert_eq!(lru.get("bad"), Some(None));
+        assert_eq!(lru.get("missing"), None);
     }
 
     #[test]
@@ -502,71 +494,84 @@ mod tests {
         assert_eq!(strip_file_scheme("file:///C:/Temp/a.png"), r"C:\Temp\a.png");
         assert_eq!(
             strip_file_scheme("file:///C:/Temp/a%20b.png"),
-            r"C:\Temp\a b.png",
-            "file URL 里的百分号编码应解码"
+            r"C:\Temp\a b.png"
         );
     }
 
     #[test]
     fn sniff_image_mime_recognizes_common_formats() {
-        assert_eq!(sniff_image_mime(b"\x89PNG\r\n\x1a\nrest"), Some("image/png"));
-        assert_eq!(sniff_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("image/jpeg"));
+        assert_eq!(
+            sniff_image_mime(b"\x89PNG\r\n\x1a\nrest"),
+            Some("image/png")
+        );
+        assert_eq!(
+            sniff_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some("image/jpeg")
+        );
         assert_eq!(sniff_image_mime(b"GIF89a...."), Some("image/gif"));
-        assert_eq!(sniff_image_mime(b"RIFF\x00\x00\x00\x00WEBPvp8"), Some("image/webp"));
+        assert_eq!(
+            sniff_image_mime(b"RIFF\x00\x00\x00\x00WEBPvp8"),
+            Some("image/webp")
+        );
         assert_eq!(sniff_image_mime(b"BMxxxx"), Some("image/bmp"));
-        assert_eq!(sniff_image_mime(&[0x00, 0x00, 0x01, 0x00]), Some("image/x-icon"));
-        assert_eq!(sniff_image_mime(b"MZ\x90\x00"), None, "可执行文件必须认不出");
-        assert_eq!(sniff_image_mime(b""), None, "空内容必须认不出");
+        assert_eq!(
+            sniff_image_mime(&[0x00, 0x00, 0x01, 0x00]),
+            Some("image/x-icon")
+        );
+        assert_eq!(sniff_image_mime(b"MZ\x90\x00"), None);
+        assert_eq!(sniff_image_mime(b""), None);
     }
 
     #[test]
     fn read_local_rejects_non_image_content() {
-        assert_eq!(
-            read_local(r"C:\Windows\System32\kernel32.dll"),
-            None,
-            "内容不是图片的文件必须拒绝"
-        );
+        assert_eq!(read_local(r"C:\Windows\System32\kernel32.dll"), None);
     }
 
     #[test]
     fn read_local_silently_skips_package_resource_uris() {
-        assert_eq!(read_local("ms-appdata:///local/ToastCollectionIcons/x.png"), None);
+        assert_eq!(
+            read_local("ms-appdata:///local/ToastCollectionIcons/x.png"),
+            None
+        );
         assert_eq!(read_local("ms-appx:///Assets/icon.png"), None);
         assert_eq!(read_local("ms-resource:app/Resources/icon"), None);
     }
 
     #[test]
     fn read_local_accepts_extensionless_and_tmp_images() {
-        // QQ NT 头像缓存没有扩展名，Edge 通知资源是 .tmp：按内容认，都得能读
+        // QQ 头像无扩展名 Edge 用 .tmp
         let dir = std::env::temp_dir().join("top-island-test-noext");
         std::fs::create_dir_all(&dir).unwrap();
         let avatar = dir.join("s_b643435b134d5c1cc2495e6076174f59");
         std::fs::write(&avatar, [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).unwrap();
         let out = read_local(&avatar.to_string_lossy());
         assert!(
-            out.as_deref().is_some_and(|s| s.starts_with("data:image/jpeg;base64,")),
-            "无扩展名的 jpeg 头像必须按内容识别，实际: {out:?}"
+            out.as_deref()
+                .is_some_and(|s| s.starts_with("data:image/jpeg;base64,")),
+            "{out:?}"
         );
         let tmp = dir.join("e8143a85.tmp");
         std::fs::write(&tmp, b"\x89PNG\r\n\x1a\n....").unwrap();
         let out = read_local(&tmp.to_string_lossy());
         assert!(
-            out.as_deref().is_some_and(|s| s.starts_with("data:image/png;base64,")),
-            ".tmp 的 png 通知资源必须按内容识别，实际: {out:?}"
+            out.as_deref()
+                .is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            "{out:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn read_local_accepts_image_outside_system_dirs() {
-        // 头像缓存目录由应用自定（QQ 常在数据盘），不得再做目录白名单
+        // 缓存目录应用自定
         let exe = std::env::current_exe().unwrap();
         let file = exe.with_file_name("top-island-test-anywhere.png");
         std::fs::write(&file, b"\x89PNG\r\n\x1a\n....").unwrap();
         let out = read_local(&file.to_string_lossy());
         assert!(
-            out.as_deref().is_some_and(|s| s.starts_with("data:image/png;base64,")),
-            "任意目录下的合法图片必须可读，实际: {out:?}"
+            out.as_deref()
+                .is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            "{out:?}"
         );
         std::fs::remove_file(&file).ok();
     }
@@ -581,8 +586,9 @@ mod tests {
         std::fs::write(&file, png).unwrap();
         let out = read_local(&file.to_string_lossy());
         assert!(
-            out.as_deref().is_some_and(|s| s.starts_with("data:image/png;base64,")),
-            "TEMP 下的 png 应被接受并编码为 data URL，实际: {out:?}"
+            out.as_deref()
+                .is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            "{out:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -590,6 +596,6 @@ mod tests {
     #[test]
     fn percent_decode_passes_through_plain_text() {
         assert_eq!(percent_decode("no-encoding"), "no-encoding");
-        assert_eq!(percent_decode("100%"), "100%", "不完整编码应原样保留");
+        assert_eq!(percent_decode("100%"), "100%");
     }
 }

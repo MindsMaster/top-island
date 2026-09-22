@@ -6,19 +6,17 @@ export interface Anchor {
   rate: number;
 }
 
-/** durationMs <= 0 视为无上限 */
 export function extrapolate(anchor: Anchor, nowMs: number, durationMs: number): number {
   const raw = anchor.positionMs + (nowMs - anchor.anchorEpochMs) * anchor.rate;
   const capped = durationMs > 0 ? Math.min(raw, durationMs) : raw;
   return Math.max(0, capped);
 }
 
-/** QQ 音乐的 SMTC 时间轴比实际播放落后约 400ms */
+/** QQ 音乐 SMTC 时间轴滞后 */
 export function builtinLyricOffset(sourceAppId: string): number {
   return sourceAppId.toLowerCase().includes('qqmusic') ? 400 : 0;
 }
 
-/** 最后一条 timeMs <= positionMs 的行，无则 -1；lines 须按 timeMs 升序 */
 export function lyricIndexAt(lines: readonly LyricLine[], positionMs: number): number {
   if (!lines.length) return -1;
   let lo = 0;
@@ -43,7 +41,6 @@ export function formatTimeMs(ms: number): string {
   return m + ':' + String(s).padStart(2, '0');
 }
 
-/** 有 songId 用它，否则退回 标题|艺术家 */
 export function trackIdentity(songId: string | undefined, title: string, artist: string): string {
   return songId || `${title}|${artist}`;
 }

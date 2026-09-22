@@ -6,7 +6,7 @@ use island_core::IpCityInfo;
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
-// ip-api.com 免费版没有 HTTPS，换 ipwho.is（免费、HTTPS、免 key）
+/// ipwho.is 免费 HTTPS 免 key
 const IP_CITY_URL: &str = "https://ipwho.is/";
 const IP_CITY_TTL: Duration = Duration::from_secs(30 * 60);
 
@@ -39,14 +39,29 @@ pub fn ip_city() -> AppResult<IpCityInfo> {
         }
     }
     let data = fetch_json(IP_CITY_URL)?;
-    let ok = data.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+    let ok = data
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if !ok {
         return Err(AppError::new("error.network: IP 定位失败"));
     }
     let info = IpCityInfo {
-        city: data.get("city").and_then(|v| v.as_str()).unwrap_or("").into(),
-        region_name: data.get("region").and_then(|v| v.as_str()).unwrap_or("").into(),
-        country: data.get("country").and_then(|v| v.as_str()).unwrap_or("").into(),
+        city: data
+            .get("city")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .into(),
+        region_name: data
+            .get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .into(),
+        country: data
+            .get("country")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .into(),
         lat: data.get("latitude").and_then(|v| v.as_f64()),
         lon: data.get("longitude").and_then(|v| v.as_f64()),
     };
@@ -100,7 +115,10 @@ mod tests {
 
     #[test]
     fn urlencoded_keeps_query_friendly_chars() {
-        assert_eq!(urlencoded("temperature_2m_max,temperature_2m_min"), "temperature_2m_max,temperature_2m_min");
+        assert_eq!(
+            urlencoded("temperature_2m_max,temperature_2m_min"),
+            "temperature_2m_max,temperature_2m_min"
+        );
     }
 
     #[test]

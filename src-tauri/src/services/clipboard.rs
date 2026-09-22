@@ -1,6 +1,5 @@
 use crate::error::{AppError, AppResult};
 
-/// Electron 契约：读不到文本返回空串而非报错
 pub fn read_text() -> AppResult<String> {
     Ok(island_windows::clipboard::read_text()?.unwrap_or_default())
 }
@@ -16,4 +15,3 @@ pub fn has_image() -> bool {
 pub fn read_file_paths() -> AppResult<Vec<String>> {
     island_windows::clipboard::read_file_paths().map_err(AppError::from)
 }
-

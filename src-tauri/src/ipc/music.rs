@@ -20,13 +20,13 @@ pub async fn music_seek(position_ms: i64) -> AppResult<bool> {
     off_thread(move || Ok(services::music::seek(position_ms))).await
 }
 
-/// 按 hash 取当前曲目封面；hash 不匹配（已切歌）时返回 None
+/// hash 已切歌时回 None
 #[tauri::command]
 pub async fn music_artwork(hash: String) -> AppResult<Option<MusicArtwork>> {
     off_thread(move || Ok(services::music::artwork(&hash))).await
 }
 
-/// 按 lyricsId 取当前曲目歌词；id 不匹配（已切歌）时返回 None
+/// id 已切歌时回 None
 #[tauri::command]
 pub async fn music_lyrics(id: String) -> AppResult<Option<LyricsData>> {
     off_thread(move || Ok(services::music::lyrics(&id))).await

@@ -4,7 +4,7 @@ import prettierConfig from '@vue/eslint-config-prettier';
 
 export default defineConfigWithVueTs(
   {
-    // 只 lint 应用源码；其余目录要么是产物，要么不是 TS/Vue 工程
+    // 只 lint 应用源码
     ignores: [
       '**/node_modules/**',
       '**/target/**',
@@ -14,7 +14,7 @@ export default defineConfigWithVueTs(
       'build/**',
       'docs/**',
       '.archive/**',
-      // 注入网易云 CEF 的独立脚本，不属于本 TS 工程
+      // 注入网易云 CEF 的独立脚本
       'crates/island-cloudmusic-bridge/js/**',
       '*.config.*',
     ],

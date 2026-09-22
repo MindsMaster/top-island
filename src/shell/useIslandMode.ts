@@ -2,19 +2,14 @@ import { ref } from 'vue';
 import { windowApi } from '@/platform/window';
 import type { IslandMode } from './view';
 
-/** 隐藏态下悬停多久后自动唤出（ms）；点击细边仍可立即唤出 */
 const REVEAL_HOVER_DELAY = 2500;
 
 interface IslandModeOptions {
-  /** 悬停时是否维持当前内容形态（不切 quick） */
+  /** 悬停不切 quick */
   holdContent: () => boolean;
 }
 
-/**
- * 岛形态状态机：still（胶囊）/ quick（悬停展开）/ large（面板视图），外加上滑隐藏态。
- * 悬停以 Rust 钩子的 island-hover 事件为准（穿透态下 DOM 事件拿不到），
- * DOM mouseenter/mouseleave 只作可交互态下的低延迟冗余，两边调用都幂等。
- */
+/** 穿透态 DOM 事件拿不到 悬停以 island-hover 为准 */
 export function useIslandMode(options: IslandModeOptions) {
   const mode = ref<IslandMode>('still');
   const isHovered = ref(false);
@@ -31,7 +26,7 @@ export function useIslandMode(options: IslandModeOptions) {
   function onEnter() {
     isHovered.value = true;
     if (isHidden.value) {
-      // 悬停片刻再唤出，避免鼠标扫过顶部误触
+      // 延迟唤出防扫过误触
       if (revealTimer === null) {
         revealTimer = window.setTimeout(() => {
           revealTimer = null;
@@ -51,7 +46,6 @@ export function useIslandMode(options: IslandModeOptions) {
     mode.value = 'still';
   }
 
-  /** 展开到大视图；已在大视图或隐藏态则返回 false */
   function expand(): boolean {
     if (isHidden.value || mode.value === 'large') return false;
     mode.value = 'large';

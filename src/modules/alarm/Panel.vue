@@ -22,13 +22,13 @@ import TimeDial from '@/ui/TimeDial.vue';
 const { t, weekdays } = useI18n();
 const snap = alarmState;
 
-/** snap.alarms 是深只读快照，这里转回可变类型供 openEdit/daysSummary 使用 */
+/** 快照深只读 转回可变 */
 const alarmList = computed(() => snap.alarms as AlarmItem[]);
 
 const mode = ref<'countdown' | 'clock'>('countdown');
 
 const PRESETS = [5, 10, 15, 30, 60];
-/** 直输上限（分钟）；滑杆仍为 1-120 的快捷区间 */
+/** 直输上限 滑杆另限 120 */
 const COUNTDOWN_MAX = 720;
 
 function onPickMinutes(e: Event) {
@@ -131,7 +131,7 @@ function onSegKeydown(which: 'hour' | 'minute', e: KeyboardEvent) {
     const d = parseInt(e.key);
     if (segBuf === '') {
       setSeg(which, d);
-      // 首位已排除第二位可能（小时 3-9 / 分钟 6-9）→ 定值并跳段
+      // 首位已排除第二位可能 直接跳段
       if (d > Math.floor(max / 10)) segAdvance(which);
       else segBuf = e.key;
     } else {
@@ -157,7 +157,7 @@ function onSegKeydown(which: 'hour' | 'minute', e: KeyboardEvent) {
     (e.target as HTMLInputElement).blur();
     return;
   }
-  // 除 Tab 等导航键外屏蔽其余字符输入
+  // 导航键外屏蔽字符输入
   if (e.key.length === 1) e.preventDefault();
 }
 
@@ -302,7 +302,7 @@ function onSoundPick(value: string) {
     </button>
   </template>
 
-  <!-- 提示音（两种模式共用；编辑抽屉打开时隐藏） -->
+  <!-- 提示音 两模式共用 -->
   <div v-if="!editor" class="alarm-sound-row">
     <SettingSelect
       :model-value="snap.sound?.path ?? ''"
@@ -314,7 +314,7 @@ function onSoundPick(value: string) {
     </button>
   </div>
 
-  <!-- 编辑抽屉（覆盖整个面板） -->
+  <!-- 编辑抽屉 -->
   <div v-if="editor" class="alarm-editor" @click.stop>
     <div class="alarm-editor-time">
       <input

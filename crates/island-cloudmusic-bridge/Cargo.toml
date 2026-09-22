@@ -5,7 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [lib]
-# rlib 只为让纯逻辑可以单测，部署的是 cdylib
+# rlib 仅为单测 部署的是 cdylib
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

@@ -13,7 +13,6 @@ const busy = ref(false);
 const error = ref('');
 const cancelEl = ref<HTMLButtonElement | null>(null);
 
-/** 二次确认：默认焦点落在取消上 */
 async function arm() {
   error.value = '';
   armed.value = true;

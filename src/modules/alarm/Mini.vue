@@ -10,7 +10,7 @@ import { miniHovered, showMini } from './mini';
 const el = ref<HTMLElement | null>(null);
 contributeHotRect(el);
 
-/** 岛右侧外缘再留一点间距 */
+/** 岛右缘外间距 */
 const GAP = 10;
 
 const style = computed(() => {

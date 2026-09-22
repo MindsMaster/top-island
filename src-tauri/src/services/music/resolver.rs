@@ -1,6 +1,3 @@
-//! 把 provider 的原始状态补全成可展示的曲目信息（元数据、歌词、封面），资源就绪时通知推送线程。
-//! 每种资源一个 `Slot`：键、值、正在抓的键。
-
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -14,22 +11,29 @@ use super::provider::{MusicProvider, ProviderState, TrackMeta};
 
 #[derive(Debug)]
 struct Slot<T> {
-    /// 最近决定要抓的键，也是切歌检测水位
+    /// 兼作切歌水位
     key: String,
     value: Option<(String, T)>,
     fetching: Option<String>,
 }
 
-// 派生 Default 会给 T 加 Default 约束
+/// 免 T: Default 约束
 impl<T> Default for Slot<T> {
     fn default() -> Self {
-        Self { key: String::new(), value: None, fetching: None }
+        Self {
+            key: String::new(),
+            value: None,
+            fetching: None,
+        }
     }
 }
 
 impl<T> Slot<T> {
     fn get(&self, key: &str) -> Option<&T> {
-        self.value.as_ref().filter(|(k, _)| k == key).map(|(_, v)| v)
+        self.value
+            .as_ref()
+            .filter(|(k, _)| k == key)
+            .map(|(_, v)| v)
     }
 }
 
@@ -70,7 +74,10 @@ impl std::fmt::Debug for Resolver {
 
 impl Resolver {
     pub fn new(on_ready: impl Fn() + Send + Sync + 'static) -> Self {
-        Self { caches: Mutex::new(Caches::default()), on_ready: Arc::new(on_ready) }
+        Self {
+            caches: Mutex::new(Caches::default()),
+            on_ready: Arc::new(on_ready),
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Caches> {
@@ -84,8 +91,11 @@ impl Resolver {
         c.artwork.key.clear();
     }
 
-    /// 用缓存补全展示字段，缺的资源在后台发起抓取
-    pub fn observe(&'static self, src: &ProviderState, provider: &'static dyn MusicProvider) -> Resolved {
+    pub fn observe(
+        &'static self,
+        src: &ProviderState,
+        provider: &'static dyn MusicProvider,
+    ) -> Resolved {
         let mut out = Resolved {
             title: src.title.clone(),
             artist: src.artist.clone(),
@@ -95,7 +105,7 @@ impl Resolver {
             ..Default::default()
         };
 
-        // spawn 内部要再拿锁，出锁后再 spawn
+        // spawn 内要拿锁 须出锁
         let mut fetch_meta: Option<String> = None;
         let mut fetch_lyrics: Option<(String, String, String, Option<String>)> = None;
         let mut fetch_artwork: Option<String> = None;
@@ -130,7 +140,7 @@ impl Resolver {
                 None => c.meta.key.clear(),
             }
 
-            // 键按补全后的标题算：标题晚到时若用空标题记键，之后就不会再抓
+            // 键按补全后标题算
             let track_key = format!("{}|{}|{}", out.title, out.artist, src.source_app_id);
             let lyrics_key = match &src.song_id {
                 Some(id) => format!("163:{id}"),
@@ -190,7 +200,7 @@ impl Resolver {
         self.lock().lyrics.get(id).cloned()
     }
 
-    /// 后台跑 `work`，结果仍匹配当前键则写入并通知；失败清键，下次 observe 重试
+    /// 键仍当前才写入
     fn fetch_once<T: Send + 'static>(
         &'static self,
         thread_name: &'static str,
@@ -208,31 +218,33 @@ impl Resolver {
         }
         let on_ready = Arc::clone(&self.on_ready);
         let key_for_cleanup = key.clone();
-        let spawned = std::thread::Builder::new().name(thread_name.into()).spawn(move || {
-            let result = work();
-            let notify = {
-                let mut c = self.lock();
-                let slot = select(&mut c);
-                let still_current = slot.key == key;
-                if slot.fetching.as_deref() == Some(key.as_str()) {
-                    slot.fetching = None;
-                }
-                match result {
-                    Some(v) if still_current => {
-                        slot.value = Some((key.clone(), v));
-                        true
+        let spawned = std::thread::Builder::new()
+            .name(thread_name.into())
+            .spawn(move || {
+                let result = work();
+                let notify = {
+                    let mut c = self.lock();
+                    let slot = select(&mut c);
+                    let still_current = slot.key == key;
+                    if slot.fetching.as_deref() == Some(key.as_str()) {
+                        slot.fetching = None;
                     }
-                    None if still_current => {
-                        slot.key.clear();
-                        false
+                    match result {
+                        Some(v) if still_current => {
+                            slot.value = Some((key.clone(), v));
+                            true
+                        }
+                        None if still_current => {
+                            slot.key.clear();
+                            false
+                        }
+                        _ => false,
                     }
-                    _ => false,
+                };
+                if notify {
+                    on_ready();
                 }
-            };
-            if notify {
-                on_ready();
-            }
-        });
+            });
         if let Err(e) = spawned {
             eprintln!("[resolver] {thread_name} 线程启动失败: {e}");
             let mut c = self.lock();
@@ -245,36 +257,63 @@ impl Resolver {
 
     fn spawn_meta(&'static self, song_id: String) {
         let id = song_id.clone();
-        self.fetch_once("music-meta", song_id, |c| &mut c.meta, move || api::fetch_163_detail(&id));
+        self.fetch_once(
+            "music-meta",
+            song_id,
+            |c| &mut c.meta,
+            move || api::fetch_163_detail(&id),
+        );
     }
 
-    fn spawn_lyrics(&'static self, key: String, title: String, artist: String, song_id: Option<String>) {
-        self.fetch_once("music-lyrics", key, |c| &mut c.lyrics, move || match &song_id {
-            Some(sid) => api::fetch_163_by_id(sid).or_else(|| api::fetch_lyrics(&title, &artist)),
-            None => api::fetch_lyrics(&title, &artist),
-        });
+    fn spawn_lyrics(
+        &'static self,
+        key: String,
+        title: String,
+        artist: String,
+        song_id: Option<String>,
+    ) {
+        self.fetch_once(
+            "music-lyrics",
+            key,
+            |c| &mut c.lyrics,
+            move || match &song_id {
+                Some(sid) => {
+                    api::fetch_163_by_id(sid).or_else(|| api::fetch_lyrics(&title, &artist))
+                }
+                None => api::fetch_lyrics(&title, &artist),
+            },
+        );
     }
 
     fn spawn_artwork(&'static self, key: String, provider: &'static dyn MusicProvider) {
         let key_for_check = key.clone();
         let this: &'static Resolver = self;
-        self.fetch_once("music-artwork", key, |c| &mut c.artwork, move || {
-            // 切歌后播放器填充封面有延迟
-            std::thread::sleep(Duration::from_millis(800));
-            for attempt in 0..6 {
-                if this.lock().artwork.key != key_for_check {
-                    return None;
+        self.fetch_once(
+            "music-artwork",
+            key,
+            |c| &mut c.artwork,
+            move || {
+                // 封面填充有延迟
+                std::thread::sleep(Duration::from_millis(800));
+                for attempt in 0..6 {
+                    if this.lock().artwork.key != key_for_check {
+                        return None;
+                    }
+                    if let Some(bytes) = provider.artwork_bytes() {
+                        return Some(Artwork {
+                            hash: content_hash(&bytes),
+                            data_url: format!(
+                                "data:{};base64,{}",
+                                sniff_mime(&bytes),
+                                b64::encode(&bytes)
+                            ),
+                        });
+                    }
+                    std::thread::sleep(Duration::from_millis(if attempt < 3 { 500 } else { 1000 }));
                 }
-                if let Some(bytes) = provider.artwork_bytes() {
-                    return Some(Artwork {
-                        hash: content_hash(&bytes),
-                        data_url: format!("data:{};base64,{}", sniff_mime(&bytes), b64::encode(&bytes)),
-                    });
-                }
-                std::thread::sleep(Duration::from_millis(if attempt < 3 { 500 } else { 1000 }));
-            }
-            None
-        });
+                None
+            },
+        );
     }
 }
 
@@ -298,7 +337,7 @@ mod tests {
         assert_eq!(sniff_mime(&[0xFF, 0xD8, 0xFF]), "image/jpeg");
         assert_eq!(sniff_mime(&[0x47, 0x49, 0x46]), "image/gif");
         assert_eq!(sniff_mime(&[0x42, 0x4D, 0x00]), "image/bmp");
-        assert_eq!(sniff_mime(&[0x00, 0x01]), "image/jpeg", "未知格式回退 jpeg");
+        assert_eq!(sniff_mime(&[0x00, 0x01]), "image/jpeg");
     }
 
     #[test]
@@ -306,6 +345,6 @@ mod tests {
         let mut s: Slot<i32> = Slot::default();
         s.value = Some(("a".into(), 1));
         assert_eq!(s.get("a"), Some(&1));
-        assert_eq!(s.get("b"), None, "键不匹配（已切歌）不得返回旧值");
+        assert_eq!(s.get("b"), None);
     }
 }

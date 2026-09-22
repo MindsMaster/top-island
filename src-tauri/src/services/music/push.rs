@@ -1,5 +1,3 @@
-//! 事件源只置位唤醒，重算与 emit 都在专用推送线程上做。一个 bool 标志自然合并突发请求。
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
@@ -17,7 +15,11 @@ pub struct PushSignal {
 
 impl PushSignal {
     pub const fn new() -> Self {
-        Self { flag: Mutex::new(false), cv: Condvar::new(), enabled: AtomicBool::new(false) }
+        Self {
+            flag: Mutex::new(false),
+            cv: Condvar::new(),
+            enabled: AtomicBool::new(false),
+        }
     }
 
     pub fn set_enabled(&self, on: bool) {
@@ -37,7 +39,7 @@ impl PushSignal {
         self.cv.notify_one();
     }
 
-    /// 先清位再返回，计算期间到达的请求会再置位，合并成下一趟
+    /// 先清位 计算期新请求再置位
     fn wait(&self) {
         let mut flag = self.flag.lock().unwrap_or_else(|e| e.into_inner());
         while !*flag {
@@ -47,7 +49,6 @@ impl PushSignal {
     }
 }
 
-/// 等待请求，`compute()`，内容去重后 emit
 pub fn start<T>(
     app: AppHandle,
     signal: &'static PushSignal,

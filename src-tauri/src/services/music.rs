@@ -1,7 +1,3 @@
-//! 音乐域聚合：多个音乐源（provider）按优先级选出当前生效的一个，经 resolver 补全
-//! 歌词/封面/元数据后产出 `MusicState`，由推送线程 emit 给渲染层。
-//! 控制按源的 `Capabilities` 路由，不比对源名。
-
 use std::sync::{Mutex, Once, OnceLock};
 
 use tauri::AppHandle;
@@ -30,11 +26,10 @@ use resolver::Resolver;
 use smtc::SmtcProvider;
 
 struct Service {
-    /// 优先级从高到低，第一个有快照的即生效源
+    /// 高到低 首个生效
     providers: Vec<&'static dyn MusicProvider>,
     bridge: &'static NcmBridgeProvider,
     resolver: &'static Resolver,
-    /// 上次 poll 选中的源，控制路由到它
     active: Mutex<&'static dyn MusicProvider>,
 }
 
@@ -58,13 +53,14 @@ pub fn sync(app: &AppHandle, settings: &AppSettings) {
         static START: Once = Once::new();
         START.call_once(|| init(app.clone()));
     }
-    // 子系统关着时 WS 服务端没在跑，部署了代理也连不上
+    // 关着时连不上 不部署
     ncm_deploy::set_wanted(enabled && settings.music.netease_bridge);
 }
 
 fn init(app: AppHandle) {
     let smtc: &'static SmtcProvider = Box::leak(Box::new(SmtcProvider::new()));
-    let bridge: &'static NcmBridgeProvider = Box::leak(Box::new(NcmBridgeProvider::start(request_push)));
+    let bridge: &'static NcmBridgeProvider =
+        Box::leak(Box::new(NcmBridgeProvider::start(request_push)));
     let resolver: &'static Resolver = Box::leak(Box::new(Resolver::new(request_push)));
     let _ = SERVICE.set(Service {
         providers: vec![bridge, smtc],
@@ -77,7 +73,10 @@ fn init(app: AppHandle) {
 }
 
 pub fn bridge_status() -> BridgeStatus {
-    let connected = SERVICE.get().map(|s| s.bridge.is_connected()).unwrap_or(false);
+    let connected = SERVICE
+        .get()
+        .map(|s| s.bridge.is_connected())
+        .unwrap_or(false);
     ncm_deploy::status(connected)
 }
 
@@ -86,14 +85,22 @@ pub fn poll_state() -> MusicState {
         return MusicState::default();
     };
 
-    let Some((provider, src)) = svc.providers.iter().find_map(|p| p.snapshot().map(|s| (*p, s))) else {
+    let Some((provider, src)) = svc
+        .providers
+        .iter()
+        .find_map(|p| p.snapshot().map(|s| (*p, s)))
+    else {
         svc.resolver.reset();
         return MusicState::default();
     };
     *svc.active.lock().unwrap_or_else(|e| e.into_inner()) = provider;
 
     let r = svc.resolver.observe(&src, provider);
-    let track = if r.title.is_empty() { fallback_track(&src.source_app_id) } else { r.title };
+    let track = if r.title.is_empty() {
+        fallback_track(&src.source_app_id)
+    } else {
+        r.title
+    };
     MusicState {
         provider: provider.name().to_string(),
         is_playing: src.is_playing,
@@ -113,23 +120,33 @@ pub fn poll_state() -> MusicState {
     }
 }
 
-/// 无标题时用来源标识兜底：AUMID 最后一段，或末尾 30 字符
 fn fallback_track(source_app_id: &str) -> String {
     let tail = if source_app_id.contains('.') {
-        source_app_id.rsplit('.').next().unwrap_or(source_app_id).to_string()
+        source_app_id
+            .rsplit('.')
+            .next()
+            .unwrap_or(source_app_id)
+            .to_string()
     } else {
-        source_app_id.chars().rev().take(30).collect::<Vec<_>>().into_iter().rev().collect()
+        source_app_id
+            .chars()
+            .rev()
+            .take(30)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
     };
     format!("SMTC: {tail}")
 }
 
-/// hash 不匹配说明已切歌，返回 None
+/// hash 不符即切歌
 pub fn artwork(hash: &str) -> Option<MusicArtwork> {
     let (hash, data_url) = SERVICE.get()?.resolver.artwork(hash)?;
     Some(MusicArtwork { hash, data_url })
 }
 
-/// id 不匹配说明已切歌，返回 None
+/// id 不符即切歌
 pub fn lyrics(id: &str) -> Option<LyricsData> {
     SERVICE.get()?.resolver.lyrics(id)
 }
@@ -170,13 +187,17 @@ pub fn control(action: MusicAction, level: Option<i64>) -> AppResult<String> {
     Ok(msg.to_string())
 }
 
-/// 派给当前源；未送达或它不具备所需能力时回退到 fallback 源。返回是否送达。
+/// 未送达退 fallback
 fn route(action: Control) -> bool {
     let Some(svc) = SERVICE.get() else {
         return false;
     };
     let active: &'static dyn MusicProvider = *svc.active.lock().unwrap_or_else(|e| e.into_inner());
-    let fallback = svc.providers.iter().copied().find(|p| p.capabilities().fallback);
+    let fallback = svc
+        .providers
+        .iter()
+        .copied()
+        .find(|p| p.capabilities().fallback);
 
     let capable = !action.needs_skip() || active.capabilities().skip;
     if capable {
@@ -202,8 +223,8 @@ mod tests {
 
     #[test]
     fn fallback_track_uses_aumid_tail_or_last_30_chars() {
-        assert_eq!(fallback_track("cloudmusic.exe"), "SMTC: exe", "带点的 AUMID 取最后一段");
+        assert_eq!(fallback_track("cloudmusic.exe"), "SMTC: exe");
         let long = "a".repeat(40);
-        assert_eq!(fallback_track(&long), format!("SMTC: {}", "a".repeat(30)), "无点时取末尾 30 字符");
+        assert_eq!(fallback_track(&long), format!("SMTC: {}", "a".repeat(30)));
     }
 }

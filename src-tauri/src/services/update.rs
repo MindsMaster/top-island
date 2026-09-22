@@ -23,15 +23,17 @@ pub struct UpdateStatus {
 
 impl UpdateStatus {
     fn new(status: &str) -> Self {
-        Self { status: status.into(), version: None, message: None }
+        Self {
+            status: status.into(),
+            version: None,
+            message: None,
+        }
     }
 }
 
 static STATUS: Mutex<Option<UpdateStatus>> = Mutex::new(None);
 static DOWNLOADED: AtomicBool = AtomicBool::new(false);
-/// 下载完但还没装的更新。插件的 install() 在 Windows 上会拉起安装器并
-/// 当场 process::exit，所以不能下载完就装（应用会自己消失再重启），
-/// 必须存着等用户点「重启更新」。
+/// install 当场 exit 存着等用户点
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
 
 struct Pending {
@@ -44,17 +46,21 @@ fn set_status(status: UpdateStatus) {
 }
 
 pub fn status() -> UpdateStatus {
-    STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_else(|| {
-        if cfg!(debug_assertions) {
-            UpdateStatus::new("dev")
-        } else {
-            UpdateStatus::new("not-available")
-        }
-    })
+    STATUS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(|| {
+            if cfg!(debug_assertions) {
+                UpdateStatus::new("dev")
+            } else {
+                UpdateStatus::new("not-available")
+            }
+        })
 }
 
 fn channel(version: &str) -> &'static str {
-    // 版本号以 -SNAPSHOT 结尾走快照渠道（与 Electron 版约定一致）
+    // -SNAPSHOT 走快照渠道
     if version.to_uppercase().ends_with("-SNAPSHOT") {
         "snapshot"
     } else {
@@ -62,7 +68,6 @@ fn channel(version: &str) -> &'static str {
     }
 }
 
-/// 同一自然日非强制只查一次（持久化到 store，重启也记得）
 fn checked_today() -> bool {
     let today = chrono_today();
     persist::get("updateLastCheckDate")
@@ -72,11 +77,14 @@ fn checked_today() -> bool {
 }
 
 fn mark_checked_today() {
-    let _ = persist::set("updateLastCheckDate", serde_json::Value::String(chrono_today()));
+    let _ = persist::set(
+        "updateLastCheckDate",
+        serde_json::Value::String(chrono_today()),
+    );
 }
 
 fn chrono_today() -> String {
-    // 不引 chrono：SYSTEMTIME 转本地日期串
+    // 免引 chrono
     let st = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
     format!("{:04}-{:02}-{:02}", st.wYear, st.wMonth, st.wDay)
 }
@@ -89,7 +97,7 @@ async fn run_check(app: AppHandle, force: bool) -> UpdateStatus {
         return status();
     }
     if cfg!(debug_assertions) {
-        // dev 构建没有安装包可更新，对齐 Electron 的 dev 行为
+        // dev 构建无更新
         let st = UpdateStatus::new("dev");
         set_status(st.clone());
         return st;
@@ -99,7 +107,9 @@ async fn run_check(app: AppHandle, force: bool) -> UpdateStatus {
     let version = app.package_info().version.to_string();
     let url = format!("{FEED_BASE}/{}.json", channel(&version));
     let result: AppResult<Option<tauri_plugin_updater::Update>> = async {
-        let endpoint = url.parse().map_err(|e| AppError::new(format!("error.io: feed 地址: {e}")))?;
+        let endpoint = url
+            .parse()
+            .map_err(|e| AppError::new(format!("error.io: feed 地址: {e}")))?;
         let updater = app
             .updater_builder()
             .endpoints(vec![endpoint])
@@ -118,7 +128,7 @@ async fn run_check(app: AppHandle, force: bool) -> UpdateStatus {
             let mut st = UpdateStatus::new("available");
             st.version = Some(update.version.clone());
             set_status(st);
-            // autoDownload 语义：检查到就下载，装不装等用户点「重启更新」
+            // 查到即下载 装等用户点
             match update.download(|_, _| {}, || {}).await {
                 Ok(bytes) => {
                     let version = update.version.clone();
@@ -127,7 +137,10 @@ async fn run_check(app: AppHandle, force: bool) -> UpdateStatus {
                     DOWNLOADED.store(true, Ordering::Relaxed);
                     let mut st = UpdateStatus::new("downloaded");
                     st.version = Some(version.clone());
-                    let _ = app.emit("update:downloaded", serde_json::json!({ "version": version }));
+                    let _ = app.emit(
+                        "update:downloaded",
+                        serde_json::json!({ "version": version }),
+                    );
                     st
                 }
                 Err(e) => {
@@ -157,14 +170,13 @@ pub async fn check(app: AppHandle, force: bool) -> UpdateStatus {
     run_check(app, force).await
 }
 
-/// 装已下载的更新。安装器带 /R，装完自己把新版拉起来；本进程在插件的
-/// install() 里就退出了，所以下面的代码只有失败时才跑得到。
+/// install 成功即退出进程
 pub fn install() -> AppResult<()> {
     let Some(pending) = PENDING.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         return Err(AppError::new("error.io: 没有已下载的更新"));
     };
     if let Err(e) = pending.update.install(&pending.bytes) {
-        // 装失败不丢下载好的包，用户可以再点一次
+        // 失败不丢包
         *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(pending);
         let mut st = UpdateStatus::new("error");
         st.message = Some(format!("安装失败: {e}"));
@@ -174,12 +186,12 @@ pub fn install() -> AppResult<()> {
     Ok(())
 }
 
-/// 更新器把安装包解到 %TEMP%\<产品名>-<版本>-updater-xxxx\ 且故意不删
-/// （tempfile 的 keep()，而且装完直接 exit 连析构都不跑），一次更新留一份 7MB。
-/// 前缀是我们自己的产品名，启动时扫掉上次留下的；正在用的那份删不掉，跳过。
+/// 更新器在 %TEMP% 留残包
 fn clean_stale_downloads(app: &AppHandle) {
     let prefix = format!("{}-", app.package_info().name);
-    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if name.starts_with(&prefix) && name.contains("-updater-") {
@@ -188,7 +200,6 @@ fn clean_stale_downloads(app: &AppHandle) {
     }
 }
 
-/// 启动即查 + 每小时（非强制，按日去重）
 pub fn start(app: &AppHandle) {
     let handle = app.clone();
     std::thread::Builder::new()

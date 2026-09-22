@@ -1,6 +1,6 @@
 use serde::{Serialize, Serializer};
 
-/// 应用层统一错误：消息里嵌 i18n 键（error.xxx: 细节），前端 formatError 提取翻译。
+/// 消息嵌 i18n 键 前端 formatError 提取
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct AppError(String);

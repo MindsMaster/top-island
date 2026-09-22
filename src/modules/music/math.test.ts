@@ -41,7 +41,7 @@ describe('lyricIndexAt（歌词行二分定位）', () => {
 
   it('取最后一条 timeMs <= pos 的行', () => {
     expect(lyricIndexAt(lines, 9_000)).toBe(1);
-    expect(lyricIndexAt(lines, 11_793)).toBe(2); // 恰好相等属于该行
+    expect(lyricIndexAt(lines, 11_793)).toBe(2);
     expect(lyricIndexAt(lines, 999_999)).toBe(3);
   });
 

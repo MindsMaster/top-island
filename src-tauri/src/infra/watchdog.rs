@@ -1,6 +1,3 @@
-//! 全程序 watchdog：常驻线程报心跳，主线程每秒探针一次；主线程 5s 没回应就写文本报告
-//! 和 minidump 到数据目录。只记录不自动重启，overlay 误重启比卡顿更糟。
-
 use std::os::windows::io::AsRawHandle;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Mutex, Once};
@@ -11,7 +8,7 @@ use tauri::AppHandle;
 #[derive(Debug)]
 pub struct Heartbeat {
     pub name: &'static str,
-    /// busy 超过这么久没回来才算卡住，闲着不跳是正常的
+    /// busy 超此才算卡住 闲着不跳正常
     pub expected_period: Duration,
     last_beat_ms: AtomicI64,
     busy: AtomicBool,
@@ -81,7 +78,7 @@ fn run(app: AppHandle) {
     loop {
         std::thread::sleep(PROBE_EVERY);
 
-        // 上一枚探针回来了再投，别在卡死的主线程队列里堆积
+        // 探针回来才再投 防队列堆积
         let sent = MAIN_PING_SENT_MS.load(Ordering::Relaxed);
         let pong = MAIN_PONG_MS.load(Ordering::Relaxed);
         if pong >= sent {
@@ -119,14 +116,19 @@ fn run(app: AppHandle) {
                 capture_scene(main_silent, &stuck);
             }
         } else if hung_reported {
-            eprintln!("[watchdog] 主线程已恢复（延迟 {}ms）", MAIN_LATENCY_MS.load(Ordering::Relaxed));
+            eprintln!(
+                "[watchdog] 主线程已恢复（延迟 {}ms）",
+                MAIN_LATENCY_MS.load(Ordering::Relaxed)
+            );
             hung_reported = false;
         }
     }
 }
 
 fn capture_scene(main_silent_ms: i64, stuck: &[(&'static str, i64)]) {
-    let Ok(dir) = crate::infra::paths::data_dir() else { return };
+    let Ok(dir) = crate::infra::paths::data_dir() else {
+        return;
+    };
     let dir = dir.join("watchdog");
     if std::fs::create_dir_all(&dir).is_err() {
         return;
@@ -135,13 +137,19 @@ fn capture_scene(main_silent_ms: i64, stuck: &[(&'static str, i64)]) {
 
     let mut report = String::new();
     report.push_str(&format!("top-island watchdog report {stamp}\n"));
-    report.push_str(&format!("main thread silent for {main_silent_ms}ms (last latency {}ms)\n", MAIN_LATENCY_MS.load(Ordering::Relaxed)));
+    report.push_str(&format!(
+        "main thread silent for {main_silent_ms}ms (last latency {}ms)\n",
+        MAIN_LATENCY_MS.load(Ordering::Relaxed)
+    ));
     report.push_str("\nthreads:\n");
     let now = now_ms();
     for hb in REGISTRY.lock().unwrap_or_else(|e| e.into_inner()).iter() {
         let idle = now - hb.last_beat_ms.load(Ordering::Relaxed);
         let busy = hb.busy.load(Ordering::Relaxed);
-        report.push_str(&format!("  {:<20} busy={:<5} last_beat={}ms ago\n", hb.name, busy, idle));
+        report.push_str(&format!(
+            "  {:<20} busy={:<5} last_beat={}ms ago\n",
+            hb.name, busy, idle
+        ));
     }
     if !stuck.is_empty() {
         report.push_str("\nstuck:\n");
@@ -157,7 +165,7 @@ fn capture_scene(main_silent_ms: i64, stuck: &[(&'static str, i64)]) {
     }
 }
 
-/// 含全部线程栈与线程名，WinDbg 或 VS 可直接打开
+/// 含线程栈与线程名
 fn write_minidump(path: &std::path::Path) -> std::io::Result<()> {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::Diagnostics::Debug::{
@@ -169,8 +177,16 @@ fn write_minidump(path: &std::path::Path) -> std::io::Result<()> {
     let handle = HANDLE(file.as_raw_handle());
     let kind = MiniDumpWithThreadInfo | MiniDumpWithIndirectlyReferencedMemory;
     unsafe {
-        MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), handle, kind, None, None, None)
-            .map_err(|e| std::io::Error::other(e.to_string()))
+        MiniDumpWriteDump(
+            GetCurrentProcess(),
+            GetCurrentProcessId(),
+            handle,
+            kind,
+            None,
+            None,
+            None,
+        )
+        .map_err(|e| std::io::Error::other(e.to_string()))
     }
 }
 

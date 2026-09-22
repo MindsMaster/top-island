@@ -6,17 +6,14 @@ use windows::Win32::System::Registry::{
 use crate::error::{AppError, AppResult};
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-/// 值名用 identifier 而不是产品名：Run 下所有软件共用一个命名空间，
-/// 叫 TopIsland 的另一个软件会直接覆盖掉我们的自启项（反之亦然）。
+/// Run 值名共用命名空间 撞名会互相覆盖
 const VALUE_NAME: &str = "cc.azuramc.topisland";
-/// 历来用过的值名：0.0.2 及以前的 Tauri 版用产品名，Electron 版是
-/// app.setLoginItemSettings 生成的 electron.app.<产品名>。每次 sync 都删一遍，
-/// 否则升上来的用户会留一条指向老路径的重复自启。
+/// 历代版本用过的值名 每次 sync 清一遍
 const STALE_VALUE_NAMES: &[&str] = &["TopIsland", "electron.app.TopIsland"];
 
-/// 开机自启：写/删 HKCU Run。dev（target 目录下的 exe）跳过，否则会登记调试产物。
 pub fn sync(enabled: bool) -> AppResult<()> {
     let exe = std::env::current_exe().map_err(|e| AppError::io_at("定位可执行文件", &e))?;
+    // dev 产物不登记自启
     if exe.to_string_lossy().contains("\\target\\") {
         return Ok(());
     }
@@ -37,7 +34,10 @@ pub fn sync(enabled: bool) -> AppResult<()> {
                 (path.len() + 1) as u32 * 2,
             );
             if err.0 != 0 {
-                return Err(AppError::new(format!("error.io: 写自启注册表: win32 {}", err.0)));
+                return Err(AppError::new(format!(
+                    "error.io: 写自启注册表: win32 {}",
+                    err.0
+                )));
             }
         } else {
             // 不存在时返回错误属正常路径

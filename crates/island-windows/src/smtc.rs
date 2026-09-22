@@ -1,11 +1,3 @@
-//! SMTC（系统媒体传输控制）会话查询、控制与事件订阅。
-//! 移植自 native/winbridge/SmtcService.cs，语义对齐：
-//! - 常驻 SessionManager（30s 定期重建），目标会话选择跳过本应用自身会话
-//! - 查询：标题/艺术家/播放状态/时间轴（播放中用 LastUpdatedTime 墙钟补偿）/seek 支持
-//! - 控制：会话级 TryXxxAsync → 定向 WM_APPCOMMAND → 全局媒体键，逐级回退
-//! - 订阅：SessionsChanged/CurrentSessionChanged/MediaPropertiesChanged/
-//!   PlaybackInfoChanged/TimelinePropertiesChanged，150ms 防抖后在命名线程上回调
-
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -38,13 +30,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::coreaudio::com_init_mta;
 use crate::error::{Result, WinError};
 
-/// SMTC 当前会话快照（时间轴单位 ms）
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SmtcSessionInfo {
     pub title: String,
     pub artist: String,
-    /// SourceAppUserModelId（win32 播放器形如 "cloudmusic.exe"，UWP 形如包族名）
+    /// SourceAppUserModelId win32 为 exe 名 UWP 为包族名
     pub app: String,
     pub playing: bool,
     pub position_ms: i64,
@@ -60,9 +51,8 @@ pub enum MediaAction {
     Prev,
 }
 
-// windows 0.58 还没有 IAsyncOperation 的 Future 实现（0.59 起才有 windows-future），
-// WinRT 异步操作只能轮询状态。调用方负责放后台线程。
-/// 个别 SMTC 会话的异步永不完成，没有超时会一直自旋
+/// windows 0.58 无 IAsyncOperation 的 Future 只能轮询
+/// 个别会话异步永不完成 须超时兜底
 const ASYNC_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// E_ABORT
@@ -81,8 +71,10 @@ fn block_on<T: RuntimeType>(op: &IAsyncOperation<T>) -> windows::core::Result<T>
     op.GetResults()
 }
 
-// DataReader.LoadAsync 返回专属的 DataReaderLoadOperation 而非 IAsyncOperation<u32>
-fn block_on_load(op: &windows::Storage::Streams::DataReaderLoadOperation) -> windows::core::Result<u32> {
+/// LoadAsync 返回专属类型 走不了 block_on
+fn block_on_load(
+    op: &windows::Storage::Streams::DataReaderLoadOperation,
+) -> windows::core::Result<u32> {
     let deadline = Instant::now() + ASYNC_TIMEOUT;
     while op.Status()? == AsyncStatus::Started {
         if Instant::now() >= deadline {
@@ -93,14 +85,16 @@ fn block_on_load(op: &windows::Storage::Streams::DataReaderLoadOperation) -> win
     op.GetResults()
 }
 
-/// 本应用（含 Electron 旧版）播放提示音等产生的 SMTC 会话不显示、不控制，
-/// 否则岛会显示/暂停自己的闹铃
+/// 过滤自身闹铃等产生的会话 否则岛会暂停自己
 fn is_self_session(app_id: &str) -> bool {
     if app_id.is_empty() {
         return false;
     }
     let id = app_id.to_lowercase();
-    id.contains("topisland") || id.contains("top-island") || id.contains("island-app") || id.contains("electron.exe")
+    id.contains("topisland")
+        || id.contains("top-island")
+        || id.contains("island-app")
+        || id.contains("electron.exe")
 }
 
 fn now_1601_100ns() -> i64 {
@@ -111,24 +105,29 @@ fn now_1601_100ns() -> i64 {
     unix_100ns + 116_444_736_000_000_000
 }
 
-/// SMTC 客户端：常驻 manager + 跟随上次查询会话的控制目标。非线程安全，调用方自行加锁。
+/// 非线程安全 调用方加锁
 #[derive(Debug, Default)]
 pub struct SmtcClient {
     manager: Option<SessionManager>,
     manager_time: Option<Instant>,
-    /// 控制命令跟随上次 query 展示的会话，避免打到别的会话
+    /// 控制目标跟随上次 query 展示的会话
     last_app: String,
 }
 
 impl SmtcClient {
     pub const fn new() -> Self {
-        Self { manager: None, manager_time: None, last_app: String::new() }
+        Self {
+            manager: None,
+            manager_time: None,
+            last_app: String::new(),
+        }
     }
 
-    /// 常驻 manager：部分应用（网易云）时间线在会话创建 1-2s 后才填充，每次新建永远读不到；
-    /// 30s 定期重建，兜底陈旧句柄
+    /// 新建 manager 时间线延迟填充 故常驻并定期重建
     fn manager(&mut self) -> Result<&SessionManager> {
-        let stale = self.manager_time.is_none_or(|t| t.elapsed() > Duration::from_secs(30));
+        let stale = self
+            .manager_time
+            .is_none_or(|t| t.elapsed() > Duration::from_secs(30));
         if self.manager.is_none() || stale {
             com_init_mta();
             let mgr = block_on(
@@ -141,11 +140,6 @@ impl SmtcClient {
         Ok(self.manager.as_ref().expect("manager 刚写入"))
     }
 
-    /// 目标会话选择（标准 API 优先）：
-    /// 1. prefer_app —— 控制命令跟随上次 query 展示的会话
-    /// 2. GetCurrentSession() —— 系统认定的当前媒体会话
-    /// 3. 第一个正在播放的会话，再退到第一个会话（罕见兜底）
-    ///    全程跳过自身会话
     fn target_session(&mut self, prefer_app: &str) -> Option<Session> {
         let manager = match self.manager() {
             Ok(m) => m,
@@ -160,7 +154,9 @@ impl SmtcClient {
                 Ok(sessions) => {
                     for i in 0..sessions.Size().unwrap_or(0) {
                         if let Ok(s) = sessions.GetAt(i) {
-                            if s.SourceAppUserModelId().map(|a| a.to_string_lossy()) == Ok(prefer_app.to_string()) {
+                            if s.SourceAppUserModelId().map(|a| a.to_string_lossy())
+                                == Ok(prefer_app.to_string())
+                            {
                                 return Some(s);
                             }
                         }
@@ -171,7 +167,10 @@ impl SmtcClient {
         }
 
         if let Ok(current) = manager.GetCurrentSession() {
-            let cur_app = current.SourceAppUserModelId().map(|a| a.to_string_lossy()).unwrap_or_default();
+            let cur_app = current
+                .SourceAppUserModelId()
+                .map(|a| a.to_string_lossy())
+                .unwrap_or_default();
             if !is_self_session(&cur_app) {
                 return Some(current);
             }
@@ -182,7 +181,10 @@ impl SmtcClient {
             Ok(sessions) => {
                 for i in 0..sessions.Size().unwrap_or(0) {
                     if let Ok(s) = sessions.GetAt(i) {
-                        let app = s.SourceAppUserModelId().map(|a| a.to_string_lossy()).unwrap_or_default();
+                        let app = s
+                            .SourceAppUserModelId()
+                            .map(|a| a.to_string_lossy())
+                            .unwrap_or_default();
                         if is_self_session(&app) {
                             continue;
                         }
@@ -205,7 +207,6 @@ impl SmtcClient {
         first
     }
 
-    /// 查询当前会话；无会话返回 None
     pub fn query(&mut self) -> Option<SmtcSessionInfo> {
         match self.query_inner() {
             Ok(q) => q,
@@ -246,17 +247,17 @@ impl SmtcClient {
             Ok(timeline) => {
                 let end_ms = timeline.EndTime().map(|t| t.Duration / 10_000).unwrap_or(0);
                 if end_ms > 0 {
-                    position_ms = timeline.Position().map(|t| t.Duration / 10_000).unwrap_or(0);
+                    position_ms = timeline
+                        .Position()
+                        .map(|t| t.Duration / 10_000)
+                        .unwrap_or(0);
                     duration_ms = end_ms;
                     if playing {
                         let elapsed = timeline
                             .LastUpdatedTime()
                             .map(|t| (now_1601_100ns() - t.UniversalTime) / 10_000)
                             .unwrap_or(i64::MAX);
-                        // 多数播放器（QQ 音乐/Spotify/浏览器）只在暂停/seek/换曲时刷新 Position，
-                        // 播放中它是冻结的，用 LastUpdatedTime 到现在的墙钟差补偿，否则读到陈旧
-                        // 进度、歌词滞后。仅播放中补偿；封顶时长；LastUpdatedTime 未设置（1601
-                        // 纪元）时差值巨大 -> 丢弃
+                        // 播放中 Position 冻结 按 LastUpdatedTime 墙钟补偿
                         if (0..30_000).contains(&elapsed) {
                             position_ms = (position_ms + elapsed).min(duration_ms);
                         }
@@ -275,8 +276,14 @@ impl SmtcClient {
         };
 
         Ok(Some(SmtcSessionInfo {
-            title: props.Title().map(|s| s.to_string_lossy()).unwrap_or_default(),
-            artist: props.Artist().map(|s| s.to_string_lossy()).unwrap_or_default(),
+            title: props
+                .Title()
+                .map(|s| s.to_string_lossy())
+                .unwrap_or_default(),
+            artist: props
+                .Artist()
+                .map(|s| s.to_string_lossy())
+                .unwrap_or_default(),
             app,
             playing,
             position_ms,
@@ -285,7 +292,6 @@ impl SmtcClient {
         }))
     }
 
-    /// 当前会话专辑封面原始字节；无封面/失败返回 None
     pub fn thumbnail(&mut self) -> Option<Vec<u8>> {
         match self.thumbnail_inner() {
             Ok(t) => t,
@@ -310,14 +316,23 @@ impl SmtcClient {
         let Ok(thumb_ref) = props.Thumbnail() else {
             return Ok(None);
         };
-        let stream = block_on(&thumb_ref.OpenReadAsync().map_err(|e| WinError::api("SMTC 封面流", e))?)
-            .map_err(|e| WinError::api("SMTC 封面流", e))?;
+        let stream = block_on(
+            &thumb_ref
+                .OpenReadAsync()
+                .map_err(|e| WinError::api("SMTC 封面流", e))?,
+        )
+        .map_err(|e| WinError::api("SMTC 封面流", e))?;
 
-        let reader = DataReader::CreateDataReader(&stream).map_err(|e| WinError::api("SMTC 封面流", e))?;
+        let reader =
+            DataReader::CreateDataReader(&stream).map_err(|e| WinError::api("SMTC 封面流", e))?;
         let mut out = Vec::new();
         loop {
-            let loaded = block_on_load(&reader.LoadAsync(64 * 1024).map_err(|e| WinError::api("SMTC 封面读取", e))?)
-                .map_err(|e| WinError::api("SMTC 封面读取", e))?;
+            let loaded = block_on_load(
+                &reader
+                    .LoadAsync(64 * 1024)
+                    .map_err(|e| WinError::api("SMTC 封面读取", e))?,
+            )
+            .map_err(|e| WinError::api("SMTC 封面读取", e))?;
             if loaded == 0 {
                 break;
             }
@@ -326,7 +341,7 @@ impl SmtcClient {
                 .ReadBytes(&mut chunk)
                 .map_err(|e| WinError::api("SMTC 封面读取", e))?;
             out.extend_from_slice(&chunk);
-            // 封面是专辑图量级，超限说明来源数据异常，防内存被拖垮
+            // 异常来源防内存拖垮
             if out.len() > 16 * 1024 * 1024 {
                 return Err(WinError::api("SMTC 封面读取", "封面超过 16MB，放弃"));
             }
@@ -337,7 +352,7 @@ impl SmtcClient {
         Ok(Some(out))
     }
 
-    /// requestedPlaybackPosition 单位是 100ns tick
+    /// 位置参数单位 100ns
     pub fn seek(&mut self, position_ms: i64) -> Result<()> {
         let prefer = self.last_app.clone();
         let Some(session) = self.target_session(&prefer) else {
@@ -352,13 +367,8 @@ impl SmtcClient {
         Ok(())
     }
 
-    /// 播放控制，逐级回退（与应用无关的通用链路）：
-    /// 1. 会话级 TryXxxAsync —— 标准接口；返回 FALSE 表示应用拒绝。网易云还会说谎：
-    ///    TryPauseAsync 返回 TRUE 但不暂停（其自身 elog 验证过），这种无法探测，
-    ///    上层用 elog 播放态纠偏，UI 不会卡在错误状态。
-    /// 2. 定向 WM_APPCOMMAND 打到播放器自己的窗口 —— 无路由歧义（全局媒体键会被
-    ///    shell 路由给"最近的"媒体应用，可能被僵尸浏览器会话劫持）。
-    /// 3. 全局媒体键 —— 最后手段（如没有 win32 窗口的 UWP 应用）。
+    /// 逐级回退 会话接口 定向 APPCOMMAND 全局媒体键
+    /// 网易云 TryPauseAsync 会假成功 上层按播放态纠偏
     pub fn control(&mut self, action: MediaAction) {
         let mut ok = false;
         let mut app = String::new();
@@ -385,7 +395,7 @@ impl SmtcClient {
         if app.is_empty() {
             app = prefer;
         }
-        // APPCOMMAND_MEDIA_PLAY / PAUSE / NEXTTRACK / PREVIOUSTRACK
+        // APPCOMMAND_MEDIA_PLAY PAUSE NEXTTRACK PREVIOUSTRACK
         let cmd = match action {
             MediaAction::Play => 46,
             MediaAction::Pause => 47,
@@ -404,7 +414,7 @@ impl SmtcClient {
     }
 }
 
-/// 全局媒体键走 SendInput（keybd_event 已被微软标记为过时）
+/// keybd_event 已废弃 走 SendInput
 fn press_media_key(vk: u16) {
     let key = |flags| INPUT {
         r#type: INPUT_KEYBOARD,
@@ -428,8 +438,7 @@ fn press_media_key(vk: u16) {
     }
 }
 
-/// 定向 WM_APPCOMMAND：用 SendMessageTimeout，目标窗口挂起时不拖死本进程。
-/// APPCOMMAND 编码在 lParam 高 16 位。返回是否送达（目标挂起/超时为 false）。
+/// APPCOMMAND 在 lParam 高 16 位 超时防目标挂起拖死本进程
 fn send_app_command_hwnd(hwnd: HWND, cmd: i32) -> bool {
     let mut result = 0usize;
     let delivered = unsafe {
@@ -467,7 +476,7 @@ unsafe extern "system" fn enum_app_window_proc(hwnd: HWND, lparam: LPARAM) -> BO
     }
 }
 
-/// 进程主镜像文件名（不含路径）是否与 target（不带 .exe）匹配
+/// target 不带 .exe
 fn process_exe_matches(pid: u32, target: &str) -> bool {
     let matches = (|| -> Option<bool> {
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
@@ -493,8 +502,6 @@ fn process_exe_matches(pid: u32, target: &str) -> bool {
     matches.unwrap_or(false)
 }
 
-/// 把 WM_APPCOMMAND 发给 win32 SourceAppUserModelId（形如 "cloudmusic.exe"）
-/// 对应进程的主窗口。送达返回 true。
 fn send_app_command(app_id: &str, cmd: i32) -> bool {
     if !app_id.to_ascii_lowercase().ends_with(".exe") {
         return false;
@@ -513,8 +520,6 @@ fn send_app_command(app_id: &str, cmd: i32) -> bool {
     ctx.delivered
 }
 
-// ---- 事件订阅 ----
-
 struct Watcher {
     manager: SessionManager,
     created: Instant,
@@ -526,10 +531,9 @@ struct Watcher {
 impl Watcher {
     fn new(tx: Sender<()>) -> Result<Self> {
         com_init_mta();
-        let manager = block_on(
-            &SessionManager::RequestAsync().map_err(|e| WinError::api("SMTC 管理器", e))?,
-        )
-        .map_err(|e| WinError::api("SMTC 管理器", e))?;
+        let manager =
+            block_on(&SessionManager::RequestAsync().map_err(|e| WinError::api("SMTC 管理器", e))?)
+                .map_err(|e| WinError::api("SMTC 管理器", e))?;
         let mut w = Self {
             manager,
             created: Instant::now(),
@@ -541,8 +545,7 @@ impl Watcher {
         Ok(w)
     }
 
-    /// 把事件挂到 manager 与其全部会话上；先摘旧再挂新，可重入。
-    /// 会话增删后必须重挂：新出现的会话此前没有订阅。
+    /// 会话增删后必须重挂 新会话此前无订阅
     fn resubscribe(&mut self) -> Result<()> {
         if let Some((t1, t2)) = self.mgr_tokens.take() {
             if self.manager.RemoveSessionsChanged(t1).is_err()
@@ -592,8 +595,13 @@ impl Watcher {
             .manager
             .GetSessions()
             .map_err(|e| WinError::api("SMTC 会话列表", e))?;
-        for i in 0..sessions.Size().map_err(|e| WinError::api("SMTC 会话列表", e))? {
-            let s = sessions.GetAt(i).map_err(|e| WinError::api("SMTC 会话列表", e))?;
+        for i in 0..sessions
+            .Size()
+            .map_err(|e| WinError::api("SMTC 会话列表", e))?
+        {
+            let s = sessions
+                .GetAt(i)
+                .map_err(|e| WinError::api("SMTC 会话列表", e))?;
             let hook = || -> Result<[EventRegistrationToken; 3]> {
                 let tx = self.tx.clone();
                 let on_media = TypedEventHandler::new(
@@ -617,9 +625,12 @@ impl Watcher {
                     },
                 );
                 Ok([
-                    s.MediaPropertiesChanged(&on_media).map_err(|e| WinError::api("SMTC 事件订阅", e))?,
-                    s.PlaybackInfoChanged(&on_playback).map_err(|e| WinError::api("SMTC 事件订阅", e))?,
-                    s.TimelinePropertiesChanged(&on_timeline).map_err(|e| WinError::api("SMTC 事件订阅", e))?,
+                    s.MediaPropertiesChanged(&on_media)
+                        .map_err(|e| WinError::api("SMTC 事件订阅", e))?,
+                    s.PlaybackInfoChanged(&on_playback)
+                        .map_err(|e| WinError::api("SMTC 事件订阅", e))?,
+                    s.TimelinePropertiesChanged(&on_timeline)
+                        .map_err(|e| WinError::api("SMTC 事件订阅", e))?,
                 ])
             };
             match hook() {
@@ -631,9 +642,6 @@ impl Watcher {
     }
 }
 
-/// 订阅 SMTC 变化。命名线程 "smtc-watch" 常驻：事件 150ms 防抖（切歌时
-/// media/playback/timeline 成串到达，归并成一次）后在观察线程上回调。
-/// 全进程只起一次；重复调用无副作用。
 pub fn start_watch(on_change: impl Fn() + Send + 'static) {
     use std::sync::Once;
     static START: Once = Once::new();
@@ -649,7 +657,7 @@ pub fn start_watch(on_change: impl Fn() + Send + 'static) {
 
 fn watch_loop(on_change: impl Fn()) {
     let (tx, rx) = channel::<()>();
-    // 管理器创建可能瞬时失败（SMTC 服务未就绪），重试直到成功
+    // 服务未就绪时创建会失败 重试
     let mut watcher = loop {
         match Watcher::new(tx.clone()) {
             Ok(w) => break w,
@@ -659,12 +667,13 @@ fn watch_loop(on_change: impl Fn()) {
             }
         }
     };
-    // watch 本身立即推一次当前快照（对齐 Electron 版 watch 语义）
+    // 先推一次当前快照
     let _ = tx.send(());
     loop {
         if rx.recv().is_err() {
             return;
         }
+        // 防抖归并成串事件
         loop {
             match rx.recv_timeout(Duration::from_millis(150)) {
                 Ok(()) => {}

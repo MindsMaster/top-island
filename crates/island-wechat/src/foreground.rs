@@ -1,13 +1,9 @@
-//! 前台进程名查询：前台是微信时岛不弹消息通知（用户正在看，弹了是噪音）。
-//! Electron 版走 C# bridge 的 foreground 请求；这里直接 GetForegroundWindow。
-
 use windows::Win32::Foundation::{CloseHandle, HWND};
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
-/// 前台窗口所属进程的可执行文件名（不含扩展名，小写）。取不到返回 None。
 pub fn foreground_process_stem() -> Option<String> {
     unsafe {
         let hwnd: HWND = GetForegroundWindow();

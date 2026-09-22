@@ -3,21 +3,13 @@ use std::process::Command;
 
 use anyhow::{Context, Result};
 
-// 用法：
-//   cargo xtask bridge            编译网易云 bridge 代理 DLL（release）
-//   cargo xtask dev               先编 bridge 再 tauri dev
-//   cargo xtask keygen            生成 updater 签名密钥（~/.tauri/topisland.key），打印 conf 用 pubkey
-//   cargo xtask build             先编 bridge 再 tauri build（带签名私钥），产物和 feed json 收集到 release-feed/
-//   cargo xtask legacy-feed       生成老 electron-updater 用的 latest.yml/snapshot.yml（迁移专用，一次性）
-//   cargo xtask publish           把 release-feed/ PUT 到 Nexus。发布动作，只由人手动跑，不自动化。
-//
-// app 的 build.rs 从 target 目录嵌入 bridge DLL，两者没有 cargo 依赖边，所以 dev/build 要先编 bridge。
+// app 的 build.rs 从 target 嵌入 bridge DLL 二者无依赖边 dev build 须先编 bridge
 
 const NEXUS_BASE: &str = "https://repo.azuramc.cc/repository/raw-public/top-island";
-/// 上传走 hosted 仓：raw-public 是聚合组，只读，PUT 会 405
+/// raw-public 是聚合组只读 PUT 会 405
 const NEXUS_UPLOAD_RELEASES: &str = "https://repo.azuramc.cc/repository/raw-releases/top-island";
 const NEXUS_UPLOAD_SNAPSHOTS: &str = "https://repo.azuramc.cc/repository/raw-snapshots/top-island";
-// 签名私钥的密码：不追求保密（私钥本身才是秘密），只为绕开 bundler 的空密码兼容问题
+/// 硬编码密码只为绕开 bundler 空密码兼容问题
 const KEY_PASSWORD: &str = "topisland-updater";
 
 fn main() {
@@ -73,16 +65,20 @@ fn keygen() -> Result<()> {
     if sk.exists() {
         anyhow::bail!("{} 已存在，覆盖请先手动删除", sk.display());
     }
-    // 真实密码加密：bundler 内嵌的 minisign 对空密码的 Some("") 语义有版本差异
-    // （本地 0.7.9 解得开、bundler 报 Wrong password），用真实密码绕开
+    // bundler 内嵌 minisign 的空密码语义有版本差异
     let keypair = minisign::KeyPair::generate_encrypted_keypair(Some(KEY_PASSWORD.into()))
         .context("生成密钥对")?;
     let pk_text = keypair.pk.to_box()?.to_string();
-    let sk_text = keypair.sk.to_box(Some("topisland updater secret key"))?.to_string();
+    let sk_text = keypair
+        .sk
+        .to_box(Some("topisland updater secret key"))?
+        .to_string();
     std::fs::write(&pk, &pk_text).context("写公钥文件")?;
     std::fs::write(&sk, &sk_text).context("写私钥文件")?;
-    let pubkey_conf =
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, pk_text.trim_end());
+    let pubkey_conf = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        pk_text.trim_end(),
+    );
     println!("私钥: {}", sk.display());
     println!("tauri.conf.json 的 plugins.updater.pubkey 填：\n{pubkey_conf}");
     Ok(())
@@ -99,7 +95,8 @@ fn keycheck() -> Result<()> {
 }
 
 fn conf_version() -> Result<String> {
-    let text = std::fs::read_to_string("src-tauri/tauri.conf.json").context("读 tauri.conf.json")?;
+    let text =
+        std::fs::read_to_string("src-tauri/tauri.conf.json").context("读 tauri.conf.json")?;
     let conf: serde_json::Value = serde_json::from_str(&text).context("解析 tauri.conf.json")?;
     conf.get("version")
         .and_then(|v| v.as_str())
@@ -119,17 +116,15 @@ fn build() -> Result<()> {
     build_bridge()?;
 
     let key_path = key_dir().join("topisland.key");
-    let key_file = std::fs::read_to_string(&key_path)
-        .context("读签名私钥失败（先 cargo xtask keygen）")?;
-    // TAURI_SIGNING_PRIVATE_KEY 是 base64（文件全文，含 untrusted comment 行），
-    // bundler 会先解 base64 再按 minisign SecretKeyBox 文本解析
+    let key_file =
+        std::fs::read_to_string(&key_path).context("读签名私钥失败（先 cargo xtask keygen）")?;
+    // 该变量须为私钥文件全文的 base64
     let key = base64::Engine::encode(
         &base64::engine::general_purpose::STANDARD,
         key_file.trim_end(),
     );
 
-    // 绕开 pnpm（本机 pnpm 的供应链检查会在 run 前跑 install 并失败）：
-    // CLI 本体是 napi 模块，由 node 驱动 tauri.js
+    // 直驱 tauri.js 绕开 pnpm run 前置 install
     let status = Command::new("node")
         .args(["node_modules/@tauri-apps/cli/tauri.js", "build"])
         .env("TAURI_SIGNING_PRIVATE_KEY", &key)
@@ -166,16 +161,18 @@ fn build() -> Result<()> {
         }
     });
     let channel = channel_of(&version);
-    std::fs::write(out.join(format!("{channel}.json")), serde_json::to_string_pretty(&feed)?)
-        .context("写 feed json")?;
+    std::fs::write(
+        out.join(format!("{channel}.json")),
+        serde_json::to_string_pretty(&feed)?,
+    )
+    .context("写 feed json")?;
 
     println!("渠道: {channel}，产物在 release-feed/");
     println!("检查无误后手动执行 cargo xtask publish 上传 Nexus");
     Ok(())
 }
 
-/// 凭证先读环境变量，再回落到各 gradle home 的 gradle.properties
-/// （azuraRepoUsername/azuraRepoPassword），和老 dist 脚本一致
+/// 凭证链路与老 dist 脚本一致
 fn repo_creds() -> Result<(String, String)> {
     if let (Ok(u), Ok(p)) = (
         std::env::var("AZURA_REPO_USERNAME"),
@@ -232,7 +229,7 @@ fn publish() -> Result<()> {
     );
     for path in files {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        // snapshot.* 一律进 raw-snapshots 覆盖旧 feed，其余按版本渠道走
+        // snapshot.* 文件一律进 snapshots 仓
         let base = if name.starts_with("snapshot.") || channel == "snapshot" {
             NEXUS_UPLOAD_SNAPSHOTS
         } else {
@@ -246,14 +243,17 @@ fn publish() -> Result<()> {
             .content_type("application/octet-stream")
             .send(&body[..])
             .with_context(|| format!("上传 {name}"))?;
-        anyhow::ensure!(resp.status().is_success(), "上传 {name} 失败: HTTP {}", resp.status());
+        anyhow::ensure!(
+            resp.status().is_success(),
+            "上传 {name} 失败: HTTP {}",
+            resp.status()
+        );
     }
     println!("全部上传完成");
     Ok(())
 }
 
-/// 老 electron-updater 客户端只认 yml feed。生成 latest.yml/snapshot.yml 指向
-/// 当前 release-feed 里的安装包，让老版经自动更新迁移到 Tauri 版。迁移完成后可删。
+/// 老 electron-updater 只认 yml feed 迁移完可删
 fn legacy_feed() -> Result<()> {
     use sha2::Digest;
 
@@ -264,8 +264,10 @@ fn legacy_feed() -> Result<()> {
     anyhow::ensure!(exe.exists(), "缺少 {}，先 cargo xtask build", exe.display());
 
     let bytes = std::fs::read(&exe).context("读安装包")?;
-    let sha512 =
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, sha2::Sha512::digest(&bytes));
+    let sha512 = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        sha2::Sha512::digest(&bytes),
+    );
     let size = bytes.len();
     let date = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
@@ -284,14 +286,19 @@ fn legacy_feed() -> Result<()> {
     std::fs::write(out.join("latest.yml"), &yml).context("写 latest.yml")?;
     std::fs::write(out.join("snapshot.yml"), &yml).context("写 snapshot.yml")?;
 
-    // 装着 0.0.1-SNAPSHOT 的机器读的是 snapshot.json，镜像一份让它们也能升上来
+    // 0.0.1-SNAPSHOT 老客户端读的是 snapshot.json
     let latest_json = out.join("latest.json");
-    anyhow::ensure!(latest_json.exists(), "缺少 latest.json，先 cargo xtask build");
+    anyhow::ensure!(
+        latest_json.exists(),
+        "缺少 latest.json，先 cargo xtask build"
+    );
     std::fs::copy(&latest_json, out.join("snapshot.json")).context("镜像 snapshot.json")?;
 
     println!("version: {version}");
     println!("sha512: {sha512}");
     println!("size: {size}");
-    println!("已写 latest.yml / snapshot.yml / snapshot.json，检查后用 cargo xtask publish 一并上传");
+    println!(
+        "已写 latest.yml / snapshot.yml / snapshot.json，检查后用 cargo xtask publish 一并上传"
+    );
     Ok(())
 }

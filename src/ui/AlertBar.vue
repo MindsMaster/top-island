@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { alertState, dismissAlert } from './alert';
 
-/** 点动作按钮后立即收起；固定时长只是不点时的兜底 */
 function run(handler: (() => void) | null) {
   handler?.();
   dismissAlert();

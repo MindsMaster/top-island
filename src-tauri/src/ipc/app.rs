@@ -26,7 +26,9 @@ pub struct AppVersionInfo {
 
 #[tauri::command]
 pub fn app_get_version(app: AppHandle) -> AppVersionInfo {
-    let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
     AppVersionInfo {
         version: app.package_info().version.to_string(),
         git_hash: option_env!("TI_GIT_HASH").unwrap_or("").into(),
@@ -39,7 +41,7 @@ pub fn displays_list(app: AppHandle) -> AppResult<Vec<infra::layout::DisplayInfo
     infra::layout::list_displays(&app)
 }
 
-/// 协议白名单：渲染层只能开 http(s)/mailto，挡住 file:// 之类的本地协议
+/// 协议白名单
 #[tauri::command]
 pub async fn shell_open_external(url: String) -> AppResult<()> {
     let allowed =
@@ -51,7 +53,6 @@ pub async fn shell_open_external(url: String) -> AppResult<()> {
         .map_err(|e| AppError::new(format!("error.io: {e}")))
 }
 
-/// 在资源管理器里打开数据目录（诊断入口）
 #[tauri::command]
 pub async fn diag_reveal() -> AppResult<()> {
     let dir = infra::paths::data_dir()?;

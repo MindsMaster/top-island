@@ -7,7 +7,7 @@ edition.workspace = true
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# serialize 特性提供 sqlite3_deserialize：解密后的库字节在内存里直接开，不落明文盘
+# serialize 特性让解密库在内存直接开 不落明文盘
 rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 windows = { version = "0.58", features = [
     "Win32_Foundation",

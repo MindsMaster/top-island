@@ -27,7 +27,7 @@ function build() {
   a.style.marginRight = spacing + 'px';
   b.style.marginRight = spacing + 'px';
   const itemStep = itemWidth + spacing;
-  const dur = Math.max(8000, (itemStep / 35) * 1000); // 约 35px/s
+  const dur = Math.max(8000, (itemStep / 35) * 1000); // 滚动速度 px/s
   anim = track.animate([{ transform: 'translateX(0)' }, { transform: `translateX(-${itemStep}px)` }], {
     duration: dur,
     iterations: Infinity,

@@ -306,7 +306,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* 选项多时菜单自身滚动，不把外层内容区撑出滚动条 */
+  /* 选项多时菜单内滚动 */
   max-height: 240px;
   overflow-y: auto;
 }
@@ -496,7 +496,7 @@
   border-radius: 8px;
   cursor: crosshair;
   touch-action: none;
-  /* 白->透明（横向饱和度）+ 黑->透明（纵向明度），底色为当前色相 */
+  /* 横向饱和度 纵向明度 底色为色相 */
   background-image:
     linear-gradient(to top, #000, rgba(0, 0, 0, 0)), linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
 }
@@ -617,7 +617,6 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  /* “关”态旋钮收敛，让“开”态 accent 更跳 */
   background: rgba(var(--ink), 0.55);
   transition:
     transform 0.2s,

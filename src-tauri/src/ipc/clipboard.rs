@@ -3,7 +3,7 @@ use crate::services;
 
 use super::off_thread;
 
-/// 历史记录由前端维护（走 store_get/store_set），后端只提供剪贴板原语
+// 历史记录由前端维护
 
 #[tauri::command]
 pub async fn clipboard_read_text() -> AppResult<String> {
@@ -24,4 +24,3 @@ pub async fn clipboard_has_image() -> AppResult<bool> {
 pub async fn clipboard_read_file_paths() -> AppResult<Vec<String>> {
     off_thread(services::clipboard::read_file_paths).await
 }
-

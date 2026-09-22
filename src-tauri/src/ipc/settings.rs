@@ -7,7 +7,6 @@ use crate::{infra, services};
 
 use super::off_thread;
 
-/// 持久化设置、让各域立即生效、再广播给其他窗口
 #[tauri::command]
 pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult<()> {
     let value = serde_json::to_value(&settings)
@@ -21,7 +20,9 @@ pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult
 #[tauri::command]
 pub async fn settings_open(app: AppHandle) -> AppResult<()> {
     off_thread(move || {
-        let win = app.get_webview_window("settings").ok_or("error.io: 设置窗不存在")?;
+        let win = app
+            .get_webview_window("settings")
+            .ok_or("error.io: 设置窗不存在")?;
         if !win.is_visible().unwrap_or(false) {
             let layout = infra::persist::get("settings")
                 .map(AppSettings::from_value)

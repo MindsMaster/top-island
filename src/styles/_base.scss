@@ -1,14 +1,29 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body {
-  width: 100%; height: 100%;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html,
+body {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: transparent !important;
-  font-family: 'OpenRunde', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    'OpenRunde',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   user-select: none;
 }
-#app { width: 100%; height: 100%; }
+#app {
+  width: 100%;
+  height: 100%;
+}
 
-/* 全局滚动条：细条、主题化 */
+/* 全局滚动条 */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -28,35 +43,44 @@ html, body {
 @font-face {
   font-family: 'OpenRunde';
   src: url('../assets/fonts/OpenRunde-Regular.woff') format('woff');
-  font-weight: 400; font-style: normal;
+  font-weight: 400;
+  font-style: normal;
 }
 @font-face {
   font-family: 'OpenRunde';
   src: url('../assets/fonts/OpenRunde-Medium.woff') format('woff');
-  font-weight: 500; font-style: normal;
+  font-weight: 500;
+  font-style: normal;
 }
 @font-face {
   font-family: 'OpenRunde';
   src: url('../assets/fonts/OpenRunde-Semibold.woff') format('woff');
-  font-weight: 600; font-style: normal;
+  font-weight: 600;
+  font-style: normal;
 }
 @font-face {
   font-family: 'OpenRunde';
   src: url('../assets/fonts/OpenRunde-Bold.woff') format('woff');
-  font-weight: 700; font-style: normal;
+  font-weight: 700;
+  font-style: normal;
 }
 
 .large-dismiss-shield {
-  position: fixed; top: 0; left: 0;
-  width: 100vw; height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   z-index: 2147483646;
   pointer-events: auto;
   background: transparent;
 }
 
-/* 全屏容器：zoom 缩放岛整体。vw/vh 不被 zoom 折算，须除回 --app-scale，否则内容超窗被裁、居中偏移 */
+/* vw/vh 不吃 zoom 须除回 --app-scale */
 #island-container {
-  position: fixed; top: 0; left: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
   width: calc(100vw / var(--app-scale, 1));
   height: calc(100vh / var(--app-scale, 1));
   z-index: 2147483647;
@@ -69,26 +93,36 @@ html, body {
   top: 10px;
   left: 50%;
   transform: translateX(-50%);
-  width: 170px; height: 40px;
+  width: 170px;
+  height: 40px;
   border-radius: 14px;
   background: var(--island-bg);
   color: var(--island-text);
-  font-family: 'OpenRunde', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  box-shadow: 0 0 24px rgba(0,0,0,0.12);
-  transition: width 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275),
-              height 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275),
-              border-radius 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  font-family:
+    'OpenRunde',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.12);
+  transition:
+    width 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    height 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    border-radius 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   overflow: hidden;
   cursor: pointer;
   pointer-events: auto;
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   will-change: width, height;
   -webkit-app-region: no-drag;
 }
 
 #island:hover {
-  box-shadow: 0 0 32px rgba(0,0,0,0.25);
+  box-shadow: 0 0 32px rgba(0, 0, 0, 0.25);
   transform: translateX(-50%) scale(1.03);
 }

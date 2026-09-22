@@ -9,9 +9,7 @@ use windows::Win32::Devices::Display::{
 };
 use windows::Win32::Foundation::ERROR_SUCCESS;
 
-/// GDI 设备名（\\.\DISPLAY1）-> 显示器友好名（系统设置里显示的型号名，如 "GS2"）
-/// 走 QueryDisplayConfig 活动路径：source 给 GDI 名，target 给 EDID/连接器名
-/// 查询失败或无友好名时返回空表 调用方自行回退
+/// GDI 设备名 映射 系统设置里的显示器型号名
 pub fn monitor_friendly_names() -> HashMap<String, String> {
     let mut map = HashMap::new();
     unsafe {

@@ -1,17 +1,11 @@
 import { ref } from 'vue';
 
-/** 命中这些控件时不启动隐藏手势，让控件自己处理 */
+/** 命中则交控件自行处理 */
 const NON_GESTURE_SELECTOR = 'button, input, select, textarea, .alert-content';
 
-/** 跟手位移上限（px），再往上拖也不动 */
 const MAX_OFFSET = 44;
-/** 触发隐藏的最小上滑距离（px） */
 const TRIGGER_DISTANCE = 24;
 
-/**
- * 在岛上向上拖动把它收进屏幕顶缘。跟手位移期间关掉过渡，
- * 松手后由 shell 决定收起还是弹回。
- */
 export function useHideGesture(options: { isEnabled: () => boolean; onHide: () => void }) {
   const dragging = ref(false);
   const offset = ref(0);
@@ -48,7 +42,6 @@ export function useHideGesture(options: { isEnabled: () => boolean; onHide: () =
     }
   }
 
-  /** 消费一次「刚隐藏」标记；返回 true 表示本次 click 应被忽略 */
   function consumeSuppressedClick(): boolean {
     if (!justHidden) return false;
     justHidden = false;

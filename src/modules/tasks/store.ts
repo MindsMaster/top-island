@@ -13,25 +13,19 @@ export interface TaskItem {
   created_at: number;
 }
 
-/** 任务域共享状态。组件模板直读 tasksState 字段，
- *  写一律走下面的 action；newTaskText 是输入框 v-model 的唯一例外，可直接写 proxy。
- *  派生数据（pending/completed/sorted）不放这里，组件里 computed(snap.xxx) 自取 */
 export const tasksState = reactive({
   tasks: [] as TaskItem[],
   newTaskText: '',
   showCompleted: false,
-  /** 到期提醒中的任务（岛面上持久显示，直到完成或超过结束时间） */
   activeReminderTask: null as TaskItem | null,
 });
 
-/** 提醒轮询句柄：内部簿记，不进 proxy */
 let reminderTimer: number | null = null;
 
 export async function initTasks() {
   tasksState.tasks = (await storeApi.get<TaskItem[]>('tasks')) || [];
 }
 
-/** 持久化：整个任务列表落盘。reactive 对 JSON.stringify 透明，无需先取 raw */
 function save() {
   storeApi.set('tasks', JSON.parse(JSON.stringify(tasksState.tasks)));
 }
@@ -82,7 +76,6 @@ export function deleteTask(id: string) {
   save();
 }
 
-/** 面板"显示/隐藏已完成"开关（收敛成 action，写路径统一） */
 export function toggleShowCompleted() {
   tasksState.showCompleted = !tasksState.showCompleted;
 }
@@ -126,7 +119,7 @@ function checkReminders() {
     triggered = true;
     tasksState.activeReminderTask = task;
   }
-  // 只有真正触发了提醒才落盘（notified 标志要持久化），纯巡检不写盘
+  // 触发才落盘 巡检不写
   if (triggered) save();
 }
 

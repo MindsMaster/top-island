@@ -17,14 +17,11 @@ watch(active, async () => {
   contentEl.value?.scrollTo(0, 0);
 });
 
-/**
- * 每次打开窗口 +1：根节点换 key 重建以重播进入动画。
- * 窗口常驻不销毁，Vue 不会自己重挂载；重建顺带把各分区的临时状态清干净。
- */
+/** 每次开窗重建根节点重播动画 */
 const enterKey = ref(0);
 settingsApi.onOpened(() => enterKey.value++);
 
-/** 失焦即关。刚聚焦那一瞬的抖动不算 */
+/** 聚焦瞬间的抖动宽限 */
 const FOCUS_BLUR_GRACE_MS = 500;
 let focusedAt = 0;
 

@@ -6,7 +6,7 @@ const { lang, weekdays } = useI18n();
 const now = ref(new Date());
 let timer: number | null = null;
 
-/** 30s 精度：界面只显示到分钟 */
+/** 界面只显示到分钟 */
 export function startClock() {
   if (timer !== null) return;
   now.value = new Date();
@@ -35,7 +35,7 @@ export const isNightTime = computed(() => {
   return h >= 18 || h < 6;
 });
 
-/** 本地日期字符串 YYYY-MM-DD */
+/** 本地日期 勿换 toISOString */
 export function fmtLocalDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

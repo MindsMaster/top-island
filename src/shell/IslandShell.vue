@@ -43,7 +43,7 @@ const deck = usePanelDeck({
 
 const overlays = modules.filter((m) => m.overlay);
 
-/** 提示条来了就占满胶囊，模块一律让位 */
+/** alert 优先 模块让位 */
 const capsuleOwner = computed(() => {
   if (alertState.active) return null;
   let best: (typeof modules)[number] | null = null;
@@ -54,7 +54,6 @@ const capsuleOwner = computed(() => {
   return best;
 });
 
-/** 没有模块占胶囊时露出壳自己的内容：still 显示时间，quick 显示状态栏 */
 const showOwnContent = computed(() => !alertState.active && capsuleOwner.value === null);
 
 const islandStyle = computed(() => {
@@ -88,7 +87,7 @@ const hot = useHotRectReporter({
   keepInteractive: () => hide.dragging.value || modules.some((m) => m.keepInteractive?.() ?? false),
   isFullView: () => isLarge.value,
   getIslandRect: () => islandEl.value?.getBoundingClientRect() ?? null,
-  // 大视图才报整个容器；平时绝不能报它——它是全屏容器，报出去热区就是整窗，穿透全废
+  // 平时勿报 全屏容器会废掉穿透
   getFullRect: () => containerEl.value?.getBoundingClientRect() ?? null,
 });
 
@@ -102,7 +101,6 @@ setShellCommands({
   },
 });
 
-/** 展开后跳到最该看的那一页；谁都不要求就停在原页 */
 function jumpToRequestedPanel() {
   for (const m of modules) {
     const target = m.expandTarget?.();
@@ -129,7 +127,7 @@ function onPointerUp(e: PointerEvent) {
 }
 
 function onIslandLeave() {
-  // 拖动中指针离开元素属于正常路径，不触发形态收起
+  // 拖动中 leave 属正常路径
   if (hide.dragging.value) return;
   island.onLeave();
 }
@@ -137,7 +135,7 @@ function onIslandLeave() {
 function onIslandClick(e: MouseEvent) {
   if (hide.consumeSuppressedClick()) return;
   if (island.isHidden.value) {
-    // 点顶部细边立即唤出
+    // 点细边唤出
     island.reveal();
     return;
   }
@@ -158,7 +156,7 @@ function onDocMouseDown(e: MouseEvent) {
   if (isLarge.value && !islandEl.value?.contains(e.target as Node)) island.collapse();
 }
 
-/** 岛窗是顶部小窗，点游戏/其他应用不经过 shield，靠失焦兜底收起 */
+/** 窗外点击不经 shield 失焦兜底 */
 function onWindowBlur() {
   if (isLarge.value) island.collapse();
 }

@@ -2,7 +2,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
-/// 托盘菜单：打开设置 / 退出。开发者工具只给 debug 构建，生产不该常驻。
+/// 开发者工具仅 debug 构建
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open-settings", "打开设置", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;

@@ -6,8 +6,12 @@ use std::time::{Duration, Instant};
 use windows::core::{Interface, GUID, HSTRING, PWSTR};
 use windows::Win32::Foundation::SIZE;
 use windows::Win32::Graphics::Gdi::{DeleteObject, GetObjectW, DIBSECTION};
-use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, IBindCtx, COINIT_APARTMENTTHREADED};
-use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+use windows::Win32::System::Com::{
+    CoInitializeEx, CoTaskMemFree, IBindCtx, COINIT_APARTMENTTHREADED,
+};
+use windows::Win32::System::Registry::{
+    RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
+};
 use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use windows::Win32::UI::Shell::{
     IShellItem2, IShellItemImageFactory, SHCreateItemFromParsingName, SHLoadIndirectString,
@@ -15,7 +19,7 @@ use windows::Win32::UI::Shell::{
 };
 
 const ICON_PX: i32 = 64;
-/// 索引过期后再遇到未命中才重建（用户刚装了新应用），命中不触发扫描
+/// 过期后未命中才重建 命中不触发扫描
 const INDEX_TTL: Duration = Duration::from_secs(60);
 
 const PKEY_APP_USER_MODEL_ID: PROPERTYKEY = PROPERTYKEY {
@@ -34,13 +38,23 @@ fn lock_index() -> MutexGuard<'static, Option<Index>> {
     INDEX.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// HKCU\Software\Classes\AppUserModelId\<aumid> 下的字符串值（HKCU 优先，其次 HKLM）
+/// HKCU 优先其次 HKLM
 pub(crate) fn registry_value(aumid: &str, value: &str) -> Option<String> {
     let subkey = HSTRING::from(format!(r"Software\Classes\AppUserModelId\{aumid}"));
     let value = HSTRING::from(value);
     for root in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
         let mut size: u32 = 0;
-        let ok = unsafe { RegGetValueW(root, &subkey, &value, RRF_RT_REG_SZ, None, None, Some(&mut size)) };
+        let ok = unsafe {
+            RegGetValueW(
+                root,
+                &subkey,
+                &value,
+                RRF_RT_REG_SZ,
+                None,
+                None,
+                Some(&mut size),
+            )
+        };
         if ok.is_err() || size == 0 {
             continue;
         }
@@ -64,9 +78,11 @@ pub(crate) fn registry_value(aumid: &str, value: &str) -> Option<String> {
     None
 }
 
-/// 提前建好快捷方式索引（首次扫描连带 COM 冷启动要两秒多，别落在第一条通知上）
+/// 首扫连带 COM 冷启动慢 预热别落在首条通知
 pub fn prewarm() {
-    let _ = shell_item(std::ffi::OsStr::new("shell:AppsFolder\\Microsoft.Windows.Explorer"));
+    let _ = shell_item(std::ffi::OsStr::new(
+        "shell:AppsFolder\\Microsoft.Windows.Explorer",
+    ));
     let mut guard = lock_index();
     if guard.is_none() {
         *guard = Some(build_index());
@@ -75,7 +91,11 @@ pub fn prewarm() {
 
 pub fn display_name(aumid: &str) -> Option<String> {
     if let Some(name) = registry_value(aumid, "DisplayName") {
-        let name = if name.starts_with('@') { load_indirect(&name).unwrap_or(name) } else { name };
+        let name = if name.starts_with('@') {
+            load_indirect(&name).unwrap_or(name)
+        } else {
+            name
+        };
         if !name.trim().is_empty() {
             return Some(name);
         }
@@ -85,7 +105,7 @@ pub fn display_name(aumid: &str) -> Option<String> {
     take_pwstr(name).filter(|s| !s.is_empty())
 }
 
-/// 图标原始字节（PNG，或注册表 IconUri 指向的图片文件内容，调用方按魔数认格式）
+/// 返回 PNG 或 IconUri 原图 调用方按魔数认格式
 pub fn icon_bytes(aumid: &str) -> Option<Vec<u8>> {
     if let Some(uri) = registry_value(aumid, "IconUri") {
         let path = uri.strip_prefix("file:///").unwrap_or(&uri);
@@ -95,7 +115,16 @@ pub fn icon_bytes(aumid: &str) -> Option<Vec<u8>> {
     }
     let item = resolve(aumid)?;
     let factory: IShellItemImageFactory = item.cast().ok()?;
-    let hbm = unsafe { factory.GetImage(SIZE { cx: ICON_PX, cy: ICON_PX }, SIIGBF_ICONONLY) }.ok()?;
+    let hbm = unsafe {
+        factory.GetImage(
+            SIZE {
+                cx: ICON_PX,
+                cy: ICON_PX,
+            },
+            SIIGBF_ICONONLY,
+        )
+    }
+    .ok()?;
     let png = dib_to_png(hbm);
     unsafe {
         let _ = DeleteObject(hbm);
@@ -143,12 +172,15 @@ fn build_index() -> Index {
         let dir = Path::new(&root).join(r"Microsoft\Windows\Start Menu\Programs");
         walk(&dir, &mut |lnk| {
             if let Some(id) = shortcut_aumid(lnk) {
-                // 同一 AUMID 多个快捷方式时保留先扫到的（用户目录先于公共目录）
+                // 同 AUMID 保留先扫到的 用户目录先于公共目录
                 links.entry(id).or_insert_with(|| lnk.to_path_buf());
             }
         });
     }
-    Index { built: Instant::now(), links }
+    Index {
+        built: Instant::now(),
+        links,
+    }
 }
 
 fn walk(dir: &Path, visit: &mut dyn FnMut(&Path)) {
@@ -159,7 +191,10 @@ fn walk(dir: &Path, visit: &mut dyn FnMut(&Path)) {
         let path = entry.path();
         if path.is_dir() {
             walk(&path, visit);
-        } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("lnk")) {
+        } else if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
+        {
             visit(&path);
         }
     }
@@ -174,7 +209,8 @@ fn shortcut_aumid(lnk: &Path) -> Option<String> {
 fn shell_item(name: &std::ffi::OsStr) -> Option<IShellItem2> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        SHCreateItemFromParsingName::<_, Option<&IBindCtx>, IShellItem2>(&HSTRING::from(name), None).ok()
+        SHCreateItemFromParsingName::<_, Option<&IBindCtx>, IShellItem2>(&HSTRING::from(name), None)
+            .ok()
     }
 }
 
@@ -194,11 +230,15 @@ fn load_indirect(text: &str) -> Option<String> {
     Some(String::from_utf16_lossy(&buf[..end]))
 }
 
-/// GetImage 给的是 32bpp 预乘 BGRA 的 DIB section，转成直通 RGBA 后编 PNG
+/// GetImage 给 32bpp 预乘 BGRA 转直通 RGBA 编 PNG
 fn dib_to_png(hbm: windows::Win32::Graphics::Gdi::HBITMAP) -> Option<Vec<u8>> {
     let mut ds = DIBSECTION::default();
     let got = unsafe {
-        GetObjectW(hbm, std::mem::size_of::<DIBSECTION>() as i32, Some(&mut ds as *mut _ as *mut _))
+        GetObjectW(
+            hbm,
+            std::mem::size_of::<DIBSECTION>() as i32,
+            Some(&mut ds as *mut _ as *mut _),
+        )
     };
     if got == 0 || ds.dsBm.bmBitsPixel != 32 || ds.dsBm.bmBits.is_null() {
         return None;
@@ -207,7 +247,7 @@ fn dib_to_png(hbm: windows::Win32::Graphics::Gdi::HBITMAP) -> Option<Vec<u8>> {
     let height = ds.dsBm.bmHeight as usize;
     let stride = ds.dsBm.bmWidthBytes as usize;
     let src = unsafe { std::slice::from_raw_parts(ds.dsBm.bmBits as *const u8, stride * height) };
-    // biHeight 为正是自底向上存储
+    // biHeight 为正是自底向上
     let bottom_up = ds.dsBmih.biHeight > 0;
     let mut rgba = Vec::with_capacity(width * height * 4);
     for row in 0..height {
@@ -215,7 +255,13 @@ fn dib_to_png(hbm: windows::Win32::Graphics::Gdi::HBITMAP) -> Option<Vec<u8>> {
         let line = &src[y * stride..y * stride + width * 4];
         for px in line.chunks_exact(4) {
             let a = px[3] as u32;
-            let un = |c: u8| if a == 0 { 0 } else { ((c as u32 * 255 + a / 2) / a).min(255) as u8 };
+            let un = |c: u8| {
+                if a == 0 {
+                    0
+                } else {
+                    ((c as u32 * 255 + a / 2) / a).min(255) as u8
+                }
+            };
             rgba.extend_from_slice(&[un(px[2]), un(px[1]), un(px[0]), px[3]]);
         }
     }
@@ -237,9 +283,12 @@ mod tests {
     #[test]
     fn start_menu_index_maps_shortcut_aumids() {
         let index = build_index();
-        // 任何 Windows 都带的系统项：Microsoft.Windows.Explorer 的快捷方式在公共开始菜单里
-        let hit = index.links.iter().find(|(id, _)| id.starts_with("Microsoft.Windows."));
-        assert!(hit.is_some(), "开始菜单里必须能扫到带 AUMID 的快捷方式");
+        // 任何系统都带 Microsoft.Windows. 前缀项
+        let hit = index
+            .links
+            .iter()
+            .find(|(id, _)| id.starts_with("Microsoft.Windows."));
+        assert!(hit.is_some());
     }
 
     #[test]
@@ -261,7 +310,7 @@ mod tests {
         let aumid =
             "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
         let name = display_name(aumid).expect("UWP 应用名应能解析");
-        assert!(!name.starts_with("windows."), "不该回退到裸 AUMID: {name}");
+        assert!(!name.starts_with("windows."), "{name}");
         let icon = icon_bytes(aumid).expect("UWP 应用图标应能取到");
         assert!(icon.starts_with(b"\x89PNG\r\n\x1a\n"));
     }

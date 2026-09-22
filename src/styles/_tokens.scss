@@ -1,33 +1,20 @@
-/* === 主题设计令牌 ===
- * 框架约定：
- * - 组件只消费令牌，禁止硬编码主题色：前景一律 rgba(var(--ink), <alpha>)，
- *   实色前景用 var(--island-text)，强调用 var(--accent)/var(--on-accent)，
- *   语义色用 var(--success)/var(--danger)/var(--warn)。
- * - 新增主题 = 加一个 html[data-theme='X'] 块赋值令牌，并在 useSettings 的 THEMES 注册。
- * - data-scheme（light/dark）由主题声明，组件级亮暗差异只挂在 html[data-scheme='...'] 上。
- * - custom 主题令牌由 useSettings 内联注入，不在此文件。
- */
-
 :root {
-  /* 前景基色：RGB 分量，配合 alpha 使用 */
+  /* RGB 分量 配合 alpha */
   --ink: 255, 255, 255;
-  /* 岛表面（允许渐变） */
+  /* 允许渐变 */
   --island-bg: #000;
-  /* 实色前景：标题、图标高亮、滑块拇指等 */
   --island-text: #fff;
-  /* 辅助窗口（设置窗）卡片 */
+  /* 辅助窗口卡片 */
   --panel-bg: rgba(10, 10, 12, 0.96);
   --panel-border: rgba(255, 255, 255, 0.08);
-  /* 主题个性强调色 */
   --accent: #5b8cff;
   --on-accent: #fff;
-  /* 功能语义色（暗 scheme 默认，亮 scheme 压暗见下） */
   --success: #6fff7b;
   --danger: #ff6b6b;
   --warn: #ffc850;
 }
 
-/* 亮色系功能色：白底上霓虹色可读性差，统一压暗 */
+/* 亮系功能色压暗 */
 html[data-scheme='light'] {
   --success: #23a047;
   --danger: #d84343;
@@ -68,7 +55,6 @@ html[data-theme='pink'] {
   --accent: #d9418f;
 }
 
-/* 蓝粉渐变：白基调 + 青→粉 */
 html[data-theme='cyberpink'] {
   --ink: 40, 40, 72;
   --island-bg: linear-gradient(130deg, #a5f0ff 0%, #d8ecff 32%, #ffd4ec 62%, #ff9ed6 100%);
@@ -78,7 +64,6 @@ html[data-theme='cyberpink'] {
   --accent: #7a6cf0;
 }
 
-/* 极光：深夜蓝→青绿（暗系） */
 html[data-theme='aurora'] {
   --island-bg: linear-gradient(135deg, #0e1a36 0%, #14324d 45%, #1b5a55 80%, #26705f 100%);
   --panel-bg: linear-gradient(150deg, rgba(14, 26, 54, 0.97), rgba(23, 74, 68, 0.97));
@@ -87,7 +72,6 @@ html[data-theme='aurora'] {
   --on-accent: #06251d;
 }
 
-/* 日落：暖沙→珊瑚→霞粉（亮系） */
 html[data-theme='sunset'] {
   --ink: 76, 40, 30;
   --island-bg: linear-gradient(135deg, #ffdca3 0%, #ffb99a 50%, #ff93ac 100%);
@@ -97,7 +81,6 @@ html[data-theme='sunset'] {
   --accent: #e0526e;
 }
 
-/* 深海：暗海军蓝→洋流蓝（暗系） */
 html[data-theme='ocean'] {
   --island-bg: linear-gradient(135deg, #0a1c38 0%, #123a61 55%, #175a8e 100%);
   --panel-bg: linear-gradient(150deg, rgba(10, 28, 56, 0.97), rgba(19, 62, 100, 0.97));
@@ -106,7 +89,6 @@ html[data-theme='ocean'] {
   --on-accent: #06253c;
 }
 
-/* 薄荷：冰绿→浅青（亮系） */
 html[data-theme='mint'] {
   --ink: 22, 66, 55;
   --island-bg: linear-gradient(135deg, #dcf7ec 0%, #bfeedd 55%, #a9e6e2 100%);

@@ -1,5 +1,3 @@
-//! #[tauri::command] 的唯一所在地。每个文件一个域，只做参数适配后转交 services/infra。
-
 use crate::error::{AppError, AppResult};
 
 pub mod alarm;
@@ -14,7 +12,7 @@ pub mod weather;
 pub mod wechat;
 pub mod window;
 
-/// 耗时命令统一走阻塞线程池，不堵 Tauri 的命令调度线程
+/// 耗时命令走阻塞线程池
 async fn off_thread<T: Send + 'static>(
     f: impl FnOnce() -> AppResult<T> + Send + 'static,
 ) -> AppResult<T> {
@@ -23,8 +21,7 @@ async fn off_thread<T: Send + 'static>(
         .unwrap_or_else(|e| Err(AppError::from(format!("error.io: {e}"))))
 }
 
-/// 命令清单。新增命令只改这里，lib.rs 不必知道有哪些命令。
-/// 路径写 crate:: 而非 $crate::：本宏只在 island-app 内部展开。
+/// 写 crate:: 因本宏只在内部展开
 #[macro_export]
 macro_rules! ipc_handlers {
     () => {

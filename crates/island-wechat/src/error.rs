@@ -1,16 +1,21 @@
 #[derive(Debug)]
 pub enum WeChatError {
-    /// Weixin.exe / WeChat.exe 未在运行，无从扫内存
     NotRunning,
-    /// 没找到微信 4.x 账号目录
     NoAccount,
-    /// 进程内存里的候选密钥全部没通过校验
     NoValidKey,
-    /// 已持有的密钥对不上这个库（换号/密钥轮换）
     InvalidKey,
-    Io { context: &'static str, source: std::io::Error },
-    Api { context: &'static str, message: String },
-    Sqlite { context: &'static str, message: String },
+    Io {
+        context: &'static str,
+        source: std::io::Error,
+    },
+    Api {
+        context: &'static str,
+        message: String,
+    },
+    Sqlite {
+        context: &'static str,
+        message: String,
+    },
 }
 
 impl WeChatError {
@@ -19,11 +24,17 @@ impl WeChatError {
     }
 
     pub fn api(context: &'static str, e: impl std::fmt::Display) -> Self {
-        Self::Api { context, message: e.to_string() }
+        Self::Api {
+            context,
+            message: e.to_string(),
+        }
     }
 
     pub fn sqlite(context: &'static str, e: rusqlite::Error) -> Self {
-        Self::Sqlite { context, message: e.to_string() }
+        Self::Sqlite {
+            context,
+            message: e.to_string(),
+        }
     }
 }
 

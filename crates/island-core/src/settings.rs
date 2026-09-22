@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-// 序列化全部 camelCase：要兼容 Electron 版留下的 store.json，前端 TS 类型也不用动。
+// camelCase 兼容旧版 store.json 与前端类型
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -24,7 +24,7 @@ impl Default for ThemeId {
     }
 }
 
-/// 自定义主题：渐变双色 + 强调色
+/// a b 渐变双色 accent 强调色
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomTheme {
@@ -36,17 +36,21 @@ pub struct CustomTheme {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IslandLayout {
-    /// 缩放百分比（45~300）
+    /// 百分比 45~300
     pub scale: f64,
-    /// 上滑隐藏时露出的高度（px，2~20）
+    /// 露出高度 px 2~20
     pub hidden_peek: f64,
-    /// 所在显示器：'primary' 或显示器名
+    /// 'primary' 或 GDI 设备名
     pub display_id: String,
 }
 
 impl Default for IslandLayout {
     fn default() -> Self {
-        Self { scale: 100.0, hidden_peek: 6.0, display_id: "primary".into() }
+        Self {
+            scale: 100.0,
+            hidden_peek: 6.0,
+            display_id: "primary".into(),
+        }
     }
 }
 
@@ -61,23 +65,26 @@ pub enum LangPref {
     EnUs,
 }
 
-/// 可单独停用的后台子系统（故障排查用）
+/// 故障排查用 逐项停用定位问题来源
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DiagnosticsToggles {
     pub clipboard_poll: bool,
     pub music_poll: bool,
-    /// 开发者模式开关，仅前端渲染 FPS 浮层
+    /// 仅前端 FPS 浮层
     pub dev_overlay: bool,
 }
 
 impl Default for DiagnosticsToggles {
     fn default() -> Self {
-        Self { clipboard_poll: true, music_poll: true, dev_overlay: false }
+        Self {
+            clipboard_poll: true,
+            music_poll: true,
+            dev_overlay: false,
+        }
     }
 }
 
-/// 隐私模式细项：弹窗卡按需遮挡各字段
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationsPrivacy {
@@ -85,7 +92,7 @@ pub struct NotificationsPrivacy {
     pub blur_avatar: bool,
     pub blur_name: bool,
     pub replace_body: bool,
-    /// 替换文案（空则用内置默认）
+    /// 空则用内置默认文案
     pub body_text: String,
 }
 
@@ -104,26 +111,27 @@ impl Default for NotificationsPrivacy {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationsConfig {
-    /// 总开关：读通知库属隐私敏感，默认关闭，用户显式开启
     pub enabled: bool,
     pub popup: bool,
     pub privacy: NotificationsPrivacy,
-    /// 接管系统横幅（改来源应用的 ShowBanner 注册表）。属系统设置修改，默认关闭
+    /// 改来源应用 ShowBanner 注册表
     pub suppress_banner: bool,
-    /// 微信消息接入（需先获取密钥），默认关闭
+    /// 需先在设置里获取密钥
     pub wechat: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MusicConfig {
-    /// 网易云进程内增强，默认开启
+    /// 网易云进程内增强
     pub netease_bridge: bool,
 }
 
 impl Default for MusicConfig {
     fn default() -> Self {
-        Self { netease_bridge: true }
+        Self {
+            netease_bridge: true,
+        }
     }
 }
 
@@ -137,12 +145,12 @@ pub struct AppSettings {
     pub notifications: NotificationsConfig,
     pub diagnostics: DiagnosticsToggles,
     pub music: MusicConfig,
-    /// 开机自启动（默认开启；仅安装版实际生效）
+    /// 仅打包版实际生效
     pub auto_launch: bool,
 }
 
 impl AppSettings {
-    /// store.json 里 settings 可能缺字段（老版本），逐字段 serde default 补齐
+    /// 旧版 store.json 可能缺字段
     pub fn from_value(value: serde_json::Value) -> Self {
         serde_json::from_value(value).unwrap_or_default()
     }

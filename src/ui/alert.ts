@@ -7,12 +7,10 @@ export interface AlertOptions {
   duration?: number;
   actionLabel?: string;
   actionHandler?: (() => void) | null;
-  /** 次要动作（如响铃条的"延后"），显示在主动作之前 */
   secondLabel?: string;
   secondHandler?: (() => void) | null;
 }
 
-/** 岛内提示条（更新就绪、响铃等）。handler 是函数，reactive 原样存不包装 */
 export const alertState = reactive({
   active: false,
   text: '',

@@ -5,7 +5,7 @@ import Capsule from './Capsule.vue';
 import Panel from './Panel.vue';
 import { initTasks, startReminderTimer, tasksState } from './store';
 
-/** 提醒中的任务在收起态占满胶囊，优先级高于歌词 */
+/** 提醒任务占胶囊 优先于歌词 */
 const hasReminder = () => tasksState.activeReminderTask !== null;
 
 export const tasksModule: IslandModule = {
