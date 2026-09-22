@@ -41,12 +41,7 @@ export interface LyricsData {
 
 export type MusicAction = 'play' | 'pause' | 'next' | 'prev' | 'volume';
 
-export type BridgeStatus =
-  | 'notDetected'
-  | 'needsRestart'
-  | 'installed'
-  | 'connecting'
-  | 'connected';
+export type BridgeStatus = 'notDetected' | 'needsRestart' | 'installed' | 'connecting' | 'connected';
 
 export interface MusicConfig {
   /** 网易云进程内增强，默认开启 */
@@ -201,56 +196,6 @@ export interface AlarmSound {
   path: string;
   name: string;
 }
-
-export const IpcChannels = {
-  windowSetIgnoreMouse: 'window:set-ignore-mouse',
-  windowClose: 'window:close',
-  windowCloseSelf: 'window:close-self',
-  windowGetCursorPoint: 'window:get-cursor-point',
-  settingsOpen: 'settings:open',
-  settingsUpdate: 'settings:update',
-  /** 主进程 -> 各窗口的设置变更事件（payload: AppSettings） */
-  settingsChanged: 'settings:changed',
-  shellOpenExternal: 'shell:open-external',
-  appGetLocale: 'app:get-locale',
-  clipboardReadText: 'clipboard:read-text',
-  clipboardWriteText: 'clipboard:write-text',
-  clipboardHasImage: 'clipboard:has-image',
-  clipboardReadFilePaths: 'clipboard:read-file-paths',
-  /** 主进程 -> 岛：系统剪贴板发生变化（winbridge 事件驱动，无 payload） */
-  clipboardChanged: 'clipboard:changed',
-  diagReveal: 'diag:reveal',
-  musicPoll: 'music:poll',
-  /** 主进程 -> 岛：音乐状态变化（SMTC 事件驱动即时推送，payload: MusicState） */
-  musicState: 'music:state',
-  musicControl: 'music:control',
-  musicSeek: 'music:seek',
-  musicArtwork: 'music:artwork',
-  musicLyrics: 'music:lyrics',
-  weatherIpCity: 'weather:ip-city',
-  weatherGeocode: 'weather:geocode',
-  weatherQuery: 'weather:query',
-  storeGet: 'store:get',
-  storeSet: 'store:set',
-  /** 清空全部本地数据并重启（设置里的「重置」） */
-  storeClear: 'store:clear',
-  alarmSoundList: 'alarm:sound-list',
-  alarmSoundData: 'alarm:sound-data',
-  alarmSoundPick: 'alarm:sound-pick',
-  displaysList: 'displays:list',
-  /** 主进程 -> 岛：新通知到达（payload: NotificationItem[]） */
-  notifyIncoming: 'notify:incoming',
-  notifyActivate: 'notify:activate',
-  notifyImage: 'notify:image',
-  wechatAcquireKey: 'wechat:acquire-key',
-  wechatHasKey: 'wechat:has-key',
-  appGetVersion: 'app:get-version',
-  updateStatus: 'update:status',
-  updateCheck: 'update:check',
-  updateInstall: 'update:install',
-  /** 主进程 -> 所有窗口：更新已下载（payload: { version }） */
-  updateDownloaded: 'update:downloaded',
-} as const;
 
 export interface AppVersionInfo {
   version: string;

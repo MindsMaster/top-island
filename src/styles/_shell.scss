@@ -81,11 +81,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Quick 左边：封面 + 跑马灯（已废弃，保留兼容） */
-.quick-left {
-  display: flex; align-items: center; gap: 6px;
-  flex: 1; min-width: 0; overflow: hidden;
-}
 .artwork-wrap {
   width: 24px; height: 24px; border-radius: 4px;
   background: rgba(var(--ink), 0.08);

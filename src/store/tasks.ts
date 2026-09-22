@@ -145,7 +145,3 @@ export function completeReminderTask() {
   }
   tasksState.activeReminderTask = null;
 }
-
-export function dismissReminder() {
-  tasksState.activeReminderTask = null;
-}

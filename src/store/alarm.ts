@@ -284,7 +284,3 @@ export function ringDashOf(s: AlarmView): { circumference: number; offset: numbe
 export function keepInteractiveOf(s: AlarmView): boolean {
   return s.countdown.running || s.ringing !== null;
 }
-
-export function soundNameOf(s: AlarmView): string {
-  return (s.sound ?? s.defaultSounds[0])?.name ?? '--';
-}

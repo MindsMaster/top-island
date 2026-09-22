@@ -146,10 +146,6 @@ pub fn read_file_paths() -> Result<Vec<String>> {
     Ok(paths)
 }
 
-/// 系统剪贴板序列号，每次内容变化 +1，调用方据此去重
-pub fn sequence_number() -> u32 {
-    unsafe { GetClipboardSequenceNumber() }
-}
 
 /// 通用「打开文件」对话框（comdlg32）。按域拆分本域只分到这一个 windows 侧文件，
 /// 函数本身与剪贴板无关；后续有别的域需要时应抽成独立的 shell 对话框模块。

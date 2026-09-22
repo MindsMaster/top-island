@@ -17,7 +17,3 @@ pub fn read_file_paths() -> AppResult<Vec<String>> {
     island_windows::clipboard::read_file_paths().map_err(AppError::from)
 }
 
-/// 剪贴板序列号：前端维护历史时可用它判断两次「变化事件」之间内容是否真的变过
-pub fn sequence_number() -> u32 {
-    island_windows::clipboard::sequence_number()
-}

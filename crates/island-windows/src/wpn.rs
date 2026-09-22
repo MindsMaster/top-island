@@ -67,7 +67,7 @@ fn filetime_to_unix_ms(filetime: i64) -> i64 {
     (filetime - 116_444_736_000_000_000) / 10_000
 }
 
-/// 带完整 payload 的 toast 行（水位轮询用；recent_toasts 是 spike 的摘要版）
+/// 带完整 payload 的 toast 行
 #[derive(Debug, Clone)]
 pub struct WpnToast {
     pub id: i64,

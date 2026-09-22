@@ -25,8 +25,3 @@ pub async fn clipboard_read_file_paths() -> AppResult<Vec<String>> {
     off_thread(services::clipboard::read_file_paths).await
 }
 
-/// 剪贴板序列号：前端维护历史时判断两次变化事件之间内容是否真的变过
-#[tauri::command]
-pub async fn clipboard_sequence_number() -> AppResult<u32> {
-    off_thread(|| Ok(services::clipboard::sequence_number())).await
-}
