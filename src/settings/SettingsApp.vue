@@ -17,21 +17,45 @@ watch(active, async () => {
   contentEl.value?.scrollTo(0, 0);
 });
 
-/** 每次开窗重建根节点重播动画 */
-const enterKey = ref(0);
-settingsApi.onOpened(() => enterKey.value++);
+/** 与 settings.scss 的 settings-out 时长一致 */
+const LEAVE_MS = 120;
+
+/** 初始即离场态 隐藏窗的残帧须透明 */
+const shown = ref(false);
+let leaveTimer: number | null = null;
+
+function reveal() {
+  if (leaveTimer !== null) {
+    clearTimeout(leaveTimer);
+    leaveTimer = null;
+  }
+  shown.value = true;
+}
+
+function close() {
+  if (!shown.value) return;
+  shown.value = false;
+  leaveTimer = window.setTimeout(() => {
+    leaveTimer = null;
+    windowApi.closeSelf();
+  }, LEAVE_MS);
+}
+
+settingsApi.onOpened(reveal);
 
 /** 聚焦瞬间的抖动宽限 */
 const FOCUS_BLUR_GRACE_MS = 500;
 let focusedAt = 0;
 
+/** 托盘开窗不发 opened */
 function onWindowFocus() {
   focusedAt = Date.now();
+  reveal();
 }
 
 function onWindowBlur() {
   if (Date.now() - focusedAt < FOCUS_BLUR_GRACE_MS) return;
-  windowApi.closeSelf();
+  close();
 }
 
 onMounted(async () => {
@@ -49,10 +73,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div id="settings-window" :key="enterKey">
+  <div id="settings-window" :class="{ leaving: !shown }">
     <header class="settings-header">
       <span class="settings-title">{{ t('settingsTitle') }}</span>
-      <button class="settings-close" :aria-label="t('settingsClose')" @click="windowApi.closeSelf()">
+      <button class="settings-close" :aria-label="t('settingsClose')" @click="close">
         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
     </header>
