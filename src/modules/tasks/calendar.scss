@@ -321,7 +321,10 @@ html[data-scheme='light'] .cal-time-sel option {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 6px;
-  transition: all 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s,
+    border-color 0.2s;
 }
 .cal-add-all-day:hover {
   background: rgba(var(--ink), 0.1);

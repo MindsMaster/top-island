@@ -189,17 +189,17 @@
   gap: 8px;
   z-index: 30;
   pointer-events: none; /* 空白处保持穿透 */
-  /* top 与岛形变同一弹簧 */
+  /* 位移与岛形变同一弹簧 */
   transition:
     opacity 0.28s ease,
     visibility 0.28s,
-    top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 .notify-stack.dock-large {
-  top: 378px; /* 岛下沿 大视图高360 */
+  transform: translate(-50%, 320px); /* 岛下沿 大视图高360 */
 }
 .notify-stack.dock-hidden {
-  top: calc(58px + var(--island-hidden-shift, -34px));
+  transform: translate(-50%, var(--island-hidden-shift, -34px));
 }
 .notify-card {
   pointer-events: auto;
