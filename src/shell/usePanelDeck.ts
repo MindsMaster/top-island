@@ -48,10 +48,12 @@ export function usePanelDeck(options: PanelDeckOptions) {
     const dragPct = isDragging.value ? (dragOffset.value / containerWidth) * 100 : 0;
     const x = (i - activePanel.value) * 100 + dragPct;
     const dist = Math.abs(x) / 100;
+    const far = dist > 1.001;
     return {
       transform: `translate3d(${x}%, 0, 0)`,
       opacity: Math.max(0, 1 - dist * 0.5),
-      visibility: dist > 1.001 ? 'hidden' : 'visible',
+      visibility: far ? 'hidden' : 'visible',
+      contentVisibility: far ? 'hidden' : 'visible',
     };
   }
 

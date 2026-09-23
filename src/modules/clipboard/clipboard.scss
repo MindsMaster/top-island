@@ -129,6 +129,8 @@
   border-radius: 8px;
   transition: background 0.2s;
   margin-bottom: 2px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
 }
 .clip-row:hover {
   background: rgba(var(--ink), 0.04);

@@ -75,6 +75,8 @@
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
 }
 .msg-row:hover {
   background: rgba(var(--ink), 0.06);
