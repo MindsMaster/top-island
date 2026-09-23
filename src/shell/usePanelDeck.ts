@@ -1,4 +1,5 @@
-import { onUnmounted, ref, watch, type CSSProperties, type Ref } from 'vue';
+import { nextTick, onUnmounted, ref, watch, type CSSProperties, type Ref } from 'vue';
+import { animationsSettled } from '@/ui/animations';
 
 /** 禁用滑动手势的控件 由控件自行处理 */
 const NON_SWIPE_SELECTOR =
@@ -11,9 +12,6 @@ const WHEEL_THRESHOLD = 60;
 const WHEEL_COOLDOWN_MS = 300;
 const WHEEL_IDLE_RESET_MS = 200;
 
-/** 与 _shell.scss 的岛过渡时长一致 */
-const MORPH_MS = 520;
-
 const BACKFILL_MS = 60;
 const WARMUP_BACKFILL_MS = 300;
 
@@ -23,6 +21,7 @@ interface PanelDeckOptions {
   panelCount: number;
   isLarge: Ref<boolean>;
   getContainerWidth: () => number;
+  getIslandEl: () => HTMLElement | null;
 }
 
 export function usePanelDeck(options: PanelDeckOptions) {
@@ -41,7 +40,7 @@ export function usePanelDeck(options: PanelDeckOptions) {
   let containerWidth = DEFAULT_WIDTH;
   let rafId: number | null = null;
   let pendingDx = 0;
-  let morphTimer: number | null = null;
+  let morphToken = 0;
   let backfillTimer: number | null = null;
 
   function panelStyle(i: number): CSSProperties {
@@ -80,17 +79,16 @@ export function usePanelDeck(options: PanelDeckOptions) {
     }, intervalMs);
   }
 
-  watch(options.isLarge, (large) => {
+  watch(options.isLarge, async (large) => {
     morphing.value = true;
-    if (morphTimer !== null) clearTimeout(morphTimer);
-    morphTimer = window.setTimeout(() => {
-      morphing.value = false;
-      morphTimer = null;
-    }, MORPH_MS);
-
-    if (!large) return;
-    ensurePanel(activePanel.value);
-    startBackfill(BACKFILL_MS);
+    const token = ++morphToken;
+    if (large) {
+      ensurePanel(activePanel.value);
+      startBackfill(BACKFILL_MS);
+    }
+    await nextTick();
+    await animationsSettled(options.getIslandEl()?.getAnimations() ?? []);
+    if (token === morphToken) morphing.value = false;
   });
 
   // 未挂载的面板 补齐兜底
@@ -198,7 +196,6 @@ export function usePanelDeck(options: PanelDeckOptions) {
 
   onUnmounted(() => {
     if (backfillTimer !== null) clearInterval(backfillTimer);
-    if (morphTimer !== null) clearTimeout(morphTimer);
     if (rafId !== null) cancelAnimationFrame(rafId);
   });
 

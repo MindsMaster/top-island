@@ -1,7 +1,6 @@
-import { onUnmounted, ref, watch, watchEffect, type Ref } from 'vue';
+import { nextTick, onUnmounted, ref, watch, watchEffect, type Ref } from 'vue';
 import { windowApi } from '@/platform/window';
-
-const TRANSITION_SETTLE_MS = 550;
+import { animationsSettled } from '@/ui/animations';
 
 /** 模板 ref 可能拿到组件实例 */
 function toElement(v: unknown): Element | null {
@@ -55,6 +54,7 @@ interface HotRectOptions {
   deps(): void;
   keepInteractive(): boolean;
   getIslandRect(): DOMRect | null;
+  getIslandEl(): Element | null;
   getFullRect(): DOMRect | null;
   isFullView(): boolean;
 }
@@ -91,28 +91,29 @@ export function useHotRectReporter(options: HotRectOptions) {
     report();
   }
 
-  let settleTimer: number | null = null;
+  let settleToken = 0;
 
-  function reportSoon() {
+  // 过渡中途的矩形不作数 落定后补报
+  async function reportSoon() {
     report();
-    if (settleTimer !== null) clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(() => {
-      settleTimer = null;
-      report();
-    }, TRANSITION_SETTLE_MS);
+    const token = ++settleToken;
+    await nextTick();
+    const els = [options.getIslandEl(), ...[...targets].map((t) => toElement(t.value))];
+    await animationsSettled(els.flatMap((el) => el?.getAnimations() ?? []));
+    if (token === settleToken) report();
   }
 
   watchEffect(() => {
     options.deps();
     void version.value;
-    reportSoon();
+    void reportSoon();
   });
 
   // 窗口移动缩放改物理坐标 DOM 矩形不变
   windowApi.onGeometryChanged(resend);
 
   onUnmounted(() => {
-    if (settleTimer !== null) clearTimeout(settleTimer);
+    settleToken++;
     if (frame !== null) cancelAnimationFrame(frame);
   });
 

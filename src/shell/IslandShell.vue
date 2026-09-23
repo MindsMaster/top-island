@@ -39,6 +39,7 @@ const deck = usePanelDeck({
   panelCount: panels.length,
   isLarge,
   getContainerWidth: () => islandEl.value?.offsetWidth ?? 420,
+  getIslandEl: () => islandEl.value,
 });
 
 const overlays = modules.filter((m) => m.overlay);
@@ -87,6 +88,7 @@ const hot = useHotRectReporter({
   keepInteractive: () => hide.dragging.value || modules.some((m) => m.keepInteractive?.() ?? false),
   isFullView: () => isLarge.value,
   getIslandRect: () => islandEl.value?.getBoundingClientRect() ?? null,
+  getIslandEl: () => islandEl.value,
   // 平时勿报 全屏容器会废掉穿透
   getFullRect: () => containerEl.value?.getBoundingClientRect() ?? null,
 });

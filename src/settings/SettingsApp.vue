@@ -4,6 +4,7 @@ import { settingsApi } from '@/platform/settings';
 import { windowApi } from '@/platform/window';
 import { useI18n } from '@/core/i18n';
 import { initSettings } from '@/core/settings';
+import { animationsSettled } from '@/ui/animations';
 import { sections } from './sections';
 
 const { t, initI18n } = useI18n();
@@ -17,28 +18,24 @@ watch(active, async () => {
   contentEl.value?.scrollTo(0, 0);
 });
 
-/** 与 settings.scss 的 settings-out 时长一致 */
-const LEAVE_MS = 120;
+const rootEl = ref<HTMLElement | null>(null);
 
 /** 初始即离场态 隐藏窗的残帧须透明 */
 const shown = ref(false);
-let leaveTimer: number | null = null;
+let leaveToken = 0;
 
 function reveal() {
-  if (leaveTimer !== null) {
-    clearTimeout(leaveTimer);
-    leaveTimer = null;
-  }
+  leaveToken++;
   shown.value = true;
 }
 
-function close() {
+async function close() {
   if (!shown.value) return;
   shown.value = false;
-  leaveTimer = window.setTimeout(() => {
-    leaveTimer = null;
-    windowApi.closeSelf();
-  }, LEAVE_MS);
+  const token = ++leaveToken;
+  await nextTick();
+  await animationsSettled(rootEl.value?.getAnimations() ?? []);
+  if (token === leaveToken) windowApi.closeSelf();
 }
 
 settingsApi.onOpened(reveal);
@@ -73,7 +70,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div id="settings-window" :class="{ leaving: !shown }">
+  <div id="settings-window" ref="rootEl" :class="{ leaving: !shown }">
     <header class="settings-header">
       <span class="settings-title">{{ t('settingsTitle') }}</span>
       <button class="settings-close" :aria-label="t('settingsClose')" @click="close">
