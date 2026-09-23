@@ -182,12 +182,11 @@
   text-overflow: ellipsis;
   transition:
     color 0.3s ease,
-    font-size 0.3s ease,
-    font-weight 0.3s ease;
+    transform 0.3s ease;
 }
 .large-lyrics .lyric-line.active {
   color: var(--island-text);
-  font-size: 13.5px;
+  transform: scale(1.08);
   font-weight: 600;
 }
 
