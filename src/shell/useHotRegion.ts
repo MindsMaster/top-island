@@ -67,8 +67,28 @@ export function useHotRectReporter(options: HotRectOptions) {
     return island && unionWithContributors(island);
   }
 
+  let frame: number | null = null;
+  let lastSent = '';
+
+  function flush() {
+    frame = null;
+    const interactive = interactiveRect();
+    const hover = options.getIslandRect();
+    const key = JSON.stringify([interactive, hover]);
+    if (key === lastSent) return;
+    lastSent = key;
+    void windowApi.setHotRect(interactive, hover).catch(() => {
+      lastSent = '';
+    });
+  }
+
   function report() {
-    void windowApi.setHotRect(interactiveRect(), options.getIslandRect()).catch(() => {});
+    if (frame === null) frame = requestAnimationFrame(flush);
+  }
+
+  function resend() {
+    lastSent = '';
+    report();
   }
 
   let settleTimer: number | null = null;
@@ -89,10 +109,11 @@ export function useHotRectReporter(options: HotRectOptions) {
   });
 
   // 窗口移动缩放改物理坐标 DOM 矩形不变
-  windowApi.onGeometryChanged(report);
+  windowApi.onGeometryChanged(resend);
 
   onUnmounted(() => {
     if (settleTimer !== null) clearTimeout(settleTimer);
+    if (frame !== null) cancelAnimationFrame(frame);
   });
 
   return { report };
