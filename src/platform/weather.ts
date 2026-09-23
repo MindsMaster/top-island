@@ -2,7 +2,7 @@ import { call } from './invoke';
 import type { GeocodeResult, IpCityInfo, MsnOverview, WeatherQueryOptions, WeatherResult } from './types';
 
 export const weatherApi = {
-  ipCity: () => call<IpCityInfo>('weather_ip_city'),
+  ipCity: (lang: string) => call<IpCityInfo>('weather_ip_city', { lang }),
   geocode: (city: string, lang: string) => call<GeocodeResult>('weather_geocode', { city, lang }),
   msnOverview: (lat: number, lon: number, locale: string) =>
     call<MsnOverview>('weather_msn_overview', { lat, lon, locale }),

@@ -2,13 +2,14 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use island_core::{msn_api_key, msn_bundle_url, IpCityInfo};
+use ureq::tls::{RootCerts, TlsConfig};
 
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 const BUNDLE_TIMEOUT: Duration = Duration::from_secs(20);
 /// ipwho.is 免费 HTTPS 免 key
-const IP_CITY_URL: &str = "https://ipwho.is/";
+const IP_CITY_URL: &str = "https://ipwho.is/?lang=";
 const IP_CITY_TTL: Duration = Duration::from_secs(30 * 60);
 
 const MSN_PAGE_URL: &str = "https://www.msn.com/zh-cn/weather/forecast";
@@ -16,11 +17,17 @@ const MSN_OVERVIEW_URL: &str = "https://api.msn.cn/weatherfalcon/weather/overvie
 const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0";
 
 static MSN_KEY: Mutex<Option<String>> = Mutex::new(None);
-static IP_CITY_CACHE: Mutex<Option<(Instant, IpCityInfo)>> = Mutex::new(None);
+static IP_CITY_CACHE: Mutex<Option<(Instant, String, IpCityInfo)>> = Mutex::new(None);
 
+/// 国内 CDN 证书链到旧根 只认系统证书库
 fn agent(timeout: Duration) -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(timeout))
+        .tls_config(
+            TlsConfig::builder()
+                .root_certs(RootCerts::PlatformVerifier)
+                .build(),
+        )
         .build()
         .into()
 }
@@ -81,16 +88,16 @@ pub fn msn_overview(lat: f64, lon: f64, locale: &str) -> AppResult<serde_json::V
     }
 }
 
-pub fn ip_city() -> AppResult<IpCityInfo> {
+pub fn ip_city(lang: &str) -> AppResult<IpCityInfo> {
     {
         let cache = IP_CITY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((at, info)) = cache.as_ref() {
-            if at.elapsed() < IP_CITY_TTL {
+        if let Some((at, cached_lang, info)) = cache.as_ref() {
+            if cached_lang == lang && at.elapsed() < IP_CITY_TTL {
                 return Ok(info.clone());
             }
         }
     }
-    let data = fetch_json(IP_CITY_URL)?;
+    let data = fetch_json(&format!("{IP_CITY_URL}{}", urlencoded(lang)))?;
     let ok = data
         .get("success")
         .and_then(|v| v.as_bool())
@@ -117,7 +124,8 @@ pub fn ip_city() -> AppResult<IpCityInfo> {
         lat: data.get("latitude").and_then(|v| v.as_f64()),
         lon: data.get("longitude").and_then(|v| v.as_f64()),
     };
-    *IP_CITY_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), info.clone()));
+    *IP_CITY_CACHE.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some((Instant::now(), lang.to_owned(), info.clone()));
     Ok(info)
 }
 

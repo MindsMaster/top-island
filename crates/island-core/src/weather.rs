@@ -10,14 +10,16 @@ pub struct IpCityInfo {
     pub lon: Option<f64>,
 }
 
-const MSN_BUNDLE_PREFIX: &str = "https://assets.msn.com/bundles/v1/weather/latest/common.";
+const MSN_BUNDLE_PATH: &str = "/bundles/v1/weather/latest/common.";
 const MSN_KEY_ANCHOR: &str = "weatherfalcon/\",path:\"";
 const MSN_KEY_FIELD: &str = "apiKey:\"";
 
+/// 国内外资源域名不同 只认路径
 pub fn msn_bundle_url(page: &str) -> Option<&str> {
-    let start = page.find(MSN_BUNDLE_PREFIX)?;
-    let len = page[start..].find(".js")? + 3;
-    Some(&page[start..start + len])
+    let path = page.find(MSN_BUNDLE_PATH)?;
+    let start = page[..path].rfind("https://")?;
+    let end = path + page[path..].find(".js")? + 3;
+    Some(&page[start..end])
 }
 
 /// 取 weatherfalcon 配置块里的 apiKey
@@ -40,6 +42,15 @@ mod tests {
         assert_eq!(
             msn_bundle_url(page),
             Some("https://assets.msn.com/bundles/v1/weather/latest/common.785e.js")
+        );
+    }
+
+    #[test]
+    fn finds_bundle_on_cn_assets_host() {
+        let page = r#"<script src="https://assets.msn.cn/bundles/v1/weather/latest/common.9ab.js"></script>"#;
+        assert_eq!(
+            msn_bundle_url(page),
+            Some("https://assets.msn.cn/bundles/v1/weather/latest/common.9ab.js")
         );
     }
 

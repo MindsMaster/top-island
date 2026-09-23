@@ -74,7 +74,7 @@ let refreshTimer: number | null = null;
 
 async function tryFetchIpCity() {
   try {
-    const data = await weatherApi.ipCity();
+    const data = await weatherApi.ipCity(lang.value === 'zh-CN' ? 'zh-CN' : 'en');
     if (!data.city) return;
     weatherState.city = data.city;
     if (data.lat != null && data.lon != null) {

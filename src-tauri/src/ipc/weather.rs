@@ -6,8 +6,8 @@ use crate::services;
 use super::off_thread;
 
 #[tauri::command]
-pub async fn weather_ip_city() -> AppResult<IpCityInfo> {
-    off_thread(services::weather::ip_city).await
+pub async fn weather_ip_city(lang: String) -> AppResult<IpCityInfo> {
+    off_thread(move || services::weather::ip_city(&lang)).await
 }
 
 #[tauri::command]
