@@ -183,11 +183,14 @@ export interface MsnCurrent extends MsnCondition {
   feels: number;
   rh: number;
   uv: number;
-  uvDesc: string;
+  uvDesc?: string;
   /** km */
   vis: number;
-  pvdrWindDir: string;
-  pvdrWindSpd: string;
+  /** km/h */
+  windSpd: number;
+  /** 国内数据源独有 国外缺省 */
+  pvdrWindDir?: string;
+  pvdrWindSpd?: string;
   aqi?: number;
   aqiSeverity?: string;
 }

@@ -127,8 +127,11 @@ async function tryFetchMsn(lat: number, lon: number): Promise<boolean> {
       tempLo: daily[0]?.lo ?? null,
       feels: Math.round(c.feels),
       humidity: Math.round(c.rh),
-      wind: `${c.pvdrWindDir} ${c.pvdrWindSpd}`,
-      uv: `${Math.round(c.uv)} ${c.uvDesc}`,
+      wind:
+        c.pvdrWindDir && c.pvdrWindSpd
+          ? `${c.pvdrWindDir} ${c.pvdrWindSpd}`
+          : `${Math.round(c.windSpd)} km/h`,
+      uv: `${Math.round(c.uv)} ${c.uvDesc ?? ''}`.trim(),
       visibility: c.vis,
       aqi: c.aqi != null ? `AQI ${Math.round(c.aqi)} ${c.aqiSeverity ?? ''}`.trim() : '',
       hourly: hoursAfter(days, Date.now(), HOURLY_COUNT),
