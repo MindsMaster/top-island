@@ -2,6 +2,7 @@ import { computed, reactive, ref } from 'vue';
 import { weatherApi } from '@/platform/weather';
 import { isNightTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
+import { artFor } from './art';
 import { kindFromMsnSymbol, kindFromWmo, type WxKind } from './codes';
 import { dailyPoints, hoursAfter, nowcastOf, type DayPoint, type HourPoint, type Nowcast } from './forecast';
 
@@ -58,12 +59,13 @@ export const desc = computed(() => weatherState.cap ?? weatherCodeName(weatherSt
 
 export const isNight = computed(() => weatherState.night ?? isNightTime.value);
 
-export function iconFor(kind: WxKind | null, night: boolean): string {
-  if (kind === null) return 'fa-cloud';
-  return (night && NIGHT_ICONS[kind]) || ICONS[kind];
-}
+export const icon = computed(() => {
+  const k = weatherState.kind;
+  if (k === null) return 'fa-cloud';
+  return (isNight.value && NIGHT_ICONS[k]) || ICONS[k];
+});
 
-export const icon = computed(() => iconFor(weatherState.kind, isNight.value));
+export const art = computed(() => artFor(weatherState.kind, isNight.value));
 
 export type WeatherView = 'today' | 'week';
 

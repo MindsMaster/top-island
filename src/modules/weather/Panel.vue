@@ -3,15 +3,8 @@ import { computed, ref, watch } from 'vue';
 import { currentDate, currentTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
 import { shellView } from '@/shell/view';
-import {
-  desc,
-  hint,
-  icon,
-  iconFor,
-  weatherState as snap,
-  weatherView as view,
-  type WeatherView,
-} from './store';
+import { artFor } from './art';
+import { art, desc, hint, weatherState as snap, weatherView as view, type WeatherView } from './store';
 
 /** 与 weather.scss 的 .wx 内容宽度一致 */
 const CURVE_W = 340;
@@ -58,13 +51,13 @@ function smooth(pts: Array<[number, number]>): string {
 const curve = computed(() => {
   if (snap.temp === null) return null;
   const cols = [
-    { label: t('weatherNow'), temp: snap.temp, icon: icon.value, pop: 0 },
+    { label: t('weatherNow'), temp: snap.temp, icon: art.value, pop: 0 },
     ...snap.hourly
       .filter((_, i) => i % 2 === 1)
       .map((h) => ({
         label: t('weatherHour', h.hour),
         temp: h.temp,
-        icon: iconFor(h.kind, h.night),
+        icon: artFor(h.kind, h.night),
         pop: h.pop,
       })),
   ];
@@ -135,7 +128,7 @@ const week = computed(() => {
         : i === 1
           ? t('weatherTomorrow')
           : t('weatherWeekday', weekdays.value[new Date(d.time).getDay()]),
-    icon: iconFor(d.kind, false),
+    icon: artFor(d.kind, false),
     barStyle: {
       left: `${pos(d.lo)}%`,
       right: `${100 - pos(d.hi)}%`,
@@ -164,7 +157,7 @@ const week = computed(() => {
         <div class="wx-temp">{{ snap.temp ?? '--' }}<span class="wx-deg">°</span></div>
         <div class="wx-side">
           <div class="wx-desc">
-            <i :class="'fa-solid ' + icon"></i>
+            <img :src="art" alt="" class="wx-art wx-art-hero" />
             <span>{{ snap.error || desc }}</span>
           </div>
           <div v-if="snap.tempHi !== null" class="wx-sub">
@@ -182,13 +175,13 @@ const week = computed(() => {
         <span class="wx-strip">
           <span class="wx-hour">
             <span class="wx-hour-label">{{ t('weatherNow') }}</span>
-            <i :class="'fa-solid ' + icon"></i>
+            <img :src="art" alt="" class="wx-art" />
             <span class="wx-hour-temp">{{ snap.temp }}°</span>
             <span class="wx-hour-pop"></span>
           </span>
           <span v-for="h in stripHours" :key="h.time" class="wx-hour">
             <span class="wx-hour-label">{{ t('weatherHour', h.hour) }}</span>
-            <i :class="'fa-solid ' + iconFor(h.kind, h.night)"></i>
+            <img :src="artFor(h.kind, h.night)" alt="" class="wx-art" />
             <span class="wx-hour-temp">{{ h.temp }}°</span>
             <span class="wx-hour-pop">{{ h.pop >= 20 ? `${h.pop}%` : '' }}</span>
           </span>
@@ -202,7 +195,7 @@ const week = computed(() => {
           <i class="fa-solid fa-chevron-left"></i>
         </button>
         <div class="wx-dnow">
-          <i :class="'fa-solid ' + icon"></i>
+          <img :src="art" alt="" class="wx-art" />
           <span>{{ snap.temp ?? '--' }}° {{ desc }}</span>
         </div>
         <div class="wx-pill">
@@ -237,7 +230,7 @@ const week = computed(() => {
           <div class="wx-curve-cols" :style="{ gridTemplateColumns: `repeat(${curve.cols.length}, 1fr)` }">
             <div v-for="c in curve.cols" :key="c.label" class="wx-curve-col">
               <span>{{ c.label }}</span>
-              <i :class="'fa-solid ' + c.icon"></i>
+              <img :src="c.icon" alt="" class="wx-art" />
             </div>
           </div>
           <svg :viewBox="`0 0 ${CURVE_W} ${CURVE_H}`" :width="CURVE_W" :height="CURVE_H">
@@ -287,7 +280,7 @@ const week = computed(() => {
         <div v-for="(d, i) in week" :key="d.time" class="wx-day" :class="{ open: openDay === i }">
           <button class="wx-day-row" @click="openDay = openDay === i ? -1 : i">
             <span class="wx-day-name">{{ d.name }}</span>
-            <i :class="'fa-solid ' + d.icon"></i>
+            <img :src="d.icon" alt="" class="wx-art" />
             <span class="wx-day-pop">{{ d.pop >= 20 ? `${d.pop}%` : '' }}</span>
             <span class="wx-day-lo">{{ d.lo }}°</span>
             <span class="wx-day-bar">

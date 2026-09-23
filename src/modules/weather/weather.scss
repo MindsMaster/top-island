@@ -146,6 +146,18 @@ html[data-scheme='light'] {
 }
 
 /* 首屏 */
+.wx-art {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+/* 图标自带留白 负边距收回 */
+.wx-art-hero {
+  width: 44px;
+  height: 44px;
+  margin: -10px -6px -10px -10px;
+}
 .wx-top {
   display: flex;
   justify-content: space-between;
@@ -269,8 +281,10 @@ html[data-scheme='light'] {
 .wx-hour-label {
   color: rgba(var(--ink), 0.6);
 }
-.wx-hour i {
-  font-size: 14px;
+.wx-hour .wx-art {
+  width: 30px;
+  height: 30px;
+  margin: -4px 0;
 }
 .wx-hour-temp {
   font-size: 13px;
@@ -388,9 +402,10 @@ html[data-scheme='light'] {
   color: var(--island-text);
   font-weight: 600;
 }
-.wx-curve-col i {
-  font-size: 11px;
-  color: var(--island-text);
+.wx-curve-col .wx-art {
+  width: 24px;
+  height: 24px;
+  margin: -3px 0;
 }
 .wx-curve-area {
   fill: rgba(var(--ink), 0.08);
@@ -460,7 +475,7 @@ html[data-scheme='light'] {
 }
 .wx-day-row {
   display: grid;
-  grid-template-columns: 38px 18px 30px 28px 1fr 28px;
+  grid-template-columns: 38px 26px 30px 28px 1fr 28px;
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -481,8 +496,10 @@ html[data-scheme='light'] {
 .wx-day-name {
   font-weight: 600;
 }
-.wx-day-row i {
-  font-size: 12px;
+.wx-day-row .wx-art {
+  width: 26px;
+  height: 26px;
+  margin: -4px 0;
 }
 .wx-day-pop {
   font-size: 10px;
