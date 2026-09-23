@@ -2,10 +2,8 @@ use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use windows::core::RuntimeType;
-use windows::Foundation::{
-    AsyncStatus, EventRegistrationToken, IAsyncOperation, TypedEventHandler,
-};
+use windows::core::{Ref, RuntimeType, BOOL};
+use windows::Foundation::TypedEventHandler;
 use windows::Media::Control::{
     CurrentSessionChangedEventArgs, GlobalSystemMediaTransportControlsSession as Session,
     GlobalSystemMediaTransportControlsSessionManager as SessionManager,
@@ -14,7 +12,7 @@ use windows::Media::Control::{
     TimelinePropertiesChangedEventArgs,
 };
 use windows::Storage::Streams::DataReader;
-use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, WPARAM};
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
@@ -26,6 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowTextLengthW, GetWindowThreadProcessId, SendMessageTimeoutW,
     SMTO_ABORTIFHUNG, WM_APPCOMMAND,
 };
+use windows_future::{AsyncStatus, IAsyncOperation};
 
 use crate::coreaudio::com_init_mta;
 use crate::error::{Result, WinError};
@@ -51,7 +50,6 @@ pub enum MediaAction {
     Prev,
 }
 
-/// windows 0.58 无 IAsyncOperation 的 Future 只能轮询
 /// 个别会话异步永不完成 须超时兜底
 const ASYNC_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -523,8 +521,8 @@ fn send_app_command(app_id: &str, cmd: i32) -> bool {
 struct Watcher {
     manager: SessionManager,
     created: Instant,
-    mgr_tokens: Option<(EventRegistrationToken, EventRegistrationToken)>,
-    session_hooks: Vec<(Session, [EventRegistrationToken; 3])>,
+    mgr_tokens: Option<(i64, i64)>,
+    session_hooks: Vec<(Session, [i64; 3])>,
     tx: Sender<()>,
 }
 
@@ -569,14 +567,14 @@ impl Watcher {
 
         let tx = self.tx.clone();
         let on_sessions = TypedEventHandler::new(
-            move |_: &Option<SessionManager>, _: &Option<SessionsChangedEventArgs>| {
+            move |_: Ref<SessionManager>, _: Ref<SessionsChangedEventArgs>| {
                 let _ = tx.send(());
                 Ok(())
             },
         );
         let tx = self.tx.clone();
         let on_current = TypedEventHandler::new(
-            move |_: &Option<SessionManager>, _: &Option<CurrentSessionChangedEventArgs>| {
+            move |_: Ref<SessionManager>, _: Ref<CurrentSessionChangedEventArgs>| {
                 let _ = tx.send(());
                 Ok(())
             },
@@ -602,24 +600,24 @@ impl Watcher {
             let s = sessions
                 .GetAt(i)
                 .map_err(|e| WinError::api("SMTC 会话列表", e))?;
-            let hook = || -> Result<[EventRegistrationToken; 3]> {
+            let hook = || -> Result<[i64; 3]> {
                 let tx = self.tx.clone();
                 let on_media = TypedEventHandler::new(
-                    move |_: &Option<Session>, _: &Option<MediaPropertiesChangedEventArgs>| {
+                    move |_: Ref<Session>, _: Ref<MediaPropertiesChangedEventArgs>| {
                         let _ = tx.send(());
                         Ok(())
                     },
                 );
                 let tx = self.tx.clone();
                 let on_playback = TypedEventHandler::new(
-                    move |_: &Option<Session>, _: &Option<PlaybackInfoChangedEventArgs>| {
+                    move |_: Ref<Session>, _: Ref<PlaybackInfoChangedEventArgs>| {
                         let _ = tx.send(());
                         Ok(())
                     },
                 );
                 let tx = self.tx.clone();
                 let on_timeline = TypedEventHandler::new(
-                    move |_: &Option<Session>, _: &Option<TimelinePropertiesChangedEventArgs>| {
+                    move |_: Ref<Session>, _: Ref<TimelinePropertiesChangedEventArgs>| {
                         let _ = tx.send(());
                         Ok(())
                     },

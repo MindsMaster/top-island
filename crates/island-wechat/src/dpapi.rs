@@ -18,7 +18,7 @@ pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
         CryptProtectData(&input, PCWSTR::null(), None, None, None, 0, &mut output)
             .map_err(|e| WeChatError::api("CryptProtectData", e))?;
         let blob = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
-        let _ = LocalFree(HLOCAL(output.pbData as *mut _));
+        let _ = LocalFree(Some(HLOCAL(output.pbData as *mut _)));
         Ok(blob)
     }
 }
@@ -33,7 +33,7 @@ pub fn unprotect(blob: &[u8]) -> Result<Vec<u8>> {
         CryptUnprotectData(&input, None, None, None, None, 0, &mut output)
             .map_err(|e| WeChatError::api("CryptUnprotectData", e))?;
         let data = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
-        let _ = LocalFree(HLOCAL(output.pbData as *mut _));
+        let _ = LocalFree(Some(HLOCAL(output.pbData as *mut _)));
         Ok(data)
     }
 }

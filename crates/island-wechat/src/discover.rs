@@ -53,17 +53,13 @@ pub fn fixed_drive_roots() -> Vec<PathBuf> {
 /// 兼容重定向 失败回退 %USERPROFILE%\Documents
 pub fn current_documents_dir() -> Option<PathBuf> {
     let from_shell = unsafe {
-        SHGetKnownFolderPath(
-            &FOLDERID_Documents,
-            KF_FLAG_DEFAULT,
-            windows::Win32::Foundation::HANDLE::default(),
-        )
-        .ok()
-        .map(|p| {
-            let s = p.to_string().unwrap_or_default();
-            windows::Win32::System::Com::CoTaskMemFree(Some(p.0 as *const _));
-            s
-        })
+        SHGetKnownFolderPath(&FOLDERID_Documents, KF_FLAG_DEFAULT, None)
+            .ok()
+            .map(|p| {
+                let s = p.to_string().unwrap_or_default();
+                windows::Win32::System::Com::CoTaskMemFree(Some(p.0 as *const _));
+                s
+            })
     };
     from_shell
         .filter(|s| !s.is_empty())

@@ -1,5 +1,4 @@
 use windows::core::{Interface, HSTRING, PCWSTR};
-use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{
     CLSIDFromString, CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
@@ -58,7 +57,7 @@ fn shell_open(file: &str, params: Option<&str>) -> bool {
     let params = params.map(HSTRING::from);
     let result = unsafe {
         ShellExecuteW(
-            HWND::default(),
+            None,
             &verb,
             &file,
             params

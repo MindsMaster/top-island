@@ -215,9 +215,9 @@ pub fn start_input(handlers: InputHandlers) {
                 0,
                 0,
                 0,
-                HWND_MESSAGE,
+                Some(HWND_MESSAGE),
                 None,
-                hinst,
+                Some(hinst),
                 None,
             )
             .expect("message window");

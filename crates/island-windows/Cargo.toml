@@ -7,7 +7,7 @@ edition.workspace = true
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-windows = { version = "0.58", features = [
+windows = { version = "0.61", features = [
     "Media_Control",
     "Foundation",
     "Foundation_Collections",
@@ -31,6 +31,7 @@ windows = { version = "0.58", features = [
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
 ] }
+windows-future = "0.2"
 png = "0.18"
 
 [lints]

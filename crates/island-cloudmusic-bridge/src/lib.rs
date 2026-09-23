@@ -151,7 +151,7 @@ fn record_host_process(hook_outcome: Option<hooks::InstallOutcome>) {
 
 fn current_process_image() -> Option<String> {
     let mut buf = [0u16; MAX_PATH as usize];
-    let len = unsafe { GetModuleFileNameW(HMODULE::default(), &mut buf) };
+    let len = unsafe { GetModuleFileNameW(None, &mut buf) };
     if len == 0 {
         return None;
     }

@@ -23,8 +23,8 @@ serde_json = "1"
 thiserror = "2"
 ureq = { version = "3", features = ["json", "platform-verifier"] }
 tungstenite = "0.30"
-winreg = "0.52"
-windows = { version = "0.58", features = [
+winreg = "0.55"
+windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_System_Diagnostics_Debug",

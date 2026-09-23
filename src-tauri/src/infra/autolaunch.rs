@@ -30,7 +30,7 @@ pub fn sync(enabled: bool) -> AppResult<()> {
                 &subkey,
                 &name,
                 REG_SZ.0,
-                Some(path.as_wide().as_ptr() as *const _),
+                Some(path.as_ptr() as *const _),
                 (path.len() + 1) as u32 * 2,
             );
             if err.0 != 0 {

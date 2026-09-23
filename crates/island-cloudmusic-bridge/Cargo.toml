@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 retour = "0.3"
-windows = { version = "0.58", features = [
+windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_LibraryLoader",
     "Win32_System_SystemInformation",

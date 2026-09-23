@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use windows::core::w;
-use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, HWND};
+use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
     RegisterClipboardFormatW, SetClipboardData,
@@ -33,7 +33,7 @@ fn open_clipboard() -> Result<ClipboardGuard> {
     let lock = CLIPBOARD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut last_err = None;
     for _ in 0..5 {
-        match unsafe { OpenClipboard(HWND::default()) } {
+        match unsafe { OpenClipboard(None) } {
             Ok(()) => return Ok(ClipboardGuard { _lock: lock }),
             Err(e) => {
                 last_err = Some(e);
@@ -84,12 +84,12 @@ pub fn write_text(text: &str) -> Result<()> {
         .map_err(|e| WinError::api("分配剪贴板内存", e))?;
     let ptr = unsafe { GlobalLock(hglobal) };
     if ptr.is_null() {
-        let _ = unsafe { GlobalFree(hglobal) };
+        let _ = unsafe { GlobalFree(Some(hglobal)) };
         return Err(WinError::api("写入剪贴板", "GlobalLock 返回空指针"));
     }
     unsafe { std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr as *mut u16, wide.len()) };
     if let Err(e) = unsafe { GlobalUnlock(hglobal) } {
-        let _ = unsafe { GlobalFree(hglobal) };
+        let _ = unsafe { GlobalFree(Some(hglobal)) };
         return Err(WinError::api("写入剪贴板", e));
     }
 
@@ -97,17 +97,17 @@ pub fn write_text(text: &str) -> Result<()> {
     let _guard = match open_clipboard() {
         Ok(guard) => guard,
         Err(e) => {
-            let _ = unsafe { GlobalFree(hglobal) };
+            let _ = unsafe { GlobalFree(Some(hglobal)) };
             return Err(e);
         }
     };
     if let Err(e) = unsafe { EmptyClipboard() } {
-        let _ = unsafe { GlobalFree(hglobal) };
+        let _ = unsafe { GlobalFree(Some(hglobal)) };
         return Err(WinError::api("清空剪贴板", e));
     }
     // 成功后所有权归系统 不能再 GlobalFree
-    if let Err(e) = unsafe { SetClipboardData(CF_UNICODETEXT, HANDLE(hglobal.0)) } {
-        let _ = unsafe { GlobalFree(hglobal) };
+    if let Err(e) = unsafe { SetClipboardData(CF_UNICODETEXT, Some(HANDLE(hglobal.0))) } {
+        let _ = unsafe { GlobalFree(Some(hglobal)) };
         return Err(WinError::api("写入剪贴板", e));
     }
     Ok(())

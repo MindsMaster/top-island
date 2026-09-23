@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use windows::core::{Interface, GUID, HSTRING, PWSTR};
-use windows::Win32::Foundation::SIZE;
+use windows::Win32::Foundation::{PROPERTYKEY, SIZE};
 use windows::Win32::Graphics::Gdi::{DeleteObject, GetObjectW, DIBSECTION};
 use windows::Win32::System::Com::{
     CoInitializeEx, CoTaskMemFree, IBindCtx, COINIT_APARTMENTTHREADED,
@@ -12,7 +12,6 @@ use windows::Win32::System::Com::{
 use windows::Win32::System::Registry::{
     RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
 };
-use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use windows::Win32::UI::Shell::{
     IShellItem2, IShellItemImageFactory, SHCreateItemFromParsingName, SHLoadIndirectString,
     SIGDN_NORMALDISPLAY, SIIGBF_ICONONLY,
@@ -127,7 +126,7 @@ pub fn icon_bytes(aumid: &str) -> Option<Vec<u8>> {
     .ok()?;
     let png = dib_to_png(hbm);
     unsafe {
-        let _ = DeleteObject(hbm);
+        let _ = DeleteObject(hbm.into());
     }
     png
 }
@@ -235,7 +234,7 @@ fn dib_to_png(hbm: windows::Win32::Graphics::Gdi::HBITMAP) -> Option<Vec<u8>> {
     let mut ds = DIBSECTION::default();
     let got = unsafe {
         GetObjectW(
-            hbm,
+            hbm.into(),
             std::mem::size_of::<DIBSECTION>() as i32,
             Some(&mut ds as *mut _ as *mut _),
         )

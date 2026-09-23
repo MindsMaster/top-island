@@ -9,7 +9,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # serialize 特性让解密库在内存直接开 不落明文盘
 rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
-windows = { version = "0.58", features = [
+windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_Com",
     "Win32_System_Diagnostics_Debug",
