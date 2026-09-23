@@ -2,34 +2,34 @@ import { computed, reactive } from 'vue';
 import { weatherApi } from '@/platform/weather';
 import { isNightTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
+import { kindFromWmo, type WxKind } from './codes';
 
-const DAY_ICONS: Record<number, string> = {
-  0: 'fa-sun',
-  1: 'fa-cloud-sun',
-  2: 'fa-cloud-sun',
-  3: 'fa-cloud-sun',
-  45: 'fa-smog',
-  48: 'fa-smog',
-  51: 'fa-cloud-rain',
-  53: 'fa-cloud-rain',
-  55: 'fa-cloud-rain',
-  61: 'fa-cloud-rain',
-  63: 'fa-cloud-rain',
-  65: 'fa-cloud-showers-heavy',
-  71: 'fa-snowflake',
-  73: 'fa-snowflake',
-  75: 'fa-snowflake',
-  95: 'fa-bolt',
-  96: 'fa-bolt',
-  99: 'fa-bolt',
+const ICONS: Record<WxKind, string> = {
+  clear: 'fa-sun',
+  partly: 'fa-cloud-sun',
+  cloudy: 'fa-cloud',
+  fog: 'fa-smog',
+  rain: 'fa-cloud-rain',
+  'rain-heavy': 'fa-cloud-showers-heavy',
+  snow: 'fa-snowflake',
+  thunder: 'fa-bolt',
 };
 
 /** 夜间仅晴少云换月系图标 */
-const NIGHT_ICONS: Record<number, string> = {
-  0: 'fa-moon',
-  1: 'fa-cloud-moon',
-  2: 'fa-cloud-moon',
-  3: 'fa-cloud-moon',
+const NIGHT_ICONS: Partial<Record<WxKind, string>> = {
+  clear: 'fa-moon',
+  partly: 'fa-cloud-moon',
+};
+
+const BG_CLASSES: Record<WxKind, string> = {
+  clear: 'wx-clear',
+  partly: 'wx-cloudy',
+  cloudy: 'wx-cloudy',
+  fog: 'wx-fog',
+  rain: 'wx-rain',
+  'rain-heavy': 'wx-rain-heavy',
+  snow: 'wx-snow',
+  thunder: 'wx-thunder',
 };
 
 /** IP 定位失败的兜底 */
@@ -45,31 +45,25 @@ export const weatherState = reactive({
   tempHi: null as number | null,
   tempLo: null as number | null,
   code: null as number | null,
+  kind: null as WxKind | null,
+  night: null as boolean | null,
   loading: false,
   error: null as string | null,
 });
 
 export const desc = computed(() => weatherCodeName(weatherState.code));
 
+const isNight = computed(() => weatherState.night ?? isNightTime.value);
+
 export const icon = computed(() => {
-  const c = weatherState.code;
-  if (c === null) return 'fa-cloud';
-  if (isNightTime.value && NIGHT_ICONS[c]) return NIGHT_ICONS[c];
-  return DAY_ICONS[c] ?? 'fa-cloud';
+  const k = weatherState.kind;
+  if (k === null) return 'fa-cloud';
+  return (isNight.value && NIGHT_ICONS[k]) || ICONS[k];
 });
 
 export const bgClass = computed(() => {
-  const c = weatherState.code;
-  const night = isNightTime.value;
-  if (c === null) return night ? 'wx-cloudy-night' : 'wx-cloudy';
-  if (c === 0 || c === 1) return night ? 'wx-clear-night' : 'wx-clear';
-  if (c === 2 || c === 3) return night ? 'wx-cloudy-night' : 'wx-cloudy';
-  if (c === 45 || c === 48) return 'wx-fog';
-  if (c === 65) return 'wx-rain-heavy';
-  if (c >= 51 && c <= 65) return 'wx-rain';
-  if (c >= 71 && c <= 75) return 'wx-snow';
-  if (c >= 95) return 'wx-thunder';
-  return night ? 'wx-cloudy-night' : 'wx-cloudy';
+  const bg = BG_CLASSES[weatherState.kind ?? 'cloudy'];
+  return isNight.value && (bg === 'wx-clear' || bg === 'wx-cloudy') ? `${bg}-night` : bg;
 });
 
 let ipLat: number | null = null;
@@ -114,9 +108,11 @@ export async function fetchWeather() {
       daily: 'temperature_2m_max,temperature_2m_min',
       forecastDays: 1,
     });
-    if (data.current_weather) {
-      weatherState.temp = Math.round(data.current_weather.temperature);
-      weatherState.code = data.current_weather.weathercode;
+    if (data.current) {
+      weatherState.temp = Math.round(data.current.temperature_2m);
+      weatherState.code = data.current.weather_code;
+      weatherState.kind = kindFromWmo(data.current.weather_code);
+      weatherState.night = data.current.is_day === 0;
     }
     if (data.daily?.temperature_2m_max?.length) {
       weatherState.tempHi = Math.round(data.daily.temperature_2m_max[0]);

@@ -86,7 +86,7 @@ pub fn query(
     forecast_days: Option<u32>,
 ) -> AppResult<serde_json::Value> {
     let mut url = format!(
-        "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&timezone=auto"
     );
     if let Some(daily) = daily {
         url.push_str(&format!("&daily={}", urlencoded(daily)));

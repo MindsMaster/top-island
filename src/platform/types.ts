@@ -160,7 +160,8 @@ export interface GeocodeResult {
 }
 
 export interface WeatherResult {
-  current_weather?: { temperature: number; weathercode: number; windspeed: number };
+  /** is_day 为 0 或 1 */
+  current?: { temperature_2m: number; weather_code: number; is_day: number };
   daily?: {
     time: string[];
     temperature_2m_max: number[];
