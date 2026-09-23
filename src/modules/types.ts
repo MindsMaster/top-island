@@ -7,6 +7,8 @@ export interface PanelSlot {
   icon: string;
   titleKey: string;
   component: Component;
+  /** 铺满整座岛 随本页淡入淡出 */
+  backdrop?: Component;
 }
 
 /** 收起态独占整条胶囊 同时想要的模块按 priority 取最大者 */

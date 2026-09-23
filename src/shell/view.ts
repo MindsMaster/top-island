@@ -12,6 +12,8 @@ export interface ShellView {
   islandWidth: number;
   /** px ≤0 浮层随岛 */
   dragOffset: number;
+  /** 仅 large 态有值 */
+  panel: string | null;
 }
 
 const state = reactive<ShellView>({
@@ -20,6 +22,7 @@ const state = reactive<ShellView>({
   capsuleOwner: null,
   islandWidth: 170,
   dragOffset: 0,
+  panel: null,
 });
 
 export const shellView = readonly(state);

@@ -75,6 +75,7 @@ watchEffect(() => {
     capsuleOwner: capsuleOwner.value?.id ?? null,
     islandWidth: islandWidth.value,
     dragOffset: hide.dragging.value ? hide.offset.value : 0,
+    panel: isLarge.value ? panels[deck.activePanel.value].id : null,
   });
 });
 

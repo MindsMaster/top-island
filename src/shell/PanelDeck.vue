@@ -10,6 +10,16 @@ const { t } = useI18n();
 </script>
 
 <template>
+  <template v-for="(p, i) in panels" :key="p.id">
+    <div
+      v-if="p.backdrop && deck.isMounted(i)"
+      class="panel-backdrop"
+      :class="{ active: visible && deck.activePanel.value === i }"
+    >
+      <component :is="p.backdrop" />
+    </div>
+  </template>
+
   <div v-show="visible" class="panels-wrapper" :class="{ dragging: deck.isDragging.value }">
     <template v-for="(p, i) in panels" :key="p.id">
       <div
