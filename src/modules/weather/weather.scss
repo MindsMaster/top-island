@@ -1,238 +1,525 @@
+/* 天空底 */
+.wx-sky {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(170deg, var(--sky-a), var(--sky-b));
+}
+.wx-sky::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--sky-night);
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+.wx-sky.wx-night::before {
+  opacity: 1;
+}
+/* 与 #island.large 尺寸一致 */
+.wx-canvas {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+  width: 380px;
+  height: 360px;
+  transition: opacity 0.4s;
+}
+.wx-sky.wx-dim .wx-canvas {
+  opacity: 0.35;
+}
+
+.wx-sky {
+  --sky-night: rgba(4, 8, 24, 0.5);
+}
+.wx-clear {
+  --sky-a: #2b72b8;
+  --sky-b: #123c69;
+}
+.wx-partly {
+  --sky-a: #3a6592;
+  --sky-b: #172c45;
+}
+.wx-cloudy {
+  --sky-a: #4a5d75;
+  --sky-b: #1c2735;
+}
+.wx-rain {
+  --sky-a: #2f4257;
+  --sky-b: #121c28;
+}
+.wx-rain-heavy {
+  --sky-a: #223142;
+  --sky-b: #0b121a;
+}
+.wx-thunder {
+  --sky-a: #282c47;
+  --sky-b: #0c0d1a;
+}
+.wx-snow {
+  --sky-a: #5d6f87;
+  --sky-b: #263244;
+}
+.wx-fog {
+  --sky-a: #5e6771;
+  --sky-b: #2b3139;
+}
+
+html[data-scheme='light'] {
+  .wx-sky {
+    --sky-night: rgba(30, 40, 90, 0.18);
+  }
+  .wx-clear {
+    --sky-a: #9fcdf5;
+    --sky-b: #e3f1fd;
+  }
+  .wx-partly {
+    --sky-a: #b4d2ee;
+    --sky-b: #e8f1f9;
+  }
+  .wx-cloudy {
+    --sky-a: #c3cfdc;
+    --sky-b: #eaeef3;
+  }
+  .wx-rain {
+    --sky-a: #a7b9cc;
+    --sky-b: #dde5ed;
+  }
+  .wx-rain-heavy {
+    --sky-a: #93a6ba;
+    --sky-b: #d0d9e3;
+  }
+  .wx-thunder {
+    --sky-a: #aeaacb;
+    --sky-b: #dad8e8;
+  }
+  .wx-snow {
+    --sky-a: #b4c3d4;
+    --sky-b: #dde5ee;
+  }
+  .wx-fog {
+    --sky-a: #cfd4da;
+    --sky-b: #eef0f2;
+  }
+}
+
+/* 页面骨架 */
 .weather-panel {
-  gap: 8px;
-  justify-content: flex-start;
+  align-items: stretch;
+  justify-content: stretch;
+  padding-bottom: 4px;
 }
-
-.weather-clock {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-}
-
-.weather-card {
+/* 定尺寸 与 #island.large 联动 */
+.wx {
   position: relative;
-  width: 100%;
-  border-radius: 14px;
-  padding: 12px 16px 14px;
-  overflow: hidden;
-  color: var(--island-text);
+  flex: none;
+  width: 340px;
+  height: 302px;
+  align-self: center;
+  font-variant-numeric: tabular-nums;
+}
+.wx-home,
+.wx-detail {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: linear-gradient(160deg, var(--wx-a), var(--wx-b));
-  border: 1px solid rgba(var(--ink), 0.06);
+  transition:
+    opacity 0.28s ease,
+    transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.wx-in-detail .wx-home {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+  pointer-events: none;
+}
+.wx-detail {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+}
+.wx-in-detail .wx-detail {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
-.weather-card-city {
+/* 首屏 */
+.wx-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.wx-city {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0.95;
-  position: relative;
-  z-index: 1;
-}
-.weather-card-city i {
-  font-size: 10px;
-  opacity: 0.8;
-}
-
-.weather-card-main {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  position: relative;
-  z-index: 1;
-}
-.weather-card-icon {
-  font-size: 34px;
-  color: var(--wx-accent);
-}
-.weather-card-temp {
-  font-size: 42px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.weather-card-unit {
   font-size: 15px;
   font-weight: 600;
-  vertical-align: super;
-  opacity: 0.85;
-  margin-left: 2px;
 }
-.weather-card-side {
-  margin-left: auto;
+.wx-city i {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.wx-clock {
   text-align: right;
+  line-height: 1.2;
+}
+.wx-time {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.wx-date {
+  font-size: 12px;
+  color: rgba(var(--ink), 0.65);
+}
+.wx-hero {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.wx-temp {
+  font-size: 76px;
+  font-weight: 300;
+  line-height: 0.82;
+  letter-spacing: -3px;
+}
+.wx-deg {
+  font-size: 30px;
+  vertical-align: top;
+  letter-spacing: 0;
+}
+.wx-side {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
 }
-.weather-card-desc {
-  font-size: 13px;
-  font-weight: 500;
+.wx-desc {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 16px;
+  font-weight: 600;
 }
-.weather-card-hilo {
+.wx-sub {
+  font-size: 12px;
+  color: rgba(var(--ink), 0.7);
+}
+.wx-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 4px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(var(--ink), 0.07);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.wx-card:hover {
+  background: rgba(var(--ink), 0.12);
+}
+.wx-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+.wx-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-card-more {
+  display: flex;
+  align-items: center;
+  gap: 3px;
   font-size: 11px;
-  opacity: 0.75;
-  font-variant-numeric: tabular-nums;
+  color: rgba(var(--ink), 0.6);
+  transition: color 0.2s;
 }
-
-/* 天气色罩 */
-.wx-clear {
-  --wx-a: rgba(85, 155, 235, 0.14);
-  --wx-b: rgba(85, 155, 235, 0.34);
-  --wx-accent: #ffc857;
+.wx-card-more i {
+  font-size: 8px;
 }
-.wx-clear-night {
-  --wx-a: rgba(90, 105, 220, 0.12);
-  --wx-b: rgba(90, 105, 220, 0.28);
-  --wx-accent: #aab8f0;
+.wx-card:hover .wx-card-more {
+  color: var(--island-text);
 }
-.wx-cloudy {
-  --wx-a: rgba(125, 150, 180, 0.14);
-  --wx-b: rgba(125, 150, 180, 0.3);
-  --wx-accent: #9fb3c8;
+.wx-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
 }
-.wx-cloudy-night {
-  --wx-a: rgba(95, 115, 145, 0.12);
-  --wx-b: rgba(95, 115, 145, 0.26);
-  --wx-accent: #8fa1b5;
+.wx-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
 }
-.wx-fog {
-  --wx-a: rgba(150, 155, 165, 0.14);
-  --wx-b: rgba(150, 155, 165, 0.3);
-  --wx-accent: #aeb4bc;
+.wx-hour-label {
+  color: rgba(var(--ink), 0.6);
 }
-.wx-rain {
-  --wx-a: rgba(70, 115, 180, 0.16);
-  --wx-b: rgba(70, 115, 180, 0.36);
-  --wx-accent: #7fb2e5;
+.wx-hour i {
+  font-size: 14px;
 }
-.wx-rain-heavy {
-  --wx-a: rgba(50, 90, 150, 0.22);
-  --wx-b: rgba(50, 90, 150, 0.44);
-  --wx-accent: #6ba0d8;
-}
-.wx-snow {
-  --wx-a: rgba(160, 195, 225, 0.16);
-  --wx-b: rgba(160, 195, 225, 0.34);
-  --wx-accent: #cfe2f3;
-}
-.wx-thunder {
-  --wx-a: rgba(125, 95, 210, 0.14);
-  --wx-b: rgba(125, 95, 210, 0.32);
-  --wx-accent: #b39ddb;
-}
-
-/* 亮系图标换深档 */
-html[data-scheme='light'] {
-  .wx-clear {
-    --wx-accent: #e8940e;
-  }
-  .wx-clear-night {
-    --wx-accent: #5a68c4;
-  }
-  .wx-cloudy {
-    --wx-accent: #64809c;
-  }
-  .wx-cloudy-night {
-    --wx-accent: #5d7288;
-  }
-  .wx-fog {
-    --wx-accent: #767e88;
-  }
-  .wx-rain {
-    --wx-accent: #3d7bbf;
-  }
-  .wx-rain-heavy {
-    --wx-accent: #336aab;
-  }
-  .wx-snow {
-    --wx-accent: #6d94ba;
-  }
-  .wx-thunder {
-    --wx-accent: #7561b3;
-  }
-}
-
-/* 装饰层 雨雪星 */
-.weather-card-fx {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  --wx-fx: rgba(var(--ink), 0.13);
-  --wx-dot: rgba(var(--ink), 0.55);
-}
-
-.wx-rain .weather-card-fx,
-.wx-rain-heavy .weather-card-fx,
-.wx-thunder .weather-card-fx {
-  background: repeating-linear-gradient(
-    75deg,
-    transparent 0 14px,
-    var(--wx-fx) 14px 15px,
-    transparent 15px 32px
-  );
-  /* 负 inset 预留平移循环 */
-  inset: -104px -28px 0 0;
-  animation: wx-rain-fall 0.8s linear infinite;
-}
-.wx-rain-heavy .weather-card-fx {
-  animation-duration: 0.55s;
-}
-@keyframes wx-rain-fall {
-  from {
-    transform: translate(0, 0);
-  }
-  to {
-    transform: translate(-28px, 104px);
-  }
-}
-
-.wx-snow .weather-card-fx {
-  background-image:
-    radial-gradient(circle 2px at 22% 28%, var(--wx-dot) 45%, transparent 50%),
-    radial-gradient(circle 1.5px at 58% 12%, var(--wx-dot) 45%, transparent 50%),
-    radial-gradient(circle 2px at 82% 40%, var(--wx-dot) 45%, transparent 50%),
-    radial-gradient(circle 1.5px at 38% 60%, var(--wx-dot) 45%, transparent 50%),
-    radial-gradient(circle 1px at 70% 75%, var(--wx-dot) 45%, transparent 50%);
-  background-size: 130px 130px;
-  /* 同雨丝 */
-  inset: -260px 0 0 -14px;
-  animation: wx-snow-fall 6s linear infinite;
-}
-@keyframes wx-snow-fall {
-  from {
-    transform: translate(0, 0);
-  }
-  to {
-    transform: translate(14px, 260px);
-  }
-}
-
-.wx-clear-night .weather-card-fx {
-  background-image:
-    radial-gradient(circle 1px at 18% 22%, var(--wx-dot) 45%, transparent 55%),
-    radial-gradient(circle 1.5px at 44% 12%, var(--wx-dot) 45%, transparent 55%),
-    radial-gradient(circle 1px at 68% 30%, var(--wx-dot) 45%, transparent 55%),
-    radial-gradient(circle 1px at 86% 16%, var(--wx-dot) 45%, transparent 55%),
-    radial-gradient(circle 1px at 32% 44%, var(--wx-dot) 45%, transparent 55%);
-}
-
-.weather-time {
-  font-size: 34px;
-  font-weight: 700;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-.weather-date {
+.wx-hour-temp {
   font-size: 13px;
-  color: rgba(var(--ink), 0.45);
+  font-weight: 600;
+}
+.wx-hour-pop {
+  height: 12px;
+  line-height: 12px;
+  font-size: 9.5px;
+  color: #6fa8f5;
+}
+
+/* 详情 */
+.wx-dhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wx-back {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(var(--ink), 0.1);
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.wx-back:hover {
+  background: rgba(var(--ink), 0.18);
+}
+.wx-dnow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  font-size: 12.5px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-pill {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: rgba(var(--ink), 0.1);
+}
+.wx-pill button {
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: rgba(var(--ink), 0.65);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.wx-pill button.on {
+  background: rgba(var(--ink), 0.16);
+  color: var(--island-text);
+}
+.wx-dbody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 0;
+  animation: wx-swap 0.25s ease;
+}
+@keyframes wx-swap {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.wx-nowcast-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.wx-nowcast svg,
+.wx-curve svg {
+  display: block;
+}
+.wx-bar-wet {
+  fill: #6fa8f5;
+}
+.wx-bar-dry {
+  fill: rgba(var(--ink), 0.12);
+}
+.wx-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-size: 9.5px;
+  color: rgba(var(--ink), 0.5);
+}
+
+.wx-curve-cols {
+  display: grid;
+}
+.wx-curve-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 9.5px;
+  color: rgba(var(--ink), 0.6);
+}
+.wx-curve-col:first-child {
+  color: var(--island-text);
+  font-weight: 600;
+}
+.wx-curve-col i {
+  font-size: 11px;
+  color: var(--island-text);
+}
+.wx-curve-area {
+  fill: rgba(var(--ink), 0.08);
+}
+.wx-curve-line {
+  fill: none;
+  stroke: rgba(var(--ink), 0.7);
+  stroke-width: 1.5;
+}
+.wx-curve-dot {
+  fill: var(--island-text);
+}
+.wx-curve-temp {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--island-text);
+}
+.wx-curve-pop {
+  text-align: center;
+  font-size: 9px;
+  color: #6fa8f5;
+  height: 11px;
+}
+
+.wx-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding-top: 8px;
+  border-top: 1px solid rgba(var(--ink), 0.12);
+}
+.wx-stats div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.3;
+  min-width: 0;
+}
+.wx-stats small {
+  font-size: 10px;
+  color: rgba(var(--ink), 0.55);
+}
+.wx-stats span {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 10px;
+  font-size: 10.5px;
+  color: rgba(var(--ink), 0.55);
+}
+
+.wx-days {
+  justify-content: flex-start;
+  gap: 0;
+}
+.wx-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.wx-day-row {
+  display: grid;
+  grid-template-columns: 38px 18px 30px 28px 1fr 28px;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.wx-day-row:hover,
+.wx-day.open .wx-day-row {
+  background: rgba(var(--ink), 0.08);
+}
+.wx-day-name {
+  font-weight: 600;
+}
+.wx-day-row i {
+  font-size: 12px;
+}
+.wx-day-pop {
+  font-size: 10px;
+  color: #6fa8f5;
+}
+.wx-day-lo {
+  text-align: right;
+  color: rgba(var(--ink), 0.6);
+}
+.wx-day-hi {
+  font-weight: 600;
+}
+.wx-day-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(var(--ink), 0.12);
+}
+.wx-day-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+}
+.wx-day-bar b {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--island-text);
+}
+.wx-day-more {
+  padding: 1px 6px 4px 50px;
+  font-size: 11px;
+  color: rgba(var(--ink), 0.7);
 }
 
 /* quick 天气挂件 */
@@ -241,6 +528,7 @@ html[data-scheme='light'] {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  margin-right: 6px;
   font-size: 12px;
   color: rgba(var(--ink), 0.7);
 }
@@ -248,10 +536,21 @@ html[data-scheme='light'] {
   font-size: 14px;
 }
 .quick-weather-city {
-  font-size: 9px;
-  color: rgba(var(--ink), 0.35);
+  font-size: 10px;
+  color: rgba(var(--ink), 0.4);
   max-width: 48px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-home,
+  .wx-detail,
+  .wx-canvas {
+    transition: none;
+  }
+  .wx-dbody {
+    animation: none;
+  }
 }

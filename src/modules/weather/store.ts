@@ -1,8 +1,9 @@
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { weatherApi } from '@/platform/weather';
 import { isNightTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
 import { kindFromMsnSymbol, kindFromWmo, type WxKind } from './codes';
+import { dailyPoints, hoursAfter, nowcastOf, type DayPoint, type HourPoint, type Nowcast } from './forecast';
 
 const ICONS: Record<WxKind, string> = {
   clear: 'fa-sun',
@@ -21,21 +22,11 @@ const NIGHT_ICONS: Partial<Record<WxKind, string>> = {
   partly: 'fa-cloud-moon',
 };
 
-const BG_CLASSES: Record<WxKind, string> = {
-  clear: 'wx-clear',
-  partly: 'wx-cloudy',
-  cloudy: 'wx-cloudy',
-  fog: 'wx-fog',
-  rain: 'wx-rain',
-  'rain-heavy': 'wx-rain-heavy',
-  snow: 'wx-snow',
-  thunder: 'wx-thunder',
-};
-
 /** IP 定位失败的兜底 */
 const FALLBACK_CITY = '北京';
 
 const REFRESH_MS = 600000;
+const HOURLY_COUNT = 23;
 
 const { lang, t, weatherCodeName } = useI18n();
 
@@ -49,23 +40,43 @@ export const weatherState = reactive({
   cap: null as string | null,
   kind: null as WxKind | null,
   night: null as boolean | null,
+  feels: null as number | null,
+  humidity: null as number | null,
+  wind: '',
+  uv: '',
+  /** km */
+  visibility: null as number | null,
+  aqi: '',
+  hourly: [] as HourPoint[],
+  daily: [] as DayPoint[],
+  nowcast: null as Nowcast | null,
   loading: false,
   error: null as string | null,
 });
 
 export const desc = computed(() => weatherState.cap ?? weatherCodeName(weatherState.code));
 
-const isNight = computed(() => weatherState.night ?? isNightTime.value);
+export const isNight = computed(() => weatherState.night ?? isNightTime.value);
 
-export const icon = computed(() => {
-  const k = weatherState.kind;
-  if (k === null) return 'fa-cloud';
-  return (isNight.value && NIGHT_ICONS[k]) || ICONS[k];
-});
+export function iconFor(kind: WxKind | null, night: boolean): string {
+  if (kind === null) return 'fa-cloud';
+  return (night && NIGHT_ICONS[kind]) || ICONS[kind];
+}
 
-export const bgClass = computed(() => {
-  const bg = BG_CLASSES[weatherState.kind ?? 'cloudy'];
-  return isNight.value && (bg === 'wx-clear' || bg === 'wx-cloudy') ? `${bg}-night` : bg;
+export const icon = computed(() => iconFor(weatherState.kind, isNight.value));
+
+export type WeatherView = 'today' | 'week';
+
+export const weatherView = ref<WeatherView | null>(null);
+
+export const hint = computed<string | null>(() => {
+  const n = weatherState.nowcast;
+  if (n && n.values.some((v) => v > 0)) return n.short || n.summary;
+  const [today, tomorrow] = weatherState.daily;
+  if (!tomorrow) return null;
+  const diff = tomorrow.hi - today.hi;
+  if (Math.abs(diff) >= 5) return t(diff > 0 ? 'weatherWarmer' : 'weatherCooler', Math.abs(diff));
+  return `${t('weatherTomorrow')} ${tomorrow.capDay} ${tomorrow.lo}° / ${tomorrow.hi}°`;
 });
 
 let ipLat: number | null = null;
@@ -101,15 +112,27 @@ async function tryFetchMsn(lat: number, lon: number): Promise<boolean> {
     const data = await weatherApi.msnOverview(lat, lon, lang.value === 'zh-CN' ? 'zh-cn' : 'en-us');
     const w = data.responses?.[0]?.weather?.[0];
     if (!w) return false;
-    const { temp, cap, symbol } = w.current;
-    weatherState.temp = Math.round(temp);
-    weatherState.code = null;
-    weatherState.cap = cap;
-    weatherState.kind = kindFromMsnSymbol(symbol);
-    weatherState.night = symbol.startsWith('n');
-    const today = w.forecast?.days[0]?.daily;
-    weatherState.tempHi = today ? Math.round(today.tempHi) : null;
-    weatherState.tempLo = today ? Math.round(today.tempLo) : null;
+    const c = w.current;
+    const days = w.forecast?.days ?? [];
+    const daily = dailyPoints(days);
+    Object.assign(weatherState, {
+      temp: Math.round(c.temp),
+      code: null,
+      cap: c.cap,
+      kind: kindFromMsnSymbol(c.symbol),
+      night: c.symbol.startsWith('n'),
+      tempHi: daily[0]?.hi ?? null,
+      tempLo: daily[0]?.lo ?? null,
+      feels: Math.round(c.feels),
+      humidity: Math.round(c.rh),
+      wind: `${c.pvdrWindDir} ${c.pvdrWindSpd}`,
+      uv: `${Math.round(c.uv)} ${c.uvDesc}`,
+      visibility: c.vis,
+      aqi: c.aqi != null ? `AQI ${Math.round(c.aqi)} ${c.aqiSeverity ?? ''}`.trim() : '',
+      hourly: hoursAfter(days, Date.now(), HOURLY_COUNT),
+      daily,
+      nowcast: nowcastOf(w.nowcasting),
+    });
     return true;
   } catch (e) {
     console.error('[weather] MSN 拉取失败 回退 Open-Meteo:', e);
@@ -131,6 +154,17 @@ export async function fetchWeather() {
     const data = await weatherApi.query(loc.lat, loc.lon, {
       daily: 'temperature_2m_max,temperature_2m_min',
       forecastDays: 1,
+    });
+    Object.assign(weatherState, {
+      feels: null,
+      humidity: null,
+      wind: '',
+      uv: '',
+      visibility: null,
+      aqi: '',
+      hourly: [],
+      daily: [],
+      nowcast: null,
     });
     if (data.current) {
       weatherState.temp = Math.round(data.current.temperature_2m);

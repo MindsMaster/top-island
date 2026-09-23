@@ -171,12 +171,59 @@ export interface WeatherResult {
   error?: string;
 }
 
+export interface MsnCondition {
+  temp: number;
+  cap: string;
+  symbol: string;
+  /** 降水概率 % */
+  precip?: number;
+}
+
+export interface MsnCurrent extends MsnCondition {
+  feels: number;
+  rh: number;
+  uv: number;
+  uvDesc: string;
+  /** km */
+  vis: number;
+  pvdrWindDir: string;
+  pvdrWindSpd: string;
+  aqi?: number;
+  aqiSeverity?: string;
+}
+
+export interface MsnDay {
+  hourly: Array<MsnCondition & { valid: string }>;
+  daily: {
+    valid: string;
+    symbol: string;
+    tempHi: number;
+    tempLo: number;
+    precip: number;
+    /** mm */
+    rainAmount: number;
+    day: { cap: string };
+    night: { cap: string };
+  };
+  /** 带时区偏移的当地时刻 */
+  almanac: { sunrise: string; sunset: string };
+}
+
+export interface MsnNowcast {
+  summary: string;
+  shortSummary: string;
+  /** 相对强度 单位未公开 */
+  precipitation: number[];
+  minutesBetweenHorrizons: number;
+}
+
 /** MSN weatherfalcon overview 仅列用到的字段 */
 export interface MsnOverview {
   responses?: Array<{
     weather?: Array<{
-      current: { temp: number; cap: string; symbol: string };
-      forecast?: { days: Array<{ daily: { tempHi: number; tempLo: number } }> };
+      current: MsnCurrent;
+      forecast?: { days: MsnDay[] };
+      nowcasting?: MsnNowcast;
     }>;
   }>;
 }
