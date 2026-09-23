@@ -24,3 +24,12 @@ pub async fn weather_query(
 ) -> AppResult<serde_json::Value> {
     off_thread(move || services::weather::query(lat, lon, daily.as_deref(), forecast_days)).await
 }
+
+#[tauri::command]
+pub async fn weather_msn_overview(
+    lat: f64,
+    lon: f64,
+    locale: String,
+) -> AppResult<serde_json::Value> {
+    off_thread(move || services::weather::msn_overview(lat, lon, &locale)).await
+}

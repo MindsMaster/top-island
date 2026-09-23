@@ -9,4 +9,4 @@ pub use settings::{
     AppSettings, CustomTheme, DiagnosticsToggles, IslandLayout, LangPref, MusicConfig,
     NotificationsConfig, NotificationsPrivacy, ThemeId,
 };
-pub use weather::IpCityInfo;
+pub use weather::{msn_api_key, msn_bundle_url, IpCityInfo};

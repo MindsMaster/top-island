@@ -171,6 +171,16 @@ export interface WeatherResult {
   error?: string;
 }
 
+/** MSN weatherfalcon overview 仅列用到的字段 */
+export interface MsnOverview {
+  responses?: Array<{
+    weather?: Array<{
+      current: { temp: number; cap: string; symbol: string };
+      forecast?: { days: Array<{ daily: { tempHi: number; tempLo: number } }> };
+    }>;
+  }>;
+}
+
 export interface WeatherQueryOptions {
   daily?: string;
   forecastDays?: number;

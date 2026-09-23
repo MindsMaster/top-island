@@ -1,32 +1,84 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use island_core::IpCityInfo;
+use island_core::{msn_api_key, msn_bundle_url, IpCityInfo};
 
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
+const BUNDLE_TIMEOUT: Duration = Duration::from_secs(20);
 /// ipwho.is 免费 HTTPS 免 key
 const IP_CITY_URL: &str = "https://ipwho.is/";
 const IP_CITY_TTL: Duration = Duration::from_secs(30 * 60);
 
+const MSN_PAGE_URL: &str = "https://www.msn.com/zh-cn/weather/forecast";
+const MSN_OVERVIEW_URL: &str = "https://api.msn.cn/weatherfalcon/weather/overview";
+const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0";
+
+static MSN_KEY: Mutex<Option<String>> = Mutex::new(None);
 static IP_CITY_CACHE: Mutex<Option<(Instant, IpCityInfo)>> = Mutex::new(None);
 
-fn agent() -> ureq::Agent {
+fn agent(timeout: Duration) -> ureq::Agent {
     ureq::Agent::config_builder()
-        .timeout_global(Some(TIMEOUT))
+        .timeout_global(Some(timeout))
         .build()
         .into()
 }
 
 fn fetch_json(url: &str) -> AppResult<serde_json::Value> {
-    let mut resp = agent()
+    let mut resp = agent(TIMEOUT)
         .get(url)
         .call()
         .map_err(|e| AppError::new(format!("error.network: {e}")))?;
     resp.body_mut()
         .read_json()
         .map_err(|e| AppError::new(format!("error.network: 响应不是 JSON: {e}")))
+}
+
+fn fetch_text(url: &str) -> AppResult<String> {
+    let mut resp = agent(BUNDLE_TIMEOUT)
+        .get(url)
+        .header("User-Agent", BROWSER_UA)
+        .call()
+        .map_err(|e| AppError::new(format!("error.network: {e}")))?;
+    resp.body_mut()
+        .read_to_string()
+        .map_err(|e| AppError::new(format!("error.network: {e}")))
+}
+
+/// 取自 MSN 天气网页前端包
+fn acquire_msn_key() -> AppResult<String> {
+    let page = fetch_text(MSN_PAGE_URL)?;
+    let bundle_url = msn_bundle_url(&page)
+        .ok_or_else(|| AppError::new("error.network: MSN 页面未找到前端包"))?;
+    let bundle = fetch_text(bundle_url)?;
+    msn_api_key(&bundle)
+        .map(str::to_owned)
+        .ok_or_else(|| AppError::new("error.network: MSN 前端包未找到 key"))
+}
+
+fn msn_key(refresh: bool) -> AppResult<String> {
+    let mut cached = MSN_KEY.lock().unwrap_or_else(|e| e.into_inner());
+    if let (false, Some(key)) = (refresh, cached.as_ref()) {
+        return Ok(key.clone());
+    }
+    let key = acquire_msn_key()?;
+    *cached = Some(key.clone());
+    Ok(key)
+}
+
+pub fn msn_overview(lat: f64, lon: f64, locale: &str) -> AppResult<serde_json::Value> {
+    let url = |key: &str| {
+        format!(
+            "{MSN_OVERVIEW_URL}?apikey={key}&ocid=msftweather&lat={lat}&lon={lon}&units=C&locale={}&days=7&wrapodata=false",
+            urlencoded(locale),
+        )
+    };
+    // key 会随发版轮换 失败重取一次
+    match fetch_json(&url(&msn_key(false)?)) {
+        Ok(data) => Ok(data),
+        Err(_) => fetch_json(&url(&msn_key(true)?)),
+    }
 }
 
 pub fn ip_city() -> AppResult<IpCityInfo> {

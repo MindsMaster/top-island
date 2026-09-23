@@ -43,6 +43,7 @@ macro_rules! ipc_handlers {
             crate::ipc::weather::weather_ip_city,
             crate::ipc::weather::weather_geocode,
             crate::ipc::weather::weather_query,
+            crate::ipc::weather::weather_msn_overview,
             crate::ipc::update::update_status,
             crate::ipc::update::update_check,
             crate::ipc::update::update_install,
