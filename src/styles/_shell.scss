@@ -70,7 +70,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .quick-settings-btn:hover {
   color: var(--island-text);
@@ -93,7 +92,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .quick-theme-btn:hover {
   color: var(--warn);
@@ -116,7 +114,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .quick-close-btn:hover {
   color: var(--danger);
@@ -206,7 +203,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .panel-nav-btn:hover {
   color: rgba(var(--ink), 0.6);

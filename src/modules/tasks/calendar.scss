@@ -27,7 +27,6 @@
   transition:
     background 0.2s,
     color 0.2s;
-  -webkit-app-region: no-drag;
 }
 .cal-nav-btn:hover {
   background: rgba(var(--ink), 0.08);
@@ -54,7 +53,6 @@
   transition:
     background 0.2s,
     color 0.2s;
-  -webkit-app-region: no-drag;
 }
 .cal-month-btn:hover {
   background: rgba(var(--ink), 0.08);
@@ -88,7 +86,6 @@
   cursor: pointer;
   transition: background 0.2s;
   position: relative;
-  -webkit-app-region: no-drag;
 }
 .cal-day-cell:hover {
   background: rgba(var(--ink), 0.06);
@@ -191,7 +188,6 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  -webkit-app-region: no-drag;
 }
 .cal-task-row.done .cal-task-check {
   color: var(--success);
@@ -230,7 +226,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .cal-task-del:hover {
   color: var(--danger);
@@ -252,7 +247,6 @@
   transition:
     color 0.3s,
     background 0.3s;
-  -webkit-app-region: no-drag;
 }
 .cal-task-done-btn:hover {
   color: var(--success);
@@ -280,7 +274,6 @@
   border-radius: 6px;
   outline: none;
   font-family: inherit;
-  -webkit-app-region: no-drag;
 }
 .cal-add-input:focus {
   border-color: rgba(var(--ink), 0.2);
@@ -301,7 +294,6 @@
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  -webkit-app-region: no-drag;
 }
 .cal-time-sel:focus {
   border-color: rgba(var(--ink), 0.25);
@@ -330,7 +322,6 @@ html[data-scheme='light'] .cal-time-sel option {
   padding: 4px 6px;
   border-radius: 6px;
   transition: all 0.2s;
-  -webkit-app-region: no-drag;
 }
 .cal-add-all-day:hover {
   background: rgba(var(--ink), 0.1);
@@ -356,7 +347,6 @@ html[data-scheme='light'] .cal-time-sel option {
   transition:
     transform 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .cal-add-btn:hover:not(:disabled) {
   background: rgba(var(--ink), 0.18);
@@ -414,7 +404,6 @@ html[data-scheme='light'] .cal-time-sel option {
   cursor: pointer;
   transition: background 0.2s;
   position: relative;
-  -webkit-app-region: no-drag;
 }
 .cal-month-cell:hover {
   background: rgba(var(--ink), 0.06);
@@ -464,7 +453,6 @@ html[data-scheme='light'] .cal-time-sel option {
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
   flex-shrink: 0;
 }
 .cal-month-close:hover {

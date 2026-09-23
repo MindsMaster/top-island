@@ -38,7 +38,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .msg-clear-btn:hover {
   color: var(--danger);
@@ -76,7 +75,6 @@
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s;
-  -webkit-app-region: no-drag;
 }
 .msg-row:hover {
   background: rgba(var(--ink), 0.06);
@@ -170,7 +168,6 @@
     opacity 0.15s,
     color 0.15s,
     background 0.15s;
-  -webkit-app-region: no-drag;
 }
 .msg-del:hover {
   opacity: 1 !important;
@@ -216,7 +213,6 @@
   border: 1px solid var(--panel-border);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   cursor: pointer;
-  -webkit-app-region: no-drag;
   transition:
     transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.2s;
@@ -240,7 +236,6 @@
   font-size: 11px;
   font-weight: 500;
   text-align: center;
-  -webkit-app-region: no-drag;
 }
 .notify-fold::before,
 .notify-fold::after {
@@ -379,7 +374,6 @@ html[data-scheme='light'] .notify-card:hover {
     opacity 0.15s,
     background 0.15s,
     color 0.15s;
-  -webkit-app-region: no-drag;
 }
 .notify-card:hover .notify-close {
   opacity: 1;

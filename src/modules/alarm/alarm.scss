@@ -31,7 +31,6 @@
   transition:
     background 0.25s,
     color 0.25s;
-  -webkit-app-region: no-drag;
 }
 .alarm-mode-btn i {
   font-size: 11px;
@@ -92,7 +91,6 @@
     background 0.2s,
     color 0.2s,
     border-color 0.2s;
-  -webkit-app-region: no-drag;
 }
 .alarm-preset:hover {
   background: rgba(var(--ink), 0.1);
@@ -124,7 +122,6 @@
   border-radius: 8px;
   outline: none;
   font-family: inherit;
-  -webkit-app-region: no-drag;
 }
 .alarm-min-input:focus {
   border-color: var(--accent);
@@ -145,7 +142,6 @@
   background: rgba(var(--ink), 0.12);
   outline: none;
   cursor: pointer;
-  -webkit-app-region: no-drag;
 }
 .alarm-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -173,7 +169,6 @@
     transform 0.2s,
     box-shadow 0.2s;
   box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 32%, transparent);
-  -webkit-app-region: no-drag;
 }
 .alarm-action-btn:hover {
   transform: scale(1.02);
@@ -230,7 +225,6 @@
   background: rgba(var(--ink), 0.04);
   cursor: pointer;
   transition: background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .alarm-row:hover {
   background: rgba(var(--ink), 0.08);
@@ -262,7 +256,6 @@
 }
 .alarm-row-toggle {
   flex-shrink: 0;
-  -webkit-app-region: no-drag;
 }
 
 .alarm-fab {
@@ -282,7 +275,6 @@
   justify-content: center;
   box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
   transition: transform 0.2s;
-  -webkit-app-region: no-drag;
 }
 .alarm-fab:hover {
   transform: scale(1.08);
@@ -299,7 +291,6 @@
   border-radius: 8px;
   outline: none;
   font-family: inherit;
-  -webkit-app-region: no-drag;
 }
 .alarm-add-label:focus {
   border-color: rgba(var(--ink), 0.22);
@@ -326,7 +317,6 @@
   align-items: center;
   gap: 6px;
   padding: 8px 18px 10px;
-  -webkit-app-region: no-drag;
 }
 .alarm-editor-time {
   display: flex;
@@ -350,7 +340,6 @@
   transition:
     background 0.2s,
     color 0.2s;
-  -webkit-app-region: no-drag;
 }
 .alarm-editor-seg.active {
   background: color-mix(in srgb, var(--accent) 25%, transparent);
@@ -498,7 +487,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .alarm-preview-btn:hover {
   color: var(--island-text);
@@ -515,7 +503,6 @@
   padding: 0 12px;
   color: var(--island-text);
   pointer-events: auto;
-  -webkit-app-region: no-drag;
 }
 .alarm-quick-ring {
   flex-shrink: 0;
@@ -559,7 +546,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .alarm-quick-stop:hover {
   color: var(--island-text);
@@ -585,7 +571,6 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
   cursor: pointer;
   pointer-events: auto;
-  -webkit-app-region: no-drag;
   transition:
     scale 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275),
     box-shadow 0.2s,
@@ -668,7 +653,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .alarm-mini-stop:hover {
   color: #fff;

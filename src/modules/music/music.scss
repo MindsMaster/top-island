@@ -54,7 +54,6 @@
   justify-content: center;
   font-size: 14px;
   transition: all 0.2s;
-  -webkit-app-region: no-drag;
 }
 .ctrl-btn-lg:hover {
   color: var(--island-text);
@@ -92,7 +91,6 @@
   background: rgba(var(--ink), 0.12);
   outline: none;
   cursor: pointer;
-  -webkit-app-region: no-drag;
 }
 .vol-slider-lg::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -139,7 +137,6 @@
   background: rgba(var(--ink), 0.12);
   outline: none;
   cursor: pointer;
-  -webkit-app-region: no-drag;
 }
 /* 源不支持 seek 只读 */
 .progress-slider-lg.readonly {
@@ -192,12 +189,6 @@
   color: var(--island-text);
   font-size: 13.5px;
   font-weight: 600;
-}
-
-.ctrl-btn-sm,
-.ctrl-btn-lg,
-.vol-slider-lg {
-  -webkit-app-region: no-drag;
 }
 
 .fade-enter-active,

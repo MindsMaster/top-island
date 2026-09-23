@@ -35,7 +35,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .clip-refresh-btn {
   background: none;
@@ -52,7 +51,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
   margin-left: auto;
 }
 .clip-refresh-btn:hover {
@@ -85,7 +83,6 @@
   border-radius: 6px;
   outline: none;
   font-family: inherit;
-  -webkit-app-region: no-drag;
 }
 .clip-search-input:focus {
   border-color: rgba(var(--ink), 0.2);
@@ -222,7 +219,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .clip-act-btn:hover {
   background: rgba(var(--ink), 0.08);

@@ -44,7 +44,6 @@
   border-radius: 8px;
   outline: none;
   font-family: inherit;
-  -webkit-app-region: no-drag;
 }
 .tasks-input:focus {
   border-color: rgba(var(--ink), 0.25);
@@ -65,7 +64,6 @@
   transition:
     transform 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .tasks-add-btn:hover:not(:disabled) {
   background: rgba(var(--ink), 0.18);
@@ -141,7 +139,6 @@
   display: flex;
   align-items: center;
   line-height: 1.2;
-  -webkit-app-region: no-drag;
 }
 .task-row.done .task-check {
   color: var(--success);
@@ -200,7 +197,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .task-del:hover {
   color: var(--danger);
@@ -224,7 +220,6 @@
     color 0.3s,
     background 0.3s,
     transform 0.3s;
-  -webkit-app-region: no-drag;
 }
 .task-done-btn:hover {
   color: var(--success);
@@ -250,7 +245,6 @@
   transition:
     color 0.2s,
     background 0.2s;
-  -webkit-app-region: no-drag;
 }
 .tasks-history-toggle:hover {
   color: rgba(var(--ink), 0.7);
@@ -277,7 +271,6 @@
   padding: 4px 12px;
   color: var(--island-text);
   pointer-events: auto;
-  -webkit-app-region: no-drag;
 }
 .reminder-top {
   display: flex;
@@ -319,7 +312,6 @@
   transition:
     background 0.2s,
     transform 0.15s;
-  -webkit-app-region: no-drag;
 }
 .reminder-done-btn:hover {
   background: rgba(111, 255, 123, 0.3);
