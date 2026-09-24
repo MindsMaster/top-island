@@ -26,13 +26,10 @@ pub struct AppVersionInfo {
 
 #[tauri::command]
 pub fn app_get_version(app: AppHandle) -> AppVersionInfo {
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
     AppVersionInfo {
         version: app.package_info().version.to_string(),
         git_hash: option_env!("TI_GIT_HASH").unwrap_or("").into(),
-        packaged: !exe.contains("\\target\\"),
+        packaged: !tauri::is_dev(),
     }
 }
 

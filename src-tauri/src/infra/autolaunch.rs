@@ -12,11 +12,10 @@ const VALUE_NAME: &str = "cc.azuramc.topisland";
 const STALE_VALUE_NAMES: &[&str] = &["TopIsland", "electron.app.TopIsland"];
 
 pub fn sync(enabled: bool) -> AppResult<()> {
-    let exe = std::env::current_exe().map_err(|e| AppError::io_at("定位可执行文件", &e))?;
-    // dev 产物不登记自启
-    if exe.to_string_lossy().contains("\\target\\") {
+    if tauri::is_dev() {
         return Ok(());
     }
+    let exe = std::env::current_exe().map_err(|e| AppError::io_at("定位可执行文件", &e))?;
     let subkey = HSTRING::from(RUN_KEY);
     let name = HSTRING::from(VALUE_NAME);
     unsafe {

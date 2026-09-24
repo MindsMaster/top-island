@@ -51,7 +51,7 @@ pub fn status() -> UpdateStatus {
         .unwrap_or_else(|e| e.into_inner())
         .clone()
         .unwrap_or_else(|| {
-            if cfg!(debug_assertions) {
+            if tauri::is_dev() {
                 UpdateStatus::new("dev")
             } else {
                 UpdateStatus::new("not-available")
@@ -96,8 +96,7 @@ async fn run_check(app: AppHandle, force: bool) -> UpdateStatus {
     if !force && checked_today() {
         return status();
     }
-    if cfg!(debug_assertions) {
-        // dev 构建无更新
+    if tauri::is_dev() {
         let st = UpdateStatus::new("dev");
         set_status(st.clone());
         return st;
