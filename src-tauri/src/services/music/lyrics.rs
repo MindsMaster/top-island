@@ -1,9 +1,11 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
+use base64::engine::DecodePaddingMode;
+use base64::Engine;
 use island_core::{LyricLine, LyricsData};
 
-use super::b64;
 use super::provider::TrackMeta;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
@@ -386,6 +388,14 @@ fn search_qq(title: &str, artist: &str) -> Option<(String, i64)> {
     mid_duration(first)
 }
 
+/// QQ 歌词夹带换行 填充不齐
+const LENIENT_BASE64: GeneralPurpose = GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    GeneralPurposeConfig::new()
+        .with_decode_padding_mode(DecodePaddingMode::Indifferent)
+        .with_decode_allow_trailing_bits(true),
+);
+
 fn fetch_qq_inner(title: &str, artist: &str) -> Option<LyricsData> {
     let (songmid, duration_ms) = search_qq(title, artist)?;
     let json = fetch_json(
@@ -401,7 +411,8 @@ fn fetch_qq_inner(title: &str, artist: &str) -> Option<LyricsData> {
             duration_ms,
         });
     }
-    let lrc_bytes = b64::decode(lrc_b64);
+    let cleaned: String = lrc_b64.split_ascii_whitespace().collect();
+    let lrc_bytes = LENIENT_BASE64.decode(cleaned).ok()?;
     let lrc = String::from_utf8_lossy(&lrc_bytes);
     Some(LyricsData {
         lines: parse_lrc(&lrc),
@@ -446,6 +457,12 @@ pub fn fetch_lyrics(title: &str, artist: &str) -> Option<LyricsData> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lenient_base64_accepts_missing_padding() {
+        assert_eq!(LENIENT_BASE64.decode("TWE").unwrap(), b"Ma");
+        assert_eq!(LENIENT_BASE64.decode("TWE=").unwrap(), b"Ma");
+    }
 
     #[test]
     fn url_encode_keeps_unreserved_and_percent_encodes_utf8() {
