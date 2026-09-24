@@ -38,7 +38,6 @@ macro_rules! ipc_handlers {
             crate::ipc::app::diag_reveal,
             crate::ipc::window::window_close,
             crate::ipc::window::window_close_self,
-            crate::ipc::window::window_get_cursor_point,
             crate::ipc::window::window_set_hot_rect,
             crate::ipc::weather::weather_ip_city,
             crate::ipc::weather::weather_geocode,

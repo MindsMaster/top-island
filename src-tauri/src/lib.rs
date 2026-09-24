@@ -4,42 +4,9 @@ mod ipc;
 mod services;
 
 use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::Manager;
 
 use island_core::AppSettings;
-use island_windows::{InputHandlers, Rect};
-
-fn init_input(app: &AppHandle) {
-    let Some(win) = app.get_webview_window("island") else {
-        return;
-    };
-    let (Ok(pos), Ok(size), Ok(dpi)) = (win.outer_position(), win.outer_size(), win.scale_factor())
-    else {
-        return;
-    };
-    // 前端接管前的初始热区
-    let region = Rect {
-        left: pos.x,
-        top: pos.y,
-        right: pos.x + size.width as i32,
-        bottom: pos.y + (72.0 * dpi) as i32,
-    };
-
-    let hover_app = app.clone();
-    let clip_app = app.clone();
-    island_windows::start_input(InputHandlers {
-        interactive_rect: Some(region),
-        on_hover: Some(Box::new(move |change| {
-            if let Some(win) = hover_app.get_webview_window("island") {
-                let _ = win.set_ignore_cursor_events(!change.interactive);
-                let _ = hover_app.emit("island-hover", change.hover);
-            }
-        })),
-        on_clipboard: Some(Box::new(move || {
-            let _ = clip_app.emit("clipboard:changed", ());
-        })),
-    });
-}
 
 pub fn run() {
     tauri::Builder::default()
@@ -62,13 +29,11 @@ pub fn run() {
             let settings = infra::persist::get("settings")
                 .map(AppSettings::from_value)
                 .unwrap_or_default();
-            // 须先于 init_input 摆好窗位
+            // 须先于热区初始化摆好窗位
             services::apply_settings(app.handle(), &settings)?;
 
-            let win = app.get_webview_window("island").expect("island window");
-            win.set_ignore_cursor_events(true)?;
             infra::watchdog::start(app.handle().clone());
-            init_input(app.handle());
+            infra::input::start(app.handle())?;
             infra::tray::build(app.handle())?;
             services::update::start(app.handle());
             Ok(())

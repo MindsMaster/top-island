@@ -91,7 +91,7 @@ fn evaluate(st: &mut HoverState) {
     }
 }
 
-pub fn cursor_position() -> (i32, i32) {
+fn cursor_position() -> (i32, i32) {
     let mut pt = POINT::default();
     if unsafe { GetCursorPos(&mut pt) }.is_ok() {
         (pt.x, pt.y)

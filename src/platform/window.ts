@@ -12,11 +12,8 @@ export const windowApi = {
   /** 仅关本窗口 */
   closeSelf: () => call('window_close_self'),
 
-  /** mouseleave 可能不发 看门狗兜底 */
-  cursorPoint: () => call<{ x: number; y: number }>('window_get_cursor_point'),
-
   /** 穿透态唯一可靠悬停源 */
-  onHover: (cb: (inside: boolean) => void) => on<boolean>('island-hover', cb),
+  onHover: (cb: (inside: boolean) => void) => on<boolean>('island:hover', cb),
 
   /** 热区物理坐标变了须重报 */
   onGeometryChanged: (cb: () => void) => {

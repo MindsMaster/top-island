@@ -9,7 +9,7 @@ interface IslandModeOptions {
   holdContent: () => boolean;
 }
 
-/** 穿透态 DOM 事件拿不到 悬停以 island-hover 为准 */
+/** 穿透态 DOM 事件拿不到 悬停以 island:hover 为准 */
 export function useIslandMode(options: IslandModeOptions) {
   const mode = ref<IslandMode>('still');
   const isHovered = ref(false);

@@ -1,4 +1,5 @@
 pub mod autolaunch;
+pub mod input;
 pub mod layout;
 pub mod legacy;
 pub mod paths;
