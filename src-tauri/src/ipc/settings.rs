@@ -9,12 +9,15 @@ use super::off_thread;
 
 #[tauri::command]
 pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult<()> {
-    let value = serde_json::to_value(&settings)
-        .map_err(|e| AppError::new(format!("error.io: 序列化设置: {e}")))?;
-    infra::persist::set("settings", value)?;
-    services::apply_settings(&app, &settings)?;
-    let _ = app.emit("settings:changed", &settings);
-    Ok(())
+    off_thread(move || {
+        let value = serde_json::to_value(&settings)
+            .map_err(|e| AppError::new(format!("error.io: 序列化设置: {e}")))?;
+        infra::persist::set("settings", value)?;
+        services::apply_settings(&app, &settings)?;
+        let _ = app.emit("settings:changed", &settings);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]

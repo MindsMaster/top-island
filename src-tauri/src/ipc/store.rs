@@ -15,6 +15,6 @@ pub async fn store_set(key: String, value: serde_json::Value) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn store_clear(app: tauri::AppHandle) -> AppResult<()> {
-    infra::persist::clear()?;
+    off_thread(infra::persist::clear).await?;
     app.restart();
 }
