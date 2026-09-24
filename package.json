@@ -2,6 +2,7 @@
   "name": "top-island",
   "version": "0.0.3",
   "description": "Top Island",
+  "type": "module",
   "author": {
     "name": "an5w1r@163.com"
   },
