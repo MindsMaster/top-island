@@ -70,20 +70,22 @@ export async function initAlarm() {
   if (tickTimer === null) tickTimer = window.setInterval(tick, 1000);
 }
 
-async function soundDataUrl(path: string): Promise<string | null> {
+async function soundUrl(path: string): Promise<string | null> {
   const cached = soundCache.get(path);
   if (cached) return cached;
-  const data = await alarmApi.soundData(path);
-  if (data) soundCache.set(path, data);
-  return data;
+  const data = await alarmApi.soundData(path).catch(() => null);
+  if (!data) return null;
+  const url = URL.createObjectURL(new Blob([data]));
+  soundCache.set(path, url);
+  return url;
 }
 
 async function playRingSound() {
   const s = alarmState.sound ?? alarmState.defaultSounds[0];
   if (!s) return;
-  const data = await soundDataUrl(s.path);
-  if (!data || !alarmState.ringing) return;
-  audioEl = new Audio(data);
+  const url = await soundUrl(s.path);
+  if (!url || !alarmState.ringing) return;
+  audioEl = new Audio(url);
   audioEl.loop = true;
   audioEl.play().catch(() => {});
 }
@@ -100,9 +102,9 @@ export async function preview() {
   stopSound();
   const s = alarmState.sound ?? alarmState.defaultSounds[0];
   if (!s) return;
-  const data = await soundDataUrl(s.path);
-  if (!data) return;
-  audioEl = new Audio(data);
+  const url = await soundUrl(s.path);
+  if (!url) return;
+  audioEl = new Audio(url);
   audioEl.play().catch(() => {});
 }
 

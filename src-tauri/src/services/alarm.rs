@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// 镜像前端 AlarmSound
 #[derive(Debug, Clone, Serialize)]
@@ -13,7 +13,6 @@ pub struct AlarmSound {
     pub name: String,
 }
 
-/// 走 IPC 限 20MB
 const MAX_SOUND_BYTES: u64 = 20 * 1024 * 1024;
 
 const AUDIO_EXTENSIONS: [&str; 5] = ["wav", "mp3", "ogg", "m4a", "flac"];
@@ -49,36 +48,15 @@ pub fn list_default_sounds() -> AppResult<Vec<AlarmSound>> {
         .collect())
 }
 
-/// file:// 受限 主进程转运
-pub fn sound_data_url(path: &str) -> AppResult<Option<String>> {
-    let Some(mime) = mime_for_ext(path) else {
-        return Ok(None);
-    };
-    let meta = match std::fs::metadata(path) {
-        Ok(meta) => meta,
-        Err(e) => {
-            eprintln!("[alarm] stat {path} 失败: {e}");
-            return Ok(None);
-        }
-    };
-    if meta.len() > MAX_SOUND_BYTES {
-        eprintln!(
-            "[alarm] {path} 超过 20MB 上限（{} 字节），拒绝转运",
-            meta.len()
-        );
-        return Ok(None);
+pub fn sound_bytes(path: &str) -> AppResult<Vec<u8>> {
+    if !is_supported_audio(path) {
+        return Err(AppError::new("error.denied: 不支持的音频格式"));
     }
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            eprintln!("[alarm] 读取 {path} 失败: {e}");
-            return Ok(None);
-        }
-    };
-    Ok(Some(format!(
-        "data:{mime};base64,{}",
-        base64_encode(&bytes)
-    )))
+    let meta = std::fs::metadata(path).map_err(|e| AppError::io_at("读取铃声", &e))?;
+    if meta.len() > MAX_SOUND_BYTES {
+        return Err(AppError::new("error.denied: 铃声超过 20MB"));
+    }
+    std::fs::read(path).map_err(|e| AppError::io_at("读取铃声", &e))
 }
 
 pub fn pick_sound() -> AppResult<Option<AlarmSound>> {
@@ -117,46 +95,16 @@ fn is_alarm_wav(name: &str) -> bool {
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
-fn mime_for_ext(path: &str) -> Option<&'static str> {
-    let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
-    match ext.as_str() {
-        "wav" => Some("audio/wav"),
-        "mp3" => Some("audio/mpeg"),
-        "ogg" => Some("audio/ogg"),
-        "m4a" => Some("audio/mp4"),
-        "flac" => Some("audio/flac"),
-        _ => None,
-    }
-}
-
-/// 无 base64 依赖 手写
-const B64_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-fn base64_encode(data: &[u8]) -> String {
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let n = u32::from(chunk[0]) << 16
-            | u32::from(*chunk.get(1).unwrap_or(&0)) << 8
-            | u32::from(*chunk.get(2).unwrap_or(&0));
-        out.push(B64_ALPHABET[(n >> 18 & 63) as usize] as char);
-        out.push(B64_ALPHABET[(n >> 12 & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            B64_ALPHABET[(n >> 6 & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            B64_ALPHABET[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    out
+fn is_supported_audio(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| AUDIO_EXTENSIONS.iter().any(|a| a.eq_ignore_ascii_case(ext)))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{alarm_display_name, base64_encode, is_alarm_wav, mime_for_ext};
+    use super::{alarm_display_name, is_alarm_wav, is_supported_audio};
 
     #[test]
     fn alarm_display_name_strips_leading_zero_from_numbered_alarms() {
@@ -179,34 +127,11 @@ mod tests {
     }
 
     #[test]
-    fn mime_for_ext_maps_supported_audio_and_rejects_the_rest() {
-        assert_eq!(mime_for_ext(r"C:\a\b.wav"), Some("audio/wav"));
-        assert_eq!(mime_for_ext("x.MP3"), Some("audio/mpeg"));
-        assert_eq!(mime_for_ext("x.ogg"), Some("audio/ogg"));
-        assert_eq!(mime_for_ext("x.m4a"), Some("audio/mp4"));
-        assert_eq!(mime_for_ext("x.flac"), Some("audio/flac"));
-        assert_eq!(mime_for_ext("x.exe"), None);
-        assert_eq!(mime_for_ext("noext"), None);
-    }
-
-    #[test]
-    fn base64_encode_matches_rfc4648_test_vectors() {
-        let cases = [
-            ("", ""),
-            ("f", "Zg=="),
-            ("fo", "Zm8="),
-            ("foo", "Zm9v"),
-            ("foob", "Zm9vYg=="),
-            ("fooba", "Zm9vYmE="),
-            ("foobar", "Zm9vYmFy"),
-        ];
-        for (input, expected) in cases {
-            assert_eq!(base64_encode(input.as_bytes()), expected);
-        }
-    }
-
-    #[test]
-    fn base64_encode_handles_non_ascii_binary_bytes() {
-        assert_eq!(base64_encode(&[0x00, 0xFF, 0x80]), "AP+A");
+    fn is_supported_audio_matches_extensions_case_insensitively() {
+        assert!(is_supported_audio(r"C:\a\b.wav"));
+        assert!(is_supported_audio("x.MP3"));
+        assert!(is_supported_audio("x.flac"));
+        assert!(!is_supported_audio("x.exe"));
+        assert!(!is_supported_audio("noext"));
     }
 }

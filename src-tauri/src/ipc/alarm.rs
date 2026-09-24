@@ -1,3 +1,5 @@
+use tauri::ipc::Response;
+
 use crate::error::AppResult;
 use crate::services;
 use crate::services::alarm::AlarmSound;
@@ -10,8 +12,10 @@ pub async fn alarm_sound_list() -> AppResult<Vec<AlarmSound>> {
 }
 
 #[tauri::command]
-pub async fn alarm_sound_data(path: String) -> AppResult<Option<String>> {
-    off_thread(move || services::alarm::sound_data_url(&path)).await
+pub async fn alarm_sound_data(path: String) -> AppResult<Response> {
+    off_thread(move || services::alarm::sound_bytes(&path))
+        .await
+        .map(Response::new)
 }
 
 /// 取消返回 None
