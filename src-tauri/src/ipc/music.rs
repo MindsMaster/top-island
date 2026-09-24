@@ -1,4 +1,4 @@
-use island_core::{LyricsData, MusicAction, MusicArtwork, MusicState};
+use island_core::{LyricsData, MusicAction, MusicState};
 
 use super::off_thread;
 use crate::error::AppResult;
@@ -18,12 +18,6 @@ pub async fn music_control(action: MusicAction, level: Option<i64>) -> AppResult
 #[tauri::command]
 pub async fn music_seek(position_ms: i64) -> AppResult<bool> {
     off_thread(move || Ok(services::music::seek(position_ms))).await
-}
-
-/// hash 已切歌时回 None
-#[tauri::command]
-pub async fn music_artwork(hash: String) -> AppResult<Option<MusicArtwork>> {
-    off_thread(move || Ok(services::music::artwork(&hash))).await
 }
 
 /// id 已切歌时回 None

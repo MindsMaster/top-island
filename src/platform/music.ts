@@ -1,5 +1,5 @@
 import { call, on } from './invoke';
-import type { BridgeStatus, LyricsData, MusicAction, MusicArtwork, MusicState } from './types';
+import type { BridgeStatus, LyricsData, MusicAction, MusicState } from './types';
 
 export const musicApi = {
   poll: () => call<MusicState>('music_poll'),
@@ -11,9 +11,6 @@ export const musicApi = {
     call<string>('music_control', { action, level: level ?? null }),
 
   seek: (positionMs: number) => call<boolean>('music_seek', { positionMs }),
-
-  /** hash 不匹配返回 null */
-  artwork: (hash: string) => call<MusicArtwork | null>('music_artwork', { hash }),
 
   /** id 不匹配返回 null */
   lyrics: (id: string) => call<LyricsData | null>('music_lyrics', { id }),

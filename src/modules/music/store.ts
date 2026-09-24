@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue';
 import { musicApi } from '@/platform/music';
+import { mediaUrl } from '@/platform/media';
 import { settings } from '@/core/settings';
 import { on as onAppEvent } from '@/core/bus';
 import type { LyricLine, MusicAction, MusicState } from '@/platform/types';
@@ -37,7 +38,6 @@ let missCount = 0;
 let pollTimer: number | null = null;
 let tickTimer: number | null = null;
 let watchdogTimer: number | null = null;
-let artworkHashLoaded = '';
 let lyricsIdLoaded = '';
 let lastTickAt = 0;
 
@@ -66,7 +66,6 @@ function clearState() {
   musicState.songId = '';
   musicState.isPlaying = false;
   musicState.artworkUrl = '';
-  artworkHashLoaded = '';
   musicState.durationMs = 0;
   musicState.lyricLines = [];
   lyricsIdLoaded = '';
@@ -80,16 +79,6 @@ function loadLyrics(id: string) {
     .lyrics(id)
     .then((data) => {
       if (data && lyricsIdLoaded === id) musicState.lyricLines = data.lines;
-    })
-    .catch(() => {});
-}
-
-function loadArtwork(hash: string) {
-  artworkHashLoaded = hash;
-  musicApi
-    .artwork(hash)
-    .then((art) => {
-      if (art && artworkHashLoaded === hash) musicState.artworkUrl = art.dataUrl;
     })
     .catch(() => {});
 }
@@ -126,16 +115,10 @@ function handleState(data: MusicState) {
   musicState.durationMs = data.durationMs || 0;
   musicState.seekSupported = !!data.seekSupported;
 
-  if (data.artworkUrl) {
-    if (data.artworkUrl !== musicState.artworkUrl) musicState.artworkUrl = data.artworkUrl;
-    artworkHashLoaded = '';
-  } else if (data.artworkHash && data.artworkHash !== artworkHashLoaded) {
-    loadArtwork(data.artworkHash);
-  }
+  const artworkUrl = data.artworkUrl || (data.artworkHash ? mediaUrl('artwork', data.artworkHash) : '');
+  if (artworkUrl || trackChanged) musicState.artworkUrl = artworkUrl;
 
   if (trackChanged) {
-    musicState.artworkUrl = data.artworkUrl || '';
-    artworkHashLoaded = '';
     musicState.lyricLines = [];
     lyricsIdLoaded = '';
   }

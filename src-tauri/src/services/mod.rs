@@ -7,6 +7,7 @@ use crate::infra;
 
 pub mod alarm;
 pub mod clipboard;
+pub mod media;
 pub mod music;
 pub mod notify;
 pub mod update;

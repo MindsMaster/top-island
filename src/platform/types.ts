@@ -17,15 +17,10 @@ export interface MusicState {
   durationMs?: number;
   seekSupported: boolean;
   artworkUrl?: string;
-  /** 据此调 musicArtwork 拉取一次 */
+  /** 经 island 协议 artwork 路由取图 */
   artworkHash?: string;
   /** 据此调 musicLyrics 拉取一次 */
   lyricsId?: string;
-}
-
-export interface MusicArtwork {
-  hash: string;
-  dataUrl: string;
 }
 
 export interface LyricLine {

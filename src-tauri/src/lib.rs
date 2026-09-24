@@ -38,6 +38,7 @@ pub fn run() {
             services::update::start(app.handle());
             Ok(())
         })
+        .register_asynchronous_uri_scheme_protocol(ipc::media::SCHEME, ipc::media::handle)
         .invoke_handler(crate::ipc_handlers!())
         .run(tauri::generate_context!())
         .expect("top island run");

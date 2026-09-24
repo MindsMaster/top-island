@@ -3,11 +3,11 @@ use std::time::Duration;
 
 use island_core::LyricsData;
 
-use super::b64;
 use super::hash::content_hash;
 use super::lyrics as api;
 use super::media_sources;
 use super::provider::{MusicProvider, ProviderState, TrackMeta};
+use crate::services::media::Media;
 
 #[derive(Debug)]
 struct Slot<T> {
@@ -40,7 +40,7 @@ impl<T> Slot<T> {
 #[derive(Debug)]
 pub struct Artwork {
     pub hash: String,
-    pub data_url: String,
+    pub media: Media,
 }
 
 #[derive(Debug, Default)]
@@ -190,10 +190,10 @@ impl Resolver {
         out
     }
 
-    pub fn artwork(&self, hash: &str) -> Option<(String, String)> {
+    pub fn artwork(&self, hash: &str) -> Option<Media> {
         let c = self.lock();
         let (_, a) = c.artwork.value.as_ref()?;
-        (a.hash == hash).then(|| (a.hash.clone(), a.data_url.clone()))
+        (a.hash == hash).then(|| a.media.clone())
     }
 
     pub fn lyrics(&self, id: &str) -> Option<LyricsData> {
@@ -299,14 +299,10 @@ impl Resolver {
                     if this.lock().artwork.key != key_for_check {
                         return None;
                     }
-                    if let Some(bytes) = provider.artwork_bytes() {
+                    if let Some(media) = provider.artwork_bytes().map(Media::image_or_jpeg) {
                         return Some(Artwork {
-                            hash: content_hash(&bytes),
-                            data_url: format!(
-                                "data:{};base64,{}",
-                                sniff_mime(&bytes),
-                                b64::encode(&bytes)
-                            ),
+                            hash: content_hash(&media.bytes),
+                            media,
                         });
                     }
                     std::thread::sleep(Duration::from_millis(if attempt < 3 { 500 } else { 1000 }));
@@ -317,28 +313,9 @@ impl Resolver {
     }
 }
 
-fn sniff_mime(bytes: &[u8]) -> &'static str {
-    match bytes {
-        [0x89, 0x50, ..] => "image/png",
-        [0xFF, 0xD8, ..] => "image/jpeg",
-        [0x47, 0x49, ..] => "image/gif",
-        [0x42, 0x4D, ..] => "image/bmp",
-        _ => "image/jpeg",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sniff_mime_detects_common_image_formats() {
-        assert_eq!(sniff_mime(&[0x89, 0x50, 0x4E, 0x47]), "image/png");
-        assert_eq!(sniff_mime(&[0xFF, 0xD8, 0xFF]), "image/jpeg");
-        assert_eq!(sniff_mime(&[0x47, 0x49, 0x46]), "image/gif");
-        assert_eq!(sniff_mime(&[0x42, 0x4D, 0x00]), "image/bmp");
-        assert_eq!(sniff_mime(&[0x00, 0x01]), "image/jpeg");
-    }
 
     #[test]
     fn slot_get_only_hits_matching_key() {

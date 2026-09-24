@@ -29,19 +29,12 @@ pub struct MusicState {
     pub seek_supported: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artwork_url: Option<String>,
-    /// 据此调 music_artwork 拉取一次
+    /// 经 island 协议 artwork 路由取图
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artwork_hash: Option<String>,
     /// 据此调 music_lyrics 拉取一次
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MusicArtwork {
-    pub hash: String,
-    pub data_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

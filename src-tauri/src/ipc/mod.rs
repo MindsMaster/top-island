@@ -3,6 +3,7 @@ use crate::error::{AppError, AppResult};
 pub mod alarm;
 pub mod app;
 pub mod clipboard;
+pub mod media;
 pub mod music;
 pub mod notify;
 pub mod settings;
@@ -49,7 +50,6 @@ macro_rules! ipc_handlers {
             crate::ipc::music::music_poll,
             crate::ipc::music::music_control,
             crate::ipc::music::music_seek,
-            crate::ipc::music::music_artwork,
             crate::ipc::music::music_lyrics,
             crate::ipc::music::music_bridge_status,
             crate::ipc::notify::notify_activate,

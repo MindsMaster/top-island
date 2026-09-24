@@ -2058,6 +2058,7 @@ dependencies = [
  "island-core",
  "island-wechat",
  "island-windows",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tauri",

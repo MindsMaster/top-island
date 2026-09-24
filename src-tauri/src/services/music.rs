@@ -2,9 +2,10 @@ use std::sync::{Mutex, Once, OnceLock};
 
 use tauri::AppHandle;
 
-use island_core::{AppSettings, LyricsData, MusicAction, MusicArtwork, MusicState};
+use island_core::{AppSettings, LyricsData, MusicAction, MusicState};
 
 use crate::error::AppResult;
+use crate::services::media::Media;
 
 mod b64;
 mod hash;
@@ -141,9 +142,8 @@ fn fallback_track(source_app_id: &str) -> String {
 }
 
 /// hash 不符即切歌
-pub fn artwork(hash: &str) -> Option<MusicArtwork> {
-    let (hash, data_url) = SERVICE.get()?.resolver.artwork(hash)?;
-    Some(MusicArtwork { hash, data_url })
+pub fn artwork(hash: &str) -> Option<Media> {
+    SERVICE.get()?.resolver.artwork(hash)
 }
 
 /// id 不符即切歌
