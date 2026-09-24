@@ -9,7 +9,6 @@
     "beforeDevCommand": "pnpm vite"
   },
   "app": {
-    "withGlobalTauri": true,
     "windows": [
       {
         "label": "island",
@@ -43,7 +42,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "img-src": "'self' data: https: http:",
+        "media-src": "'self' blob:",
+        "style-src": "'self' 'unsafe-inline'",
+        "font-src": "'self' data:"
+      },
+      "dangerousDisableAssetCspModification": ["style-src"]
     }
   },
   "plugins": {
