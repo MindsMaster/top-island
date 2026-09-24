@@ -53,7 +53,6 @@ macro_rules! ipc_handlers {
             crate::ipc::music::music_lyrics,
             crate::ipc::music::music_bridge_status,
             crate::ipc::notify::notify_activate,
-            crate::ipc::notify::notify_image,
             crate::ipc::clipboard::clipboard_read_text,
             crate::ipc::clipboard::clipboard_write_text,
             crate::ipc::clipboard::clipboard_has_image,

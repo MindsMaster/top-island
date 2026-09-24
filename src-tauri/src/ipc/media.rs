@@ -23,6 +23,7 @@ fn respond(path: &str) -> Response<Vec<u8>> {
     let (route, arg) = path.split_once('/').unwrap_or((&path, ""));
     let media = match route {
         "artwork" => services::music::artwork(arg),
+        "notify" => services::notify::notify_image(arg),
         _ => None,
     };
     let builder = Response::builder();

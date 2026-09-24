@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@/core/i18n';
-import { notifyState, activate, clearAll, remove, formatTime } from './store';
+import { notifyState, activate, clearAll, remove, formatTime, imageFailed } from './store';
 
 const { t } = useI18n();
 const snap = notifyState;
@@ -27,7 +27,13 @@ const snap = notifyState;
     </div>
     <div v-for="item in snap.items" :key="item.key" class="msg-row" @click.stop="activate(item)">
       <div class="msg-avatar">
-        <img v-if="snap.images[item.key]" :src="snap.images[item.key]" alt="" draggable="false" />
+        <img
+          v-if="snap.images[item.key]"
+          :src="snap.images[item.key]"
+          alt=""
+          draggable="false"
+          @error="imageFailed(item, $event)"
+        />
         <span v-else class="msg-avatar-fallback">{{ (item.app || '?').slice(0, 1) }}</span>
       </div>
       <div class="msg-content">

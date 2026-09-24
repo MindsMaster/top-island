@@ -8,6 +8,7 @@ use tauri::{AppHandle, Emitter};
 use island_core::{AppSettings, NotificationItem};
 
 use crate::infra::persist;
+use crate::services::media::Media;
 
 /// 同 winbridge 轮询节奏
 const POLL_INTERVAL: Duration = Duration::from_millis(1500);
@@ -208,15 +209,25 @@ fn restore_all_banners() {
 }
 
 /// 失败结果也缓存
-#[derive(Debug, Default)]
-struct ImageLru {
-    map: HashMap<String, Option<String>>,
+#[derive(Debug)]
+struct ImageLru<V> {
+    map: HashMap<String, Option<V>>,
     /// 队首最久未用
     order: VecDeque<String>,
 }
 
-impl ImageLru {
-    fn get(&mut self, key: &str) -> Option<Option<String>> {
+/// 免 V: Default 约束
+impl<V> Default for ImageLru<V> {
+    fn default() -> Self {
+        Self {
+            map: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+}
+
+impl<V: Clone> ImageLru<V> {
+    fn get(&mut self, key: &str) -> Option<Option<V>> {
         if !self.map.contains_key(key) {
             return None;
         }
@@ -228,7 +239,7 @@ impl ImageLru {
         self.map.get(key).cloned()
     }
 
-    fn insert(&mut self, key: String, value: Option<String>) {
+    fn insert(&mut self, key: String, value: Option<V>) {
         if self.map.contains_key(&key) {
             self.map.insert(key.clone(), value);
             if let Some(pos) = self.order.iter().position(|k| *k == key) {
@@ -248,15 +259,15 @@ impl ImageLru {
     }
 }
 
-static IMAGE_CACHE: std::sync::LazyLock<Mutex<ImageLru>> =
+static IMAGE_CACHE: std::sync::LazyLock<Mutex<ImageLru<Media>>> =
     std::sync::LazyLock::new(|| Mutex::new(ImageLru::default()));
 
-fn lock_cache() -> MutexGuard<'static, ImageLru> {
+fn lock_cache() -> MutexGuard<'static, ImageLru<Media>> {
     IMAGE_CACHE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// 认魔数不认扩展名或目录
-pub fn notify_image(src: &str) -> Option<String> {
+pub fn notify_image(src: &str) -> Option<Media> {
     let src = src.trim();
     if src.is_empty() {
         return None;
@@ -269,11 +280,9 @@ pub fn notify_image(src: &str) -> Option<String> {
     out
 }
 
-fn load_image(src: &str) -> Option<String> {
+fn load_image(src: &str) -> Option<Media> {
     if let Some(aumid) = src.strip_prefix("aumid:") {
-        let bytes = island_windows::appid::icon_bytes(aumid)?;
-        let mime = sniff_image_mime(&bytes)?;
-        return Some(format!("data:{mime};base64,{}", base64_encode(&bytes)));
+        return island_windows::appid::icon_bytes(aumid).and_then(Media::image);
     }
     let lower = src.to_ascii_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") {
@@ -282,7 +291,7 @@ fn load_image(src: &str) -> Option<String> {
     read_local(&strip_file_scheme(src))
 }
 
-fn fetch_http(url: &str) -> Option<String> {
+fn fetch_http(url: &str) -> Option<Media> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(5)))
         .build()
@@ -294,23 +303,18 @@ fn fetch_http(url: &str) -> Option<String> {
             return None;
         }
     };
-    let mime = resp
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(';').next())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("image/png")
-        .to_string();
     // +1 区分超限
     let limit = (MAX_IMAGE_BYTES + 1) as u64;
     match resp.body_mut().with_config().limit(limit).read_to_vec() {
-        Ok(bytes) if !bytes.is_empty() && bytes.len() <= MAX_IMAGE_BYTES => {
-            Some(format!("data:{mime};base64,{}", base64_encode(&bytes)))
+        Ok(bytes) if bytes.len() <= MAX_IMAGE_BYTES => {
+            let media = Media::image(bytes);
+            if media.is_none() {
+                eprintln!("[notify] 拒绝通知图片（内容不是受支持的图片）: {url}");
+            }
+            media
         }
         Ok(_) => {
-            eprintln!("[notify] 拒绝通知图片（为空或超过 2MB）: {url}");
+            eprintln!("[notify] 拒绝通知图片（超过 2MB）: {url}");
             None
         }
         Err(e) => {
@@ -320,7 +324,7 @@ fn fetch_http(url: &str) -> Option<String> {
     }
 }
 
-fn read_local(path_text: &str) -> Option<String> {
+fn read_local(path_text: &str) -> Option<Media> {
     // 包资源 URI 静默回退
     let lower = path_text.to_ascii_lowercase();
     if lower.starts_with("ms-appx:")
@@ -355,36 +359,14 @@ fn read_local(path_text: &str) -> Option<String> {
             return None;
         }
     };
-    let Some(mime) = sniff_image_mime(&bytes) else {
+    let media = Media::image(bytes);
+    if media.is_none() {
         eprintln!(
             "[notify] 拒绝通知图片（内容不是受支持的图片）: {}",
             path.display()
         );
-        return None;
-    };
-    Some(format!("data:{mime};base64,{}", base64_encode(&bytes)))
-}
-
-fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        return Some("image/png");
     }
-    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        return Some("image/jpeg");
-    }
-    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        return Some("image/gif");
-    }
-    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
-        return Some("image/webp");
-    }
-    if bytes.starts_with(b"BM") {
-        return Some("image/bmp");
-    }
-    if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) {
-        return Some("image/x-icon");
-    }
-    None
+    media
 }
 
 fn strip_file_scheme(src: &str) -> String {
@@ -393,53 +375,9 @@ fn strip_file_scheme(src: &str) -> String {
     }
     let rest = &src[7..];
     let rest = rest.strip_prefix('/').unwrap_or(rest);
-    percent_decode(&rest.replace('/', "\\"))
-}
-
-fn percent_decode(text: &str) -> String {
-    if !text.contains('%') {
-        return text.to_string();
-    }
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&text[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-fn base64_encode(data: &[u8]) -> String {
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(B64[(n >> 18) as usize & 63] as char);
-        out.push(B64[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 {
-            B64[(n >> 6) as usize & 63] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            B64[n as usize & 63] as char
-        } else {
-            '='
-        });
-    }
-    out
+    percent_encoding::percent_decode_str(&rest.replace('/', "\\"))
+        .decode_utf8_lossy()
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -447,17 +385,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base64_encode_matches_known_vectors() {
-        assert_eq!(base64_encode(b""), "");
-        assert_eq!(base64_encode(b"f"), "Zg==");
-        assert_eq!(base64_encode(b"fo"), "Zm8=");
-        assert_eq!(base64_encode(b"foo"), "Zm9v");
-        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
-    }
-
-    #[test]
     fn image_lru_evicts_oldest_when_full() {
-        let mut lru = ImageLru::default();
+        let mut lru = ImageLru::<String>::default();
         for i in 0..IMAGE_CACHE_CAP {
             lru.insert(format!("k{i}"), Some(format!("v{i}")));
         }
@@ -469,7 +398,7 @@ mod tests {
 
     #[test]
     fn image_lru_get_refreshes_recency() {
-        let mut lru = ImageLru::default();
+        let mut lru = ImageLru::<String>::default();
         for i in 0..IMAGE_CACHE_CAP {
             lru.insert(format!("k{i}"), Some(format!("v{i}")));
         }
@@ -482,7 +411,7 @@ mod tests {
 
     #[test]
     fn image_lru_caches_negative_results() {
-        let mut lru = ImageLru::default();
+        let mut lru = ImageLru::<String>::default();
         lru.insert("bad".into(), None);
         assert_eq!(lru.get("bad"), Some(None));
         assert_eq!(lru.get("missing"), None);
@@ -496,30 +425,6 @@ mod tests {
             strip_file_scheme("file:///C:/Temp/a%20b.png"),
             r"C:\Temp\a b.png"
         );
-    }
-
-    #[test]
-    fn sniff_image_mime_recognizes_common_formats() {
-        assert_eq!(
-            sniff_image_mime(b"\x89PNG\r\n\x1a\nrest"),
-            Some("image/png")
-        );
-        assert_eq!(
-            sniff_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]),
-            Some("image/jpeg")
-        );
-        assert_eq!(sniff_image_mime(b"GIF89a...."), Some("image/gif"));
-        assert_eq!(
-            sniff_image_mime(b"RIFF\x00\x00\x00\x00WEBPvp8"),
-            Some("image/webp")
-        );
-        assert_eq!(sniff_image_mime(b"BMxxxx"), Some("image/bmp"));
-        assert_eq!(
-            sniff_image_mime(&[0x00, 0x00, 0x01, 0x00]),
-            Some("image/x-icon")
-        );
-        assert_eq!(sniff_image_mime(b"MZ\x90\x00"), None);
-        assert_eq!(sniff_image_mime(b""), None);
     }
 
     #[test]
@@ -546,16 +451,14 @@ mod tests {
         std::fs::write(&avatar, [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).unwrap();
         let out = read_local(&avatar.to_string_lossy());
         assert!(
-            out.as_deref()
-                .is_some_and(|s| s.starts_with("data:image/jpeg;base64,")),
+            out.as_ref().is_some_and(|m| m.mime == "image/jpeg"),
             "{out:?}"
         );
         let tmp = dir.join("e8143a85.tmp");
         std::fs::write(&tmp, b"\x89PNG\r\n\x1a\n....").unwrap();
         let out = read_local(&tmp.to_string_lossy());
         assert!(
-            out.as_deref()
-                .is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            out.as_ref().is_some_and(|m| m.mime == "image/png"),
             "{out:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -569,8 +472,7 @@ mod tests {
         std::fs::write(&file, b"\x89PNG\r\n\x1a\n....").unwrap();
         let out = read_local(&file.to_string_lossy());
         assert!(
-            out.as_deref()
-                .is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            out.as_ref().is_some_and(|m| m.mime == "image/png"),
             "{out:?}"
         );
         std::fs::remove_file(&file).ok();
@@ -586,16 +488,9 @@ mod tests {
         std::fs::write(&file, png).unwrap();
         let out = read_local(&file.to_string_lossy());
         assert!(
-            out.as_deref()
-                .is_some_and(|s| s.starts_with("data:image/png;base64,")),
+            out.as_ref().is_some_and(|m| m.mime == "image/png"),
             "{out:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn percent_decode_passes_through_plain_text() {
-        assert_eq!(percent_decode("no-encoding"), "no-encoding");
-        assert_eq!(percent_decode("100%"), "100%");
     }
 }

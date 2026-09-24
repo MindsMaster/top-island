@@ -9,6 +9,7 @@ import {
   closePopup,
   foldedCount,
   formatTime,
+  imageFailed,
   notifyState as snap,
   setPopupHover,
   visiblePopups,
@@ -39,7 +40,13 @@ const privacy = computed(() => settings.notifications.privacy);
       @click.stop="activatePopup(card)"
     >
       <div class="notify-avatar" :class="{ 'notify-blur': privacy.enabled && privacy.blurAvatar }">
-        <img v-if="snap.images[card.entry.key]" :src="snap.images[card.entry.key]" alt="" draggable="false" />
+        <img
+          v-if="snap.images[card.entry.key]"
+          :src="snap.images[card.entry.key]"
+          alt=""
+          draggable="false"
+          @error="imageFailed(card.entry, $event)"
+        />
         <span v-else class="notify-avatar-fallback">{{ (card.entry.app || '?').slice(0, 1) }}</span>
       </div>
       <div class="notify-body">

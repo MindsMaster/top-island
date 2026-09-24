@@ -1,6 +1,7 @@
 import { computed, reactive } from 'vue';
 import { notifyApi } from '@/platform/notify';
 import { storeApi } from '@/platform/store';
+import { mediaUrl } from '@/platform/media';
 import { showAlert } from '@/ui/alert';
 import { settings } from '@/core/settings';
 import { useI18n } from '@/core/i18n';
@@ -28,7 +29,7 @@ const POPUP_STAGGER_MS = 400;
 export const MAX_VISIBLE = 3;
 const MAX_KEPT = 12;
 
-/** images 为已解析 dataURL */
+/** images 值为空串表示候选图全部失败 */
 export const notifyState = reactive({
   items: [] as NotifEntry[],
   popups: [] as PopupCard[],
@@ -50,16 +51,21 @@ function entryKey(n: NotificationItem): string {
   return `${n.id}-${n.arrival}`;
 }
 
-async function resolveImage(e: NotifEntry) {
-  if (notifyState.images[e.key]) return;
-  for (const src of [e.image, e.icon]) {
-    if (!src) continue;
-    const data = await notifyApi.image(src).catch(() => null);
-    if (data) {
-      notifyState.images[e.key] = data;
-      return;
-    }
-  }
+function imageCandidates(e: NotifEntry): string[] {
+  return [e.image, e.icon].filter((src): src is string => !!src).map((src) => mediaUrl('notify', src));
+}
+
+function resolveImage(e: NotifEntry) {
+  if (e.key in notifyState.images) return;
+  notifyState.images[e.key] = imageCandidates(e)[0] ?? '';
+}
+
+/** 同图在弹窗与面板各挂一份 只认当前候选的失败 */
+export function imageFailed(e: NotifEntry, ev: Event) {
+  const failed = (ev.target as HTMLImageElement).getAttribute('src');
+  if (!failed || notifyState.images[e.key] !== failed) return;
+  const candidates = [...new Set(imageCandidates(e))];
+  notifyState.images[e.key] = candidates[candidates.indexOf(failed) + 1] ?? '';
 }
 
 export async function activate(n: NotificationItem) {

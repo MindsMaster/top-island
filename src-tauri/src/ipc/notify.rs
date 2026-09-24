@@ -1,5 +1,4 @@
 use crate::error::{AppError, AppResult};
-use crate::services;
 
 use super::off_thread;
 
@@ -17,9 +16,4 @@ pub async fn notify_activate(aumid: String, launch: String, atype: String) -> Ap
         ))
     })
     .await
-}
-
-#[tauri::command]
-pub async fn notify_image(src: String) -> AppResult<Option<String>> {
-    off_thread(move || Ok(services::notify::notify_image(&src))).await
 }

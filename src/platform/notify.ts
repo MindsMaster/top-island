@@ -11,7 +11,4 @@ export const notifyApi = {
       launch: item.launch,
       atype: item.atype,
     }),
-
-  /** 本地路径转 data URL 失败返回 null */
-  image: (src: string) => call<string | null>('notify_image', { src }),
 };
