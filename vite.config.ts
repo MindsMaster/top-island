@@ -9,7 +9,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   optimizeDeps: {
-    entries: ['index.html'],
+    entries: ['index.html', 'settings.html'],
   },
   server: {
     port: 1420,
@@ -18,5 +18,11 @@ export default defineConfig({
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        island: fileURLToPath(new URL('./index.html', import.meta.url)),
+        settings: fileURLToPath(new URL('./settings.html', import.meta.url)),
+      },
+    },
   },
 });

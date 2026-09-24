@@ -27,7 +27,7 @@
       {
         "label": "settings",
         "title": "Top Island 设置",
-        "url": "index.html#settings",
+        "url": "settings.html",
         "width": 480,
         "height": 420,
         "decorations": false,

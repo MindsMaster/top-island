@@ -1,0 +1,151 @@
+.setting-select {
+  position: relative;
+  width: 132px;
+  flex-shrink: 0;
+  max-width: 52%;
+  min-width: 0;
+}
+.setting-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  white-space: nowrap;
+  border: 1px solid rgba(var(--ink), 0.14);
+  border-radius: 10px;
+  background: rgba(var(--ink), 0.06);
+  color: rgba(var(--ink), 0.8);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+.setting-select-btn:hover {
+  background: rgba(var(--ink), 0.1);
+}
+.setting-select-btn i {
+  font-size: 11px;
+}
+.setting-select-btn span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.setting-select-caret {
+  font-size: 9px !important;
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+.setting-select-caret.open {
+  transform: rotate(180deg);
+}
+.setting-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 100%;
+  max-width: 280px;
+  z-index: 10;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* 选项多时菜单内滚动 */
+  max-height: 240px;
+  overflow-y: auto;
+}
+.setting-select-group {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(var(--ink), 0.65);
+  padding: 5px 10px 2px;
+}
+.setting-select-group:not(:first-child) {
+  margin-top: 3px;
+  border-top: 1px solid rgba(var(--ink), 0.07);
+  padding-top: 7px;
+}
+.setting-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  color: rgba(var(--ink), 0.7);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  text-align: left;
+  white-space: nowrap;
+}
+.setting-select-item i {
+  width: 13px;
+  font-size: 11px;
+  text-align: center;
+}
+.setting-select-item span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.setting-select-item:hover {
+  background: rgba(var(--ink), 0.08);
+  color: var(--island-text);
+}
+.setting-select-item.active {
+  color: var(--island-text);
+}
+.setting-select-check {
+  font-size: 9px !important;
+  opacity: 0.7;
+}
+
+.setting-toggle {
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 11px;
+  background: rgba(var(--ink), 0.14);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  padding: 0;
+}
+.setting-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(var(--ink), 0.55);
+  transition:
+    transform 0.2s,
+    background 0.2s;
+}
+.setting-toggle.on {
+  background: var(--accent);
+}
+.setting-toggle.on .setting-toggle-knob {
+  transform: translateX(16px);
+  background: var(--on-accent);
+}
