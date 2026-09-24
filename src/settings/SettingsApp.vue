@@ -35,7 +35,7 @@ async function close() {
   const token = ++leaveToken;
   await nextTick();
   await animationsSettled(rootEl.value?.getAnimations() ?? []);
-  if (token === leaveToken) windowApi.closeSelf();
+  if (token === leaveToken) void windowApi.hideSelf();
 }
 
 settingsApi.onOpened(reveal);

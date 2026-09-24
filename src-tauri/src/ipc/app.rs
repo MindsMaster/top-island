@@ -16,6 +16,11 @@ pub fn app_get_locale() -> String {
     String::from_utf16_lossy(&buf[..(n - 1) as usize])
 }
 
+#[tauri::command]
+pub fn app_quit(app: AppHandle) {
+    app.exit(0);
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppVersionInfo {

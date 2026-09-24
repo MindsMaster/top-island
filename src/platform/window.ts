@@ -1,3 +1,4 @@
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { call, on } from './invoke';
 import type { HotRect } from './types';
 
@@ -6,11 +7,7 @@ export const windowApi = {
   setHotRect: (interactive: HotRect | null, hover: HotRect | null) =>
     call('window_set_hot_rect', { interactive, hover }),
 
-  /** 退整个应用 */
-  quit: () => call('window_close'),
-
-  /** 仅关本窗口 */
-  closeSelf: () => call('window_close_self'),
+  hideSelf: () => getCurrentWindow().hide(),
 
   /** 穿透态唯一可靠悬停源 */
   onHover: (cb: (inside: boolean) => void) => on<boolean>('island:hover', cb),

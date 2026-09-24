@@ -1,6 +1,6 @@
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 /// 开发者工具仅 debug 构建
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
@@ -23,13 +23,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "quit" => app.exit(0),
             "open-settings" => {
-                if let Some(win) = app.get_webview_window("settings") {
-                    let _ = win.show();
-                    let _ = win.set_focus();
+                if let Err(e) = crate::infra::layout::open_settings(app) {
+                    eprintln!("[tray] 打开设置失败: {e}");
                 }
             }
             #[cfg(debug_assertions)]
             "devtools" => {
+                use tauri::Manager;
                 if let Some(win) = app.get_webview_window("island") {
                     win.open_devtools();
                 }

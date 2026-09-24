@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { settingsApi } from '@/platform/settings';
-import { windowApi } from '@/platform/window';
+import { systemApi } from '@/platform/system';
 import { currentDate, currentTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
 import { settings, toggleTheme } from '@/core/settings';
@@ -24,7 +24,7 @@ const chips = modules.filter((m) => m.chip);
       <button class="quick-theme-btn" :title="t('themeCycle')" @click.stop="toggleTheme">
         <i :class="'fa-solid ' + themeMeta(settings.theme).icon"></i>
       </button>
-      <button class="quick-close-btn" :title="t('closeIsland')" @click.stop="windowApi.quit()">
+      <button class="quick-close-btn" :title="t('closeIsland')" @click.stop="systemApi.quit()">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>

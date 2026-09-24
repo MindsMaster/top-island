@@ -1,6 +1,6 @@
-use tauri::{Manager, PhysicalPosition, PhysicalSize};
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize};
 
-use island_core::IslandLayout;
+use island_core::{AppSettings, IslandLayout};
 
 use crate::error::AppResult;
 
@@ -73,6 +73,24 @@ pub fn apply_settings_layout(app: &tauri::AppHandle, layout: &IslandLayout) -> A
         .map_err(|e| e.to_string())?;
     win.set_position(PhysicalPosition::new(x, y))
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 已开则只聚焦
+pub fn open_settings(app: &tauri::AppHandle) -> AppResult<()> {
+    let win = app
+        .get_webview_window("settings")
+        .ok_or("error.io: 设置窗不存在")?;
+    if !win.is_visible().unwrap_or(false) {
+        let layout = crate::infra::persist::get("settings")
+            .map(AppSettings::from_value)
+            .unwrap_or_default()
+            .island;
+        let _ = apply_settings_layout(app, &layout);
+        let _ = app.emit_to("settings", "settings:opened", ());
+    }
+    win.show().map_err(|e| e.to_string())?;
+    win.set_focus().map_err(|e| e.to_string())?;
     Ok(())
 }
 
