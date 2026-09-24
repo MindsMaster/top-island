@@ -1,4 +1,4 @@
-import { computed, reactive } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { musicApi } from '@/platform/music';
 import { mediaUrl } from '@/platform/media';
 import { settings } from '@/core/settings';
@@ -32,12 +32,17 @@ export const musicState = reactive({
   isScrubbing: false,
 });
 
+const PLAY_HOLD_MS = 2000;
+const SEEK_HOLD_MS = 3000;
+/** 切换会话时会短暂推来空状态 */
+const CLEAR_DELAY_MS = 4000;
+
 let lastPlayAction = 0;
 let lastSeekAction = 0;
-let missCount = 0;
-let pollTimer: number | null = null;
+let clearTimer: number | null = null;
+let revalidateTimer: number | null = null;
+let revalidateAt = 0;
 let tickTimer: number | null = null;
-let watchdogTimer: number | null = null;
 let lyricsIdLoaded = '';
 let lastTickAt = 0;
 
@@ -85,15 +90,17 @@ function loadLyrics(id: string) {
 
 function handleState(data: MusicState) {
   if (!data.track) {
-    missCount++;
-    if (missCount >= 3) {
+    clearTimer ??= window.setTimeout(() => {
+      clearTimer = null;
       clearState();
-      missCount = 0;
-    }
+    }, CLEAR_DELAY_MS);
     return;
   }
 
-  missCount = 0;
+  if (clearTimer !== null) {
+    clearTimeout(clearTimer);
+    clearTimer = null;
+  }
   const t = data.track.replace(/^["\s]+|["\s]+$/g, '');
   const a = (data.artist || '').replace(/^["\s]+|["\s]+$/g, '');
   const idNow = trackIdentity(data.songId, t, a);
@@ -108,8 +115,8 @@ function handleState(data: MusicState) {
   musicState.songId = data.songId || '';
   musicState.hasMusic = true;
 
-  // 点击后暂以本地为准 防轮询回跳
-  const holdPlayState = !trackChanged && Date.now() - lastPlayAction < 2000;
+  // 点击后暂以本地为准 防推送回跳
+  const holdPlayState = !trackChanged && Date.now() - lastPlayAction < PLAY_HOLD_MS;
   if (!holdPlayState) musicState.isPlaying = data.isPlaying;
 
   musicState.durationMs = data.durationMs || 0;
@@ -125,7 +132,7 @@ function handleState(data: MusicState) {
 
   // 防服务端旧位置拽回锚点
   const effectiveRate = musicState.isPlaying ? data.rate || 1 : 0;
-  if (!musicState.isScrubbing && Date.now() - lastSeekAction > 3000) {
+  if (!musicState.isScrubbing && Date.now() - lastSeekAction > SEEK_HOLD_MS) {
     setAnchor(data.positionMs, data.anchorEpochMs, effectiveRate);
   } else {
     rate = effectiveRate;
@@ -136,11 +143,30 @@ function handleState(data: MusicState) {
   }
 }
 
-async function poll() {
+async function refresh() {
   if (!settings.diagnostics.musicPoll) return;
   try {
-    handleState(await musicApi.poll());
+    handleState(await musicApi.state());
   } catch {}
+}
+
+/** 推送去重 乐观更新失败时不会再推 窗口过后主动取一次 */
+function revalidateAfter(ms: number) {
+  const at = Date.now() + ms;
+  if (revalidateTimer !== null) {
+    if (at <= revalidateAt) return;
+    clearTimeout(revalidateTimer);
+  }
+  revalidateAt = at;
+  revalidateTimer = window.setTimeout(() => {
+    revalidateTimer = null;
+    void refresh();
+  }, ms);
+}
+
+function markPlayAction() {
+  lastPlayAction = Date.now();
+  revalidateAfter(PLAY_HOLD_MS);
 }
 
 function tick() {
@@ -157,37 +183,21 @@ function watchdog() {
   }
 }
 
-let stateListenerRegistered = false;
-
-export function startMusicPoll() {
-  stopMusicPoll();
-  if (!stateListenerRegistered) {
-    stateListenerRegistered = true;
-    musicApi.onState((state) => {
-      if (settings.diagnostics.musicPoll) handleState(state);
-    });
-  }
-  poll();
-  pollTimer = window.setInterval(poll, 2000);
+export function startMusicSync() {
+  if (tickTimer !== null) return;
+  musicApi.onState((state) => {
+    if (settings.diagnostics.musicPoll) handleState(state);
+  });
+  void refresh();
+  // 后端启用先于本窗收到设置 首次推送可能被前端丢掉
+  watch(
+    () => settings.diagnostics.musicPoll,
+    (on) => on && void refresh()
+  );
   // 歌词切行延迟上限
   lastTickAt = Date.now();
   tickTimer = window.setInterval(tick, 100);
-  watchdogTimer = window.setInterval(watchdog, 3000);
-}
-
-export function stopMusicPoll() {
-  if (pollTimer !== null) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-  if (tickTimer !== null) {
-    clearInterval(tickTimer);
-    tickTimer = null;
-  }
-  if (watchdogTimer !== null) {
-    clearInterval(watchdogTimer);
-    watchdogTimer = null;
-  }
+  window.setInterval(watchdog, 3000);
 }
 
 function control(action: MusicAction, level?: number) {
@@ -198,7 +208,7 @@ export function togglePlay() {
   const next = !musicState.isPlaying;
   control(next ? 'play' : 'pause');
   musicState.isPlaying = next;
-  lastPlayAction = Date.now();
+  markPlayAction();
   // 重设锚点防进度跳变
   setAnchor(extrapolate(Date.now()), Date.now(), next ? rate || 1 : 0);
 }
@@ -211,7 +221,7 @@ onAppEvent('alarm:ringing', (ringing) => {
     if (!musicState.isPlaying) return;
     control('pause');
     musicState.isPlaying = false;
-    lastPlayAction = Date.now();
+    markPlayAction();
     setAnchor(extrapolate(Date.now()), Date.now(), 0);
     pausedForRinging = true;
     return;
@@ -221,19 +231,18 @@ onAppEvent('alarm:ringing', (ringing) => {
   if (musicState.isPlaying) return;
   control('play');
   musicState.isPlaying = true;
-  lastPlayAction = Date.now();
+  markPlayAction();
   setAnchor(extrapolate(Date.now()), Date.now(), rate || 1);
 });
 
 export function skipTrack(dir: number) {
   control(dir > 0 ? 'next' : 'prev');
-  setTimeout(poll, 400);
-  setTimeout(poll, 1200);
 }
 
 export function seek(ms: number) {
   const target = Math.max(0, Math.min(ms, musicState.durationMs || Number.MAX_SAFE_INTEGER));
   lastSeekAction = Date.now();
+  revalidateAfter(SEEK_HOLD_MS);
   setAnchor(target, Date.now(), musicState.isPlaying ? rate || 1 : 0);
   musicApi.seek(target).catch(() => {});
 }

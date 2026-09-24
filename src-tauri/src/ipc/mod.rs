@@ -47,7 +47,7 @@ macro_rules! ipc_handlers {
             crate::ipc::update::update_status,
             crate::ipc::update::update_check,
             crate::ipc::update::update_install,
-            crate::ipc::music::music_poll,
+            crate::ipc::music::music_state,
             crate::ipc::music::music_control,
             crate::ipc::music::music_seek,
             crate::ipc::music::music_lyrics,

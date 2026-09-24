@@ -6,8 +6,8 @@ use crate::services;
 use crate::services::music::BridgeStatus;
 
 #[tauri::command]
-pub async fn music_poll() -> AppResult<MusicState> {
-    off_thread(|| Ok(services::music::poll_state())).await
+pub async fn music_state() -> AppResult<MusicState> {
+    off_thread(|| Ok(services::music::current_state())).await
 }
 
 #[tauri::command]

@@ -68,7 +68,7 @@ fn init(app: AppHandle) {
         resolver,
         active: Mutex::new(smtc),
     });
-    push::start(app, &PUSH, "music:state", poll_state);
+    push::start(app, &PUSH, "music:state", current_state);
     island_windows::smtc::start_watch(request_push);
 }
 
@@ -80,7 +80,7 @@ pub fn bridge_status() -> BridgeStatus {
     ncm_deploy::status(connected)
 }
 
-pub fn poll_state() -> MusicState {
+pub fn current_state() -> MusicState {
     let Some(svc) = SERVICE.get() else {
         return MusicState::default();
     };

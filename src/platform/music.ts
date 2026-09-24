@@ -2,9 +2,8 @@ import { call, on } from './invoke';
 import type { BridgeStatus, LyricsData, MusicAction, MusicState } from './types';
 
 export const musicApi = {
-  poll: () => call<MusicState>('music_poll'),
+  state: () => call<MusicState>('music_state'),
 
-  /** 轮询外的即时推送 */
   onState: (cb: (state: MusicState) => void) => on<MusicState>('music:state', cb),
 
   control: (action: MusicAction, level?: number) =>

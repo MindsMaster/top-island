@@ -6,6 +6,9 @@ use tauri::{AppHandle, Emitter};
 
 use crate::infra::watchdog::{self, Heartbeat};
 
+/// 事件漏发时的兜底重算 未变不推
+const FALLBACK_INTERVAL: Duration = Duration::from_secs(2);
+
 #[derive(Debug)]
 pub struct PushSignal {
     flag: Mutex<bool>,
@@ -40,11 +43,12 @@ impl PushSignal {
     }
 
     /// 先清位 计算期新请求再置位
-    fn wait(&self) {
-        let mut flag = self.flag.lock().unwrap_or_else(|e| e.into_inner());
-        while !*flag {
-            flag = self.cv.wait(flag).unwrap_or_else(|e| e.into_inner());
-        }
+    fn wait(&self, timeout: Duration) {
+        let flag = self.flag.lock().unwrap_or_else(|e| e.into_inner());
+        let (mut flag, _) = self
+            .cv
+            .wait_timeout_while(flag, timeout, |f| !*f)
+            .unwrap_or_else(|e| e.into_inner());
         *flag = false;
     }
 }
@@ -63,7 +67,7 @@ pub fn start<T>(
         .spawn(move || {
             let mut last_json: Option<String> = None;
             loop {
-                signal.wait();
+                signal.wait(FALLBACK_INTERVAL);
                 if !signal.enabled() {
                     hb.beat();
                     continue;
