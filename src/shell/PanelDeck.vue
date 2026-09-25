@@ -38,7 +38,7 @@ const { t } = useI18n();
       v-for="(p, i) in panels"
       :key="p.id"
       class="panel-nav-btn"
-      :class="{ active: deck.activePanel.value === i }"
+      :class="{ active: deck.activePanel.value === i, 'has-badge': p.badge?.() }"
       :title="t(p.titleKey)"
       @click.stop="deck.switchPanel(i)"
     >

@@ -10,7 +10,9 @@ const hasPopup = () => notifyState.popups.length > 0;
 export const notificationsModule: IslandModule = {
   id: 'notifications',
   setup: initNotifications,
-  panels: [{ id: 'messages', icon: 'fa-comment-dots', titleKey: 'navMessages', component: Panel }],
+  panels: [
+    { id: 'messages', icon: 'fa-comment-dots', titleKey: 'navMessages', component: Panel, badge: hasPopup },
+  ],
   capsule: {
     priority: 25,
     active: () => hasPopup() && shellView.mode !== 'large',

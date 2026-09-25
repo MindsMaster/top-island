@@ -261,6 +261,7 @@
   flex-shrink: 0;
 }
 .panel-nav-btn {
+  position: relative;
   width: 28px;
   height: 24px;
   display: flex;
@@ -284,4 +285,14 @@
 .panel-nav-btn.active {
   color: var(--island-text);
   background: rgba(var(--ink), 0.12);
+}
+.panel-nav-btn.has-badge::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }

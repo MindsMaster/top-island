@@ -1,10 +1,11 @@
-import { reactive } from 'vue';
+import { reactive, watch } from 'vue';
 import { notifyApi } from '@/platform/notify';
 import { storeApi } from '@/platform/store';
 import { mediaUrl } from '@/platform/media';
 import { showAlert } from '@/ui/alert';
 import { settings } from '@/core/settings';
 import { shell } from '@/shell/commands';
+import { shellView } from '@/shell/view';
 import { useI18n } from '@/core/i18n';
 import type { NotificationItem } from '@/platform/types';
 
@@ -86,6 +87,11 @@ export function setPopupHover(hovered: boolean) {
 
 function prunePopups() {
   if (!notifyState.popups.length || notifyState.popupHovered) return;
+  // 没露出来就不计时 展开操作或被提醒压住时攒着
+  if (shellView.capsuleOwner !== 'notifications') {
+    notifyState.dismissAt = Date.now() + POPUP_MS;
+    return;
+  }
   if (Date.now() >= notifyState.dismissAt) notifyState.popups = [];
 }
 
@@ -122,6 +128,13 @@ export async function initNotifications() {
   if (!subscribed) {
     subscribed = true;
     notifyApi.onIncoming(onIncoming);
+    // 打开消息页即算看过
+    watch(
+      () => shellView.panel,
+      (p) => {
+        if (p === 'messages') notifyState.popups = [];
+      }
+    );
   }
   if (pruneTimer === null) pruneTimer = window.setInterval(prunePopups, 400);
 }
