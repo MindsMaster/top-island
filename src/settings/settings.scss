@@ -123,6 +123,20 @@
 .settings-nav-bottom {
   margin-top: auto;
 }
+.settings-nav-btn.has-badge {
+  position: relative;
+}
+.settings-nav-btn.has-badge::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--accent);
+}
 .settings-content {
   flex: 1;
   min-width: 0;

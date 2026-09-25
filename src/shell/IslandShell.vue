@@ -22,6 +22,7 @@ const { t, initI18n } = useI18n();
 const islandEl = ref<HTMLElement | null>(null);
 const containerEl = ref<HTMLElement | null>(null);
 const islandWidth = ref(170);
+const updateReady = ref(false);
 
 const island = useIslandMode({
   holdContent: () => hide.dragging.value || modules.some((m) => m.holdContent?.() ?? false),
@@ -188,11 +189,16 @@ onMounted(async () => {
   window.addEventListener('focusout', onFocusOut);
   window.addEventListener('blur', onWindowBlur);
 
+  void updateApi
+    .status()
+    .then((r) => (updateReady.value ||= r.status === 'downloaded'))
+    .catch(() => {});
   updateApi.onDownloaded((info) => {
+    updateReady.value = true;
     showAlert({
       icon: 'fa-arrow-up',
       text: t('updateReady', info.version),
-      duration: 0,
+      duration: 10000,
       dismissible: true,
       actionLabel: t('updateRestart'),
       actionHandler: () => void updateApi.install(),
@@ -260,7 +266,7 @@ onBeforeUnmount(() => {
         <StatusBar v-else-if="showOwnContent" />
       </template>
 
-      <PanelDeck :deck="deck" :visible="isLarge" />
+      <PanelDeck :deck="deck" :visible="isLarge" :update-ready="updateReady" />
     </div>
 
     <component :is="m.overlay" v-for="m in overlays" :key="m.id" />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { settingsApi } from '@/platform/settings';
+import { updateApi } from '@/platform/update';
 import { windowApi } from '@/platform/window';
 import { useI18n } from '@/core/i18n';
 import { initSettings } from '@/core/settings';
@@ -19,6 +20,7 @@ watch(active, async () => {
 });
 
 const rootEl = ref<HTMLElement | null>(null);
+const updateReady = ref(false);
 
 /** 初始即离场态 隐藏窗的残帧须透明 */
 const shown = ref(false);
@@ -59,6 +61,11 @@ onMounted(async () => {
   await initI18n();
   await initSettings();
   document.title = t('settingsTitle');
+  updateApi.onDownloaded(() => (updateReady.value = true));
+  updateApi
+    .status()
+    .then((r) => (updateReady.value ||= r.status === 'downloaded'))
+    .catch(() => {});
   window.addEventListener('blur', onWindowBlur);
   window.addEventListener('focus', onWindowFocus);
 });
@@ -84,7 +91,11 @@ onBeforeUnmount(() => {
           v-for="s in sections"
           :key="s.id"
           class="settings-nav-btn"
-          :class="{ active: active === s.id, 'settings-nav-bottom': s.bottom }"
+          :class="{
+            active: active === s.id,
+            'settings-nav-bottom': s.bottom,
+            'has-badge': s.id === 'about' && updateReady,
+          }"
           :aria-current="active === s.id ? 'page' : undefined"
           @click="active = s.id"
         >

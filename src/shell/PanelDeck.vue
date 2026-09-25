@@ -4,7 +4,11 @@ import { useI18n } from '@/core/i18n';
 import { panels } from '@/modules/registry';
 import type { usePanelDeck } from './usePanelDeck';
 
-const { deck } = defineProps<{ deck: ReturnType<typeof usePanelDeck>; visible: boolean }>();
+const { deck } = defineProps<{
+  deck: ReturnType<typeof usePanelDeck>;
+  visible: boolean;
+  updateReady: boolean;
+}>();
 
 const { t } = useI18n();
 </script>
@@ -45,7 +49,12 @@ const { t } = useI18n();
       <i :class="'fa-solid ' + p.icon"></i>
     </button>
     <div class="panel-indicator-sep"></div>
-    <button class="panel-nav-btn" :title="t('openSettings')" @click.stop="settingsApi.open()">
+    <button
+      class="panel-nav-btn"
+      :class="{ 'has-badge': updateReady }"
+      :title="t('openSettings')"
+      @click.stop="settingsApi.open()"
+    >
       <i class="fa-solid fa-gear"></i>
     </button>
   </div>
