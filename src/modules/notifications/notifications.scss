@@ -177,96 +177,91 @@
   background: rgba(255, 107, 107, 0.12);
 }
 
-/* 消息弹卡 */
-.notify-stack {
+/* 消息条 岛自身变形承载 */
+#island.capsule-notifications {
+  width: 360px;
+  height: 72px;
+  border-radius: 18px;
+  padding: 0;
+}
+/* 隐藏态也整条露出 */
+#island.hidden.capsule-notifications {
+  transform: translateX(-50%);
+}
+.notify-strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 12px;
+  cursor: pointer;
+}
+.notify-strip-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  animation: notify-in 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes notify-in {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+
+/* 垫层 压在岛下 与岛同材质 */
+.notify-layers {
   position: absolute;
-  top: 58px; /* 岛下沿 顶10 高40 距8 */
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  z-index: 30;
-  pointer-events: none; /* 空白处保持穿透 */
-  /* 位移与岛形变同一弹簧 */
-  transition:
-    opacity 0.28s ease,
-    visibility 0.28s,
-    transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-.notify-stack.dock-large {
-  transform: translate(-50%, 320px); /* 岛下沿 大视图高360 */
-}
-.notify-stack.dock-hidden {
-  transform: translate(-50%, var(--island-hidden-shift, -34px));
-}
-.notify-card {
-  pointer-events: auto;
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
   width: 360px;
-  padding: 10px 12px;
-  border-radius: 18px;
-  background: var(--island-bg);
-  color: var(--island-text);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  cursor: pointer;
-  transition:
-    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.2s;
-}
-.notify-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.48);
-}
-/* 伪元素垫细边模拟叠层 */
-.notify-fold {
-  pointer-events: auto;
-  position: relative;
-  width: 300px;
-  margin-top: -2px;
-  padding: 6px 12px;
-  border-radius: 14px;
-  background: var(--island-bg);
-  color: rgba(var(--ink), 0.55);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
-  font-size: 11px;
-  font-weight: 500;
-  text-align: center;
-}
-.notify-fold::before,
-.notify-fold::after {
-  content: '';
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: -4px;
-  height: 8px;
-  border-radius: 0 0 14px 14px;
-  background: var(--island-bg);
-  border: 1px solid var(--panel-border);
-  border-top: none;
+  height: 72px;
+  pointer-events: none;
   z-index: -1;
 }
-.notify-fold::after {
-  left: 18px;
-  right: 18px;
-  bottom: -8px;
+.notify-layer {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  top: 34px;
+  height: 38px;
+  border-radius: 18px;
+  background: var(--island-bg);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transition:
+    opacity 0.25s ease,
+    top 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.layer-1 {
+  width: 336px;
+  filter: brightness(0.93);
+}
+.layer-2 {
+  width: 310px;
+  filter: brightness(0.86);
+}
+.layer-1.on {
+  opacity: 0.9;
+  top: 44px;
+}
+.layer-2.on {
   opacity: 0.6;
+  top: 54px;
 }
-html[data-scheme='light'] .notify-fold {
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+.fan .layer-1.on {
+  top: 49px;
 }
-html[data-scheme='light'] .notify-card {
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+.fan .layer-2.on {
+  top: 64px;
 }
-html[data-scheme='light'] .notify-card:hover {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+html[data-scheme='light'] .notify-layer {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
 }
 
 .notify-avatar {
@@ -320,7 +315,7 @@ html[data-scheme='light'] .notify-card:hover {
   /* 悬停给关闭钮让位 */
   transition: opacity 0.15s;
 }
-.notify-card:hover .notify-time {
+.notify-strip:hover .notify-time {
   opacity: 0;
 }
 .notify-title {
@@ -377,34 +372,10 @@ html[data-scheme='light'] .notify-card:hover {
     background 0.15s,
     color 0.15s;
 }
-.notify-card:hover .notify-close {
+.notify-strip:hover .notify-close {
   opacity: 1;
 }
 .notify-close:hover {
   background: rgba(var(--ink), 0.16);
   color: var(--island-text);
-}
-
-.npop-enter-active {
-  transition:
-    transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275),
-    opacity 0.3s ease;
-}
-.npop-leave-active {
-  transition:
-    transform 0.25s cubic-bezier(0.4, 0, 1, 1),
-    opacity 0.2s ease;
-  position: absolute; /* 离场不占位 */
-  width: 360px;
-}
-.npop-enter-from {
-  transform: translateY(-18px) scale(0.9);
-  opacity: 0;
-}
-.npop-leave-to {
-  transform: translateY(-10px) scale(0.94);
-  opacity: 0;
-}
-.npop-move {
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }

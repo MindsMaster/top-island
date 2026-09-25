@@ -1,9 +1,10 @@
-import { computed, reactive } from 'vue';
+import { reactive } from 'vue';
 import { notifyApi } from '@/platform/notify';
 import { storeApi } from '@/platform/store';
 import { mediaUrl } from '@/platform/media';
 import { showAlert } from '@/ui/alert';
 import { settings } from '@/core/settings';
+import { shell } from '@/shell/commands';
 import { useI18n } from '@/core/i18n';
 import type { NotificationItem } from '@/platform/types';
 
@@ -14,31 +15,21 @@ export interface NotifEntry extends NotificationItem {
   key: string;
 }
 
-export interface PopupCard {
-  key: string;
-  entry: NotifEntry;
-  /** 悬停中到期顺延 */
-  dismissAt: number;
-}
-
 const MAX_ITEMS = 100;
 
-const POPUP_MS = 8000;
+const POPUP_MS = 5000;
 const POPUP_LINGER_MS = 2000;
-const POPUP_STAGGER_MS = 400;
-export const MAX_VISIBLE = 3;
 const MAX_KEPT = 12;
 
 /** images 值为空串表示候选图全部失败 */
 export const notifyState = reactive({
   items: [] as NotifEntry[],
-  popups: [] as PopupCard[],
-  hoveredPopup: null as string | null,
+  /** 新的在前 整叠一起到期 */
+  popups: [] as NotifEntry[],
+  popupHovered: false,
+  dismissAt: 0,
   images: {} as Record<string, string>,
 });
-
-export const visiblePopups = computed(() => notifyState.popups.slice(0, MAX_VISIBLE));
-export const foldedCount = computed(() => Math.max(0, notifyState.popups.length - MAX_VISIBLE));
 
 let subscribed = false;
 let pruneTimer: number | null = null;
@@ -75,42 +66,27 @@ export async function activate(n: NotificationItem) {
   }
 }
 
-/** 标题充当会话名 */
-function conversationKey(e: NotifEntry): string {
-  return `${e.aumid}||${e.title}`;
+export function openPopups() {
+  notifyState.popups = [];
+  notifyState.popupHovered = false;
+  shell.openPanel('messages');
 }
 
-export function activatePopup(card: PopupCard) {
-  const gk = conversationKey(card.entry);
-  notifyState.popups = notifyState.popups.filter((c) => conversationKey(c.entry) !== gk);
-  if (notifyState.hoveredPopup && !notifyState.popups.some((c) => c.key === notifyState.hoveredPopup)) {
-    notifyState.hoveredPopup = null;
-  }
-  void activate(card.entry);
+export function closeTopPopup() {
+  notifyState.popups = notifyState.popups.slice(1);
+  // 最后一条关掉时条被卸载 收不到 mouseleave
+  if (!notifyState.popups.length) notifyState.popupHovered = false;
 }
 
-export function closePopup(key: string) {
-  notifyState.popups = notifyState.popups.filter((c) => c.key !== key);
-  if (notifyState.hoveredPopup === key) notifyState.hoveredPopup = null;
-}
-
-export function setPopupHover(key: string | null) {
-  const prev = notifyState.hoveredPopup;
-  notifyState.hoveredPopup = key;
+export function setPopupHover(hovered: boolean) {
+  notifyState.popupHovered = hovered;
   // 悬停结束补余量
-  if (prev && prev !== key) {
-    const now = Date.now();
-    notifyState.popups = notifyState.popups.map((c) =>
-      c.key === prev && c.dismissAt < now + POPUP_LINGER_MS ? { ...c, dismissAt: now + POPUP_LINGER_MS } : c
-    );
-  }
+  if (!hovered) notifyState.dismissAt = Math.max(notifyState.dismissAt, Date.now() + POPUP_LINGER_MS);
 }
 
 function prunePopups() {
-  if (!notifyState.popups.length) return;
-  const now = Date.now();
-  const next = notifyState.popups.filter((c) => c.dismissAt > now || c.key === notifyState.hoveredPopup);
-  if (next.length !== notifyState.popups.length) notifyState.popups = next;
+  if (!notifyState.popups.length || notifyState.popupHovered) return;
+  if (Date.now() >= notifyState.dismissAt) notifyState.popups = [];
 }
 
 function onIncoming(batch: NotificationItem[]) {
@@ -131,13 +107,8 @@ function onIncoming(batch: NotificationItem[]) {
   for (const e of fresh) void resolveImage(e);
 
   if (settings.notifications.popup) {
-    const now = Date.now();
-    // 越新越晚消失
-    const cards: PopupCard[] = [...fresh]
-      .sort((a, b) => a.arrival - b.arrival)
-      .map((entry, i) => ({ key: entry.key, entry, dismissAt: now + POPUP_MS + i * POPUP_STAGGER_MS }));
-    cards.reverse();
-    notifyState.popups = [...cards, ...notifyState.popups].slice(0, MAX_KEPT);
+    notifyState.popups = [...fresh, ...notifyState.popups].slice(0, MAX_KEPT);
+    notifyState.dismissAt = Date.now() + POPUP_MS;
   }
 }
 

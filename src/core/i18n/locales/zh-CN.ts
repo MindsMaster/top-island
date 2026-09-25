@@ -172,7 +172,6 @@ const zhCN: Messages = {
   notifyPrivacyName: '模糊名字',
   notifyPrivacyBody: '替换消息内容',
   notifyPrivateBody: '你有一条新消息',
-  notifyFolded: '还有 {0} 条消息',
   notifySuppress: '关闭系统通知横幅',
   notifySuppressHint: '会修改 Windows 通知设置，关闭此项后恢复。通知中心不受影响。',
   wechatTitle: '微信消息',

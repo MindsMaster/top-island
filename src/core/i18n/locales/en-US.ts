@@ -172,7 +172,6 @@ const enUS: Messages = {
   notifyPrivacyName: 'Blur name',
   notifyPrivacyBody: 'Replace message text',
   notifyPrivateBody: 'You have a new message',
-  notifyFolded: '{0} more messages',
   notifySuppress: 'Turn off Windows banners',
   notifySuppressHint:
     'Changes Windows notification settings; turning this off restores them. Notification Center is unaffected.',
