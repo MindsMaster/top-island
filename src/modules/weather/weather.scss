@@ -15,6 +15,11 @@
 .wx-sky.wx-night::before {
   opacity: 1;
 }
+/* 关天空只留动效 */
+.wx-sky.wx-plain,
+.wx-sky.wx-plain::before {
+  background: none;
+}
 /* 与 #island.large 尺寸一致 */
 .wx-canvas {
   position: absolute;

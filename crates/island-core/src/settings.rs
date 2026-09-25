@@ -147,11 +147,37 @@ pub struct AppSettings {
     pub music: MusicConfig,
     /// 仅打包版实际生效
     pub auto_launch: bool,
+    #[serde(default = "default_weather_sky")]
+    pub weather_sky: bool,
+}
+
+fn default_weather_sky() -> bool {
+    true
 }
 
 impl AppSettings {
     /// 旧版 store.json 可能缺字段
     pub fn from_value(value: serde_json::Value) -> Self {
         serde_json::from_value(value).unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weather_sky_defaults_on_for_old_store() {
+        let s = AppSettings::from_value(serde_json::json!({ "theme": "pink" }));
+        assert!(s.weather_sky);
+        assert_eq!(s.theme, ThemeId::Pink);
+    }
+
+    #[test]
+    fn weather_sky_round_trips_camel_case() {
+        let s = AppSettings::from_value(serde_json::json!({ "weatherSky": false }));
+        assert!(!s.weather_sky);
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["weatherSky"], false);
     }
 }

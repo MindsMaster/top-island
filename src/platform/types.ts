@@ -139,6 +139,7 @@ export interface AppSettings {
   music: MusicConfig;
   /** 仅打包版实际生效 */
   autoLaunch: boolean;
+  weatherSky: boolean;
 }
 
 export interface IpCityInfo {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { settings } from '@/core/settings';
 import { shellView } from '@/shell/view';
 import { WeatherScene } from './scene';
 import { isNight, weatherState, weatherView } from './store';
@@ -73,7 +74,10 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="wx-sky"
-    :class="[`wx-${weatherState.kind ?? 'cloudy'}`, { 'wx-night': isNight, 'wx-dim': weatherView }]"
+    :class="[
+      `wx-${weatherState.kind ?? 'cloudy'}`,
+      { 'wx-night': isNight, 'wx-dim': weatherView, 'wx-plain': !settings.weatherSky },
+    ]"
   >
     <canvas ref="canvasEl" class="wx-canvas"></canvas>
   </div>

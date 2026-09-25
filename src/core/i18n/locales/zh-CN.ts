@@ -140,6 +140,8 @@ const zhCN: Messages = {
   settingsThemeOcean: '深海',
   settingsThemeMint: '薄荷',
   settingsThemeCustom: '自定义',
+  settingsWeatherSky: '天气页天空背景',
+  settingsWeatherSkyHint: '关闭后天气页保持主题配色，只保留雨雪等动效。',
   themeGroupSolid: '纯色',
   themeGroupGradient: '渐变',
   themeGroupCustom: '自定义',

@@ -51,6 +51,7 @@ export const settings = reactive<AppSettings>({
   diagnostics: { ...DEFAULT_DIAGNOSTICS },
   music: { ...DEFAULT_MUSIC },
   autoLaunch: true,
+  weatherSky: true,
 });
 
 /** 兼容旧版 boolean */
@@ -77,6 +78,7 @@ function applyRemote(s: Partial<AppSettings> | null) {
   if (s.diagnostics) settings.diagnostics = { ...DEFAULT_DIAGNOSTICS, ...s.diagnostics };
   if (s.music) settings.music = { ...DEFAULT_MUSIC, ...s.music };
   if (typeof s.autoLaunch === 'boolean') settings.autoLaunch = s.autoLaunch;
+  if (typeof s.weatherSky === 'boolean') settings.weatherSky = s.weatherSky;
 }
 
 /** 岛高 40 与 _base.scss 一致 */

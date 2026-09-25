@@ -140,6 +140,9 @@ const enUS: Messages = {
   settingsThemeOcean: 'Ocean',
   settingsThemeMint: 'Mint',
   settingsThemeCustom: 'Custom',
+  settingsWeatherSky: 'Sky backdrop on weather page',
+  settingsWeatherSkyHint:
+    'When off, the weather page keeps your theme and only shows rain, snow and other effects.',
   themeGroupSolid: 'Solid',
   themeGroupGradient: 'Gradient',
   themeGroupCustom: 'Custom',

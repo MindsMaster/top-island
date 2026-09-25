@@ -6,6 +6,7 @@ import { setCustomColor, settings } from '@/core/settings';
 import { THEMES, isLightCustom } from '@/core/theme';
 import ColorPicker from '@/ui/ColorPicker.vue';
 import SettingSelect from '@/ui/SettingSelect.vue';
+import SettingSwitch from '@/ui/SettingSwitch.vue';
 import type { CustomTheme, DisplayInfo, ThemeId } from '@/platform/types';
 
 const { t } = useI18n();
@@ -132,6 +133,11 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+    <SettingSwitch
+      v-model="settings.weatherSky"
+      :label="t('settingsWeatherSky')"
+      :description="t('settingsWeatherSkyHint')"
+    />
   </section>
   <section class="setting-section">
     <h2 class="setting-group-title">{{ t('settingsLayoutTitle') }}</h2>
