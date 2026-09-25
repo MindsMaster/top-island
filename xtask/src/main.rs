@@ -1,3 +1,5 @@
+use std::io::ErrorKind;
+use std::net::{Ipv4Addr, Ipv6Addr, TcpListener};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -11,6 +13,8 @@ const NEXUS_UPLOAD_RELEASES: &str = "https://repo.azuramc.cc/repository/raw-rele
 const NEXUS_UPLOAD_SNAPSHOTS: &str = "https://repo.azuramc.cc/repository/raw-snapshots/top-island";
 /// 硬编码密码只为绕开 bundler 空密码兼容问题
 const KEY_PASSWORD: &str = "topisland-updater";
+const DEV_PORT: u16 = 1420;
+const DEV_PORT_TRIES: u16 = 20;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -49,12 +53,42 @@ fn build_bridge() -> Result<()> {
 
 fn dev() -> Result<()> {
     build_bridge()?;
+    let port = first_free_port(DEV_PORT, DEV_PORT_TRIES)
+        .with_context(|| format!("{DEV_PORT} 起连续 {DEV_PORT_TRIES} 个端口都被占用"))?;
+    if port != DEV_PORT {
+        println!("端口 {DEV_PORT} 被占用，改用 {port}");
+    }
+    // devUrl 由 CLI 先读 必须在起 vite 前定好
+    let config = format!(r#"{{"build":{{"devUrl":"http://localhost:{port}"}}}}"#);
     let status = Command::new("node")
-        .args(["node_modules/@tauri-apps/cli/tauri.js", "dev"])
+        .args([
+            "node_modules/@tauri-apps/cli/tauri.js",
+            "dev",
+            "--config",
+            &config,
+        ])
+        .env("TOP_ISLAND_DEV_PORT", port.to_string())
         .status()
         .context("tauri dev")?;
     anyhow::ensure!(status.success(), "tauri dev 退出非零");
     Ok(())
+}
+
+fn first_free_port(start: u16, tries: u16) -> Option<u16> {
+    (start..=start.saturating_add(tries - 1)).find(|&p| port_free(p))
+}
+
+/// 通配地址也要探 Windows 下别人占着 0.0.0.0 时 localhost 照样能绑上
+fn port_free(port: u16) -> bool {
+    let v4 = [Ipv4Addr::UNSPECIFIED, Ipv4Addr::LOCALHOST]
+        .into_iter()
+        .all(|ip| TcpListener::bind((ip, port)).is_ok());
+    // 没开 IPv6 的机器绑不上不算占用
+    let v6 = match TcpListener::bind((Ipv6Addr::LOCALHOST, port)) {
+        Ok(_) => true,
+        Err(e) => e.kind() != ErrorKind::AddrInUse,
+    };
+    v4 && v6
 }
 
 fn keygen() -> Result<()> {
@@ -301,4 +335,34 @@ fn legacy_feed() -> Result<()> {
         "已写 latest.yml / snapshot.yml / snapshot.json，检查后用 cargo xtask publish 一并上传"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skips_port_held_on_wildcard() {
+        let held = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let port = held.local_addr().unwrap().port();
+        assert!(!port_free(port));
+        assert_ne!(first_free_port(port, 5), Some(port));
+    }
+
+    #[test]
+    fn skips_port_held_on_loopback() {
+        let held = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = held.local_addr().unwrap().port();
+        assert!(!port_free(port));
+    }
+
+    #[test]
+    fn keeps_start_when_free() {
+        let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        assert_eq!(first_free_port(port, 1), Some(port));
+    }
 }

@@ -2,6 +2,9 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
+/** xtask dev 探到的空闲端口 */
+const devPort = Number(process.env.TOP_ISLAND_DEV_PORT) || 1420;
+
 export default defineConfig({
   base: './',
   plugins: [vue()],
@@ -12,7 +15,7 @@ export default defineConfig({
     entries: ['index.html', 'settings.html'],
   },
   server: {
-    port: 1420,
+    port: devPort,
     strictPort: true,
   },
   build: {

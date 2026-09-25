@@ -7,7 +7,7 @@
     "name": "an5w1r@163.com"
   },
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "cargo xtask dev",
     "build": "vite build",
     "dist": "tauri build",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
