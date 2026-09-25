@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import { updateApi } from '@/platform/update';
 import { startClock, currentTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
@@ -7,7 +7,7 @@ import { initSettings } from '@/core/settings';
 import { modules, panelIndex, panels } from '@/modules/registry';
 import AlertBar from '@/ui/AlertBar.vue';
 import DevOverlay from '@/ui/DevOverlay.vue';
-import { alertState, showAlert } from '@/ui/alert';
+import { alertState, setAlertShown, showAlert } from '@/ui/alert';
 import PanelDeck from './PanelDeck.vue';
 import StatusBar from './StatusBar.vue';
 import { setShellCommands } from './commands';
@@ -44,9 +44,13 @@ const deck = usePanelDeck({
 
 const overlays = modules.filter((m) => m.overlay);
 
+/** 展开时可关的提醒延后到收起 */
+const alertShown = computed(() => alertState.active && (!isLarge.value || !alertState.dismissible));
+watch(alertShown, setAlertShown, { immediate: true });
+
 /** alert 优先 模块让位 */
 const capsuleOwner = computed(() => {
-  if (alertState.active) return null;
+  if (alertShown.value) return null;
   let best: (typeof modules)[number] | null = null;
   for (const m of modules) {
     if (!m.capsule?.active()) continue;
@@ -55,7 +59,7 @@ const capsuleOwner = computed(() => {
   return best;
 });
 
-const showOwnContent = computed(() => !alertState.active && capsuleOwner.value === null);
+const showOwnContent = computed(() => !alertShown.value && capsuleOwner.value === null);
 
 const islandStyle = computed(() => {
   const style: Record<string, string> = {};
@@ -230,9 +234,9 @@ onBeforeUnmount(() => {
       :class="[
         capsuleOwner ? `capsule-${capsuleOwner.id}` : '',
         {
-          quick: isQuick || alertState.active,
+          quick: isQuick || alertShown,
           large: isLarge,
-          'has-alert': alertState.active,
+          'has-alert': alertShown,
           hidden: island.isHidden.value,
         },
       ]"
@@ -246,7 +250,7 @@ onBeforeUnmount(() => {
       @pointercancel="hide.end($event, islandEl, false)"
       @wheel.passive="deck.onWheel"
     >
-      <AlertBar v-if="alertState.active" />
+      <AlertBar v-if="alertShown" />
 
       <template v-if="!isLarge">
         <component :is="capsuleOwner.capsule!.component" v-if="capsuleOwner" />

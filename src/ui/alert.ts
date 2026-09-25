@@ -23,12 +23,33 @@ export const alertState = reactive({
 });
 
 let timer: number | null = null;
+let duration = 0;
+let shown = false;
+
+/** 露出后才计时 */
+function arm() {
+  if (timer !== null || !shown || !alertState.active || duration <= 0) return;
+  timer = window.setTimeout(dismissAlert, duration);
+}
+
+function disarm() {
+  if (timer === null) return;
+  clearTimeout(timer);
+  timer = null;
+}
+
+/** 仅 shell 调 */
+export function setAlertShown(v: boolean) {
+  shown = v;
+  if (v) arm();
+  else disarm();
+}
 
 export function showAlert({
   icon: i = 'fa-bell',
   text: t = '',
   dismissible: d = true,
-  duration = 5000,
+  duration: ms = 5000,
   actionLabel: al = '',
   actionHandler: ah = null,
   secondLabel: sl = '',
@@ -42,8 +63,9 @@ export function showAlert({
   alertState.secondLabel = sl;
   alertState.secondHandler = sh;
   alertState.active = true;
-  if (timer) clearTimeout(timer);
-  if (duration > 0) timer = window.setTimeout(dismissAlert, duration);
+  disarm();
+  duration = ms;
+  arm();
 }
 
 export function dismissAlert() {
@@ -52,8 +74,5 @@ export function dismissAlert() {
   alertState.actionHandler = null;
   alertState.secondLabel = '';
   alertState.secondHandler = null;
-  if (timer) {
-    clearTimeout(timer);
-    timer = null;
-  }
+  disarm();
 }
