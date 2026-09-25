@@ -20,13 +20,12 @@ const MAX_ITEMS = 100;
 
 const POPUP_MS = 5000;
 const POPUP_LINGER_MS = 2000;
-const MAX_KEPT = 12;
 
 /** images 值为空串表示候选图全部失败 */
 export const notifyState = reactive({
   items: [] as NotifEntry[],
-  /** 新的在前 整叠一起到期 */
-  popups: [] as NotifEntry[],
+  /** 新来的直接顶替 */
+  popup: null as NotifEntry | null,
   popupHovered: false,
   dismissAt: 0,
   images: {} as Record<string, string>,
@@ -67,16 +66,15 @@ export async function activate(n: NotificationItem) {
   }
 }
 
-export function openPopups() {
-  notifyState.popups = [];
-  notifyState.popupHovered = false;
+export function openPopup() {
+  closePopup();
   shell.openPanel('messages');
 }
 
-export function closeTopPopup() {
-  notifyState.popups = notifyState.popups.slice(1);
-  // 最后一条关掉时条被卸载 收不到 mouseleave
-  if (!notifyState.popups.length) notifyState.popupHovered = false;
+export function closePopup() {
+  notifyState.popup = null;
+  // 条被卸载 收不到 mouseleave
+  notifyState.popupHovered = false;
 }
 
 export function setPopupHover(hovered: boolean) {
@@ -86,13 +84,13 @@ export function setPopupHover(hovered: boolean) {
 }
 
 function prunePopups() {
-  if (!notifyState.popups.length || notifyState.popupHovered) return;
+  if (!notifyState.popup || notifyState.popupHovered) return;
   // 没露出来就不计时 展开操作或被提醒压住时攒着
   if (shellView.capsuleOwner !== 'notifications') {
     notifyState.dismissAt = Date.now() + POPUP_MS;
     return;
   }
-  if (Date.now() >= notifyState.dismissAt) notifyState.popups = [];
+  if (Date.now() >= notifyState.dismissAt) notifyState.popup = null;
 }
 
 function onIncoming(batch: NotificationItem[]) {
@@ -113,7 +111,7 @@ function onIncoming(batch: NotificationItem[]) {
   for (const e of fresh) void resolveImage(e);
 
   if (settings.notifications.popup) {
-    notifyState.popups = [...fresh, ...notifyState.popups].slice(0, MAX_KEPT);
+    notifyState.popup = fresh[0];
     notifyState.dismissAt = Date.now() + POPUP_MS;
   }
 }
@@ -132,7 +130,7 @@ export async function initNotifications() {
     watch(
       () => shellView.panel,
       (p) => {
-        if (p === 'messages') notifyState.popups = [];
+        if (p === 'messages') notifyState.popup = null;
       }
     );
   }

@@ -212,58 +212,6 @@
   }
 }
 
-/* 垫层 压在岛下 与岛同材质 */
-.notify-layers {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 360px;
-  height: 72px;
-  pointer-events: none;
-  z-index: -1;
-}
-.notify-layer {
-  position: absolute;
-  left: 50%;
-  translate: -50% 0;
-  top: 34px;
-  height: 38px;
-  border-radius: 18px;
-  background: var(--island-bg);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-  opacity: 0;
-  transition:
-    opacity 0.25s ease,
-    top 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-.layer-1 {
-  width: 336px;
-  filter: brightness(0.93);
-}
-.layer-2 {
-  width: 310px;
-  filter: brightness(0.86);
-}
-.layer-1.on {
-  opacity: 0.9;
-  top: 44px;
-}
-.layer-2.on {
-  opacity: 0.6;
-  top: 54px;
-}
-.fan .layer-1.on {
-  top: 49px;
-}
-.fan .layer-2.on {
-  top: 64px;
-}
-html[data-scheme='light'] .notify-layer {
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
-}
-
 .notify-avatar {
   position: relative;
   width: 38px;

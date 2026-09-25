@@ -1,11 +1,10 @@
 import { shellView } from '@/shell/view';
 import type { IslandModule } from '../types';
 import Capsule from './Capsule.vue';
-import Layers from './Layers.vue';
 import Panel from './Panel.vue';
 import { initNotifications, notifyState } from './store';
 
-const hasPopup = () => notifyState.popups.length > 0;
+const hasPopup = () => notifyState.popup !== null;
 
 export const notificationsModule: IslandModule = {
   id: 'notifications',
@@ -18,6 +17,5 @@ export const notificationsModule: IslandModule = {
     active: () => hasPopup() && shellView.mode !== 'large',
     component: Capsule,
   },
-  overlay: Layers,
   holdContent: hasPopup,
 };

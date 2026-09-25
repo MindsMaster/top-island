@@ -2,18 +2,11 @@
 import { computed } from 'vue';
 import { settings } from '@/core/settings';
 import { useI18n } from '@/core/i18n';
-import {
-  closeTopPopup,
-  formatTime,
-  imageFailed,
-  notifyState as snap,
-  openPopups,
-  setPopupHover,
-} from './store';
+import { closePopup, formatTime, imageFailed, notifyState as snap, openPopup, setPopupHover } from './store';
 
 const { t } = useI18n();
 
-const entry = computed(() => snap.popups[0]);
+const entry = computed(() => snap.popup);
 const privacy = computed(() => settings.notifications.privacy);
 </script>
 
@@ -23,7 +16,7 @@ const privacy = computed(() => settings.notifications.privacy);
     class="notify-strip"
     @mouseenter="setPopupHover(true)"
     @mouseleave="setPopupHover(false)"
-    @click.stop="openPopups()"
+    @click.stop="openPopup()"
   >
     <div :key="entry.key" class="notify-strip-body">
       <div class="notify-avatar" :class="{ 'notify-blur': privacy.enabled && privacy.blurAvatar }">
@@ -54,7 +47,7 @@ const privacy = computed(() => settings.notifications.privacy);
         <div v-else-if="entry.body" class="notify-text">{{ entry.body }}</div>
       </div>
     </div>
-    <button class="notify-close" @click.stop="closeTopPopup()">
+    <button class="notify-close" @click.stop="closePopup()">
       <i class="fa-solid fa-xmark"></i>
     </button>
   </div>
