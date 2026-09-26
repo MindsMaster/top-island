@@ -9,6 +9,7 @@ import type {
   MusicConfig,
   NotificationsConfig,
   NotificationsPrivacy,
+  WeatherConfig,
 } from '@/platform/types';
 import { useI18n } from './i18n';
 import { THEMES, applyTheme, nextThemeId } from './theme';
@@ -41,6 +42,8 @@ const DEFAULT_NOTIFICATIONS: NotificationsConfig = {
 
 const DEFAULT_MUSIC: MusicConfig = { neteaseBridge: true };
 
+const DEFAULT_WEATHER: WeatherConfig = { auto: true, cities: [], active: 'auto' };
+
 /** 加字段须同步 platform/types 与默认值常量 */
 export const settings = reactive<AppSettings>({
   theme: 'dark',
@@ -52,6 +55,7 @@ export const settings = reactive<AppSettings>({
   music: { ...DEFAULT_MUSIC },
   autoLaunch: true,
   weatherSky: true,
+  weather: { ...DEFAULT_WEATHER, cities: [] },
 });
 
 /** 兼容旧版 boolean */
@@ -79,6 +83,7 @@ function applyRemote(s: Partial<AppSettings> | null) {
   if (s.music) settings.music = { ...DEFAULT_MUSIC, ...s.music };
   if (typeof s.autoLaunch === 'boolean') settings.autoLaunch = s.autoLaunch;
   if (typeof s.weatherSky === 'boolean') settings.weatherSky = s.weatherSky;
+  if (s.weather) settings.weather = { ...DEFAULT_WEATHER, ...s.weather };
 }
 
 /** 岛高 40 与 _base.scss 一致 */

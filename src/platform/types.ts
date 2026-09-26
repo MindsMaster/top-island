@@ -128,6 +128,23 @@ export interface NotificationsConfig {
   wechat: boolean;
 }
 
+export interface WeatherCity {
+  /** open-meteo 地理编码 id */
+  id: string;
+  name: string;
+  admin: string;
+  country: string;
+  lat: number;
+  lon: number;
+}
+
+export interface WeatherConfig {
+  auto: boolean;
+  cities: WeatherCity[];
+  /** 'auto' 或 cities 里的 id */
+  active: string;
+}
+
 /** 全部窗口共享 持久化且跨窗口实时同步 */
 export interface AppSettings {
   theme: ThemeId;
@@ -140,6 +157,7 @@ export interface AppSettings {
   /** 仅打包版实际生效 */
   autoLaunch: boolean;
   weatherSky: boolean;
+  weather: WeatherConfig;
 }
 
 export interface IpCityInfo {

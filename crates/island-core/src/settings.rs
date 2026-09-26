@@ -135,6 +135,37 @@ impl Default for MusicConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeatherCity {
+    /// open-meteo 地理编码 id
+    pub id: String,
+    pub name: String,
+    pub admin: String,
+    pub country: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WeatherConfig {
+    pub auto: bool,
+    pub cities: Vec<WeatherCity>,
+    /// "auto" 或 cities 里的 id
+    pub active: String,
+}
+
+impl Default for WeatherConfig {
+    fn default() -> Self {
+        Self {
+            auto: true,
+            cities: Vec::new(),
+            active: "auto".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
@@ -149,6 +180,7 @@ pub struct AppSettings {
     pub auto_launch: bool,
     #[serde(default = "default_weather_sky")]
     pub weather_sky: bool,
+    pub weather: WeatherConfig,
 }
 
 fn default_weather_sky() -> bool {
@@ -171,6 +203,27 @@ mod tests {
         let s = AppSettings::from_value(serde_json::json!({ "theme": "pink" }));
         assert!(s.weather_sky);
         assert_eq!(s.theme, ThemeId::Pink);
+    }
+
+    #[test]
+    fn weather_defaults_to_auto_location_for_old_store() {
+        let s = AppSettings::from_value(serde_json::json!({ "theme": "pink" }));
+        assert!(s.weather.auto);
+        assert!(s.weather.cities.is_empty());
+        assert_eq!(s.weather.active, "auto");
+    }
+
+    #[test]
+    fn weather_cities_round_trip() {
+        let raw = serde_json::json!({ "weather": {
+            "auto": false,
+            "active": "1808926",
+            "cities": [{ "id": "1808926", "name": "杭州", "admin": "浙江", "country": "中国", "lat": 30.29, "lon": 120.16 }]
+        }});
+        let s = AppSettings::from_value(raw.clone());
+        assert!(!s.weather.auto);
+        assert_eq!(s.weather.cities[0].name, "杭州");
+        assert_eq!(serde_json::to_value(&s).unwrap()["weather"], raw["weather"]);
     }
 
     #[test]

@@ -1,7 +1,9 @@
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { weatherApi } from '@/platform/weather';
 import { isNightTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
+import { settings } from '@/core/settings';
+import type { WeatherCity } from '@/platform/types';
 import { artFor } from './art';
 import { kindFromMsnSymbol, kindFromWmo, type WxKind } from './codes';
 import { dailyPoints, hoursAfter, nowcastOf, type DayPoint, type HourPoint, type Nowcast } from './forecast';
@@ -33,6 +35,8 @@ const { lang, t, weatherCodeName } = useI18n();
 
 export const weatherState = reactive({
   city: '',
+  /** IP 定位到的城市 */
+  autoCity: '',
   temp: null as number | null,
   tempHi: null as number | null,
   tempLo: null as number | null,
@@ -84,12 +88,21 @@ export const hint = computed<string | null>(() => {
 let ipLat: number | null = null;
 let ipLon: number | null = null;
 let refreshTimer: number | null = null;
+let refetch = false;
+
+/** null 走自动定位 */
+export function activeCity(): WeatherCity | null {
+  const w = settings.weather;
+  const picked = w.cities.find((c) => c.id === w.active);
+  if (picked) return picked;
+  return w.auto ? null : (w.cities[0] ?? null);
+}
 
 async function tryFetchIpCity() {
   try {
     const data = await weatherApi.ipCity(lang.value === 'zh-CN' ? 'zh-CN' : 'en');
     if (!data.city) return;
-    weatherState.city = data.city;
+    weatherState.autoCity = data.city;
     if (data.lat != null && data.lon != null) {
       ipLat = data.lat;
       ipLon = data.lon;
@@ -99,14 +112,15 @@ async function tryFetchIpCity() {
   }
 }
 
-async function resolveLocation(): Promise<{ lat: number; lon: number } | null> {
+async function resolveLocation(): Promise<{ lat: number; lon: number; name: string } | null> {
+  const picked = activeCity();
+  if (picked) return picked;
   if (ipLat == null || ipLon == null) await tryFetchIpCity();
-  if (ipLat != null && ipLon != null) return { lat: ipLat, lon: ipLon };
+  if (ipLat != null && ipLon != null) return { lat: ipLat, lon: ipLon, name: weatherState.autoCity };
 
   const geo = await weatherApi.geocode(FALLBACK_CITY, 'zh');
   if (!geo.results?.length) return null;
-  if (!weatherState.city) weatherState.city = FALLBACK_CITY;
-  return { lat: geo.results[0].latitude, lon: geo.results[0].longitude };
+  return { lat: geo.results[0].latitude, lon: geo.results[0].longitude, name: FALLBACK_CITY };
 }
 
 async function tryFetchMsn(lat: number, lon: number): Promise<boolean> {
@@ -146,7 +160,11 @@ async function tryFetchMsn(lat: number, lon: number): Promise<boolean> {
 }
 
 export async function fetchWeather() {
-  if (weatherState.loading) return;
+  // 拉取中切了城市 结束后再拉一次
+  if (weatherState.loading) {
+    refetch = true;
+    return;
+  }
   weatherState.loading = true;
   weatherState.error = null;
   try {
@@ -155,7 +173,10 @@ export async function fetchWeather() {
       weatherState.error = t('weatherFetchError');
       return;
     }
-    if (await tryFetchMsn(loc.lat, loc.lon)) return;
+    if (await tryFetchMsn(loc.lat, loc.lon)) {
+      weatherState.city = loc.name;
+      return;
+    }
     const data = await weatherApi.query(loc.lat, loc.lon, {
       daily: 'temperature_2m_max,temperature_2m_min',
       forecastDays: 1,
@@ -182,15 +203,24 @@ export async function fetchWeather() {
       weatherState.tempHi = Math.round(data.daily.temperature_2m_max[0]);
       weatherState.tempLo = Math.round(data.daily.temperature_2m_min[0]);
     }
+    weatherState.city = loc.name;
   } catch (e) {
     console.error('[weather] 拉取失败:', e);
     weatherState.error = t('weatherFetchError');
   } finally {
     weatherState.loading = false;
+    if (refetch) {
+      refetch = false;
+      void fetchWeather();
+    }
   }
 }
 
 export function startWeather() {
   void fetchWeather();
+  watch(
+    () => activeCity()?.id ?? 'auto',
+    () => void fetchWeather()
+  );
   if (refreshTimer === null) refreshTimer = window.setInterval(fetchWeather, REFRESH_MS);
 }
