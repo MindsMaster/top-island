@@ -179,6 +179,109 @@ html[data-scheme='light'] {
   font-size: 12px;
   opacity: 0.75;
 }
+.wx-city-btn {
+  margin: -4px 0 0 -8px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 9px;
+  background: rgba(var(--ink), 0.08);
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.wx-city-btn:hover {
+  background: rgba(var(--ink), 0.14);
+}
+.wx-city-btn .wx-city-caret {
+  font-size: 9px;
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+.wx-city-caret.open {
+  transform: rotate(180deg);
+}
+
+/* 城市切换 */
+/* 透明 只接空白处点击 */
+.wx-picker-scrim {
+  position: absolute;
+  inset: -20px;
+  z-index: 5;
+}
+.wx-picker {
+  position: absolute;
+  top: 30px;
+  left: -8px;
+  z-index: 6;
+  width: 224px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 16px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+  animation: wx-picker-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes wx-picker-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+.wx-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--island-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wx-picker-item:hover {
+  background: rgba(var(--ink), 0.06);
+}
+.wx-picker-item.on {
+  background: rgba(var(--ink), 0.1);
+}
+.wx-picker-item > i {
+  width: 16px;
+  font-size: 12px;
+  text-align: center;
+  opacity: 0.75;
+}
+.wx-picker-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.wx-picker-text small {
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(var(--ink), 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-picker-item .wx-picker-check {
+  font-size: 12px;
+  opacity: 1;
+  color: var(--accent);
+}
 .wx-clock {
   text-align: right;
   line-height: 1.2;

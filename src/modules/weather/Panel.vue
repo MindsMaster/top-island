@@ -2,9 +2,18 @@
 import { computed, ref, watch } from 'vue';
 import { currentDate, currentTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
+import { settings } from '@/core/settings';
 import { shellView } from '@/shell/view';
 import { artFor } from './art';
-import { art, desc, hint, weatherState as snap, weatherView as view, type WeatherView } from './store';
+import {
+  activeCity,
+  art,
+  desc,
+  hint,
+  weatherState as snap,
+  weatherView as view,
+  type WeatherView,
+} from './store';
 
 /** 与 weather.scss 的 .wx 内容宽度一致 */
 const CURVE_W = 340;
@@ -25,6 +34,7 @@ function open(v: WeatherView) {
 
 function close() {
   view.value = null;
+  pickerOpen.value = false;
 }
 
 watch(
@@ -33,6 +43,27 @@ watch(
     if (p !== 'weather') close();
   }
 );
+
+const pickerOpen = ref(false);
+
+const places = computed(() => [
+  ...(settings.weather.auto
+    ? [{ id: 'auto', name: t('weatherAuto'), sub: snap.autoCity, icon: 'fa-location-arrow' }]
+    : []),
+  ...settings.weather.cities.map((c) => ({
+    id: c.id,
+    name: c.name,
+    sub: [c.admin, c.country].filter(Boolean).join(' · '),
+    icon: 'fa-location-dot',
+  })),
+]);
+
+const currentPlace = computed(() => activeCity()?.id ?? 'auto');
+
+function pickPlace(id: string) {
+  settings.weather.active = id;
+  pickerOpen.value = false;
+}
 
 const stripHours = computed(() => snap.hourly.slice(0, STRIP_HOURS));
 
@@ -143,7 +174,17 @@ const week = computed(() => {
   <div class="wx" :class="{ 'wx-in-detail': view }">
     <div class="wx-home" :inert="!!view">
       <div class="wx-top">
-        <div class="wx-city">
+        <button
+          v-if="places.length > 1"
+          class="wx-city wx-city-btn"
+          :aria-expanded="pickerOpen"
+          @click.stop="pickerOpen = !pickerOpen"
+        >
+          <i class="fa-solid fa-location-dot"></i>
+          <span>{{ snap.city || '--' }}</span>
+          <i class="fa-solid fa-chevron-down wx-city-caret" :class="{ open: pickerOpen }"></i>
+        </button>
+        <div v-else class="wx-city">
           <i class="fa-solid fa-location-dot"></i>
           <span>{{ snap.city || '--' }}</span>
         </div>
@@ -187,6 +228,35 @@ const week = computed(() => {
           </span>
         </span>
       </button>
+
+      <template v-if="pickerOpen">
+        <div class="wx-picker-scrim" @click.stop="pickerOpen = false"></div>
+        <ul
+          class="wx-picker"
+          role="listbox"
+          :aria-label="t('weatherPickCity')"
+          @keydown.esc="pickerOpen = false"
+        >
+          <li v-for="p in places" :key="p.id" role="option" :aria-selected="p.id === currentPlace">
+            <button
+              class="wx-picker-item"
+              :class="{ on: p.id === currentPlace }"
+              @click.stop="pickPlace(p.id)"
+            >
+              <i :class="'fa-solid ' + p.icon" aria-hidden="true"></i>
+              <span class="wx-picker-text">
+                <span>{{ p.name }}</span>
+                <small v-if="p.sub">{{ p.sub }}</small>
+              </span>
+              <i
+                v-if="p.id === currentPlace"
+                class="fa-solid fa-check wx-picker-check"
+                aria-hidden="true"
+              ></i>
+            </button>
+          </li>
+        </ul>
+      </template>
     </div>
 
     <div class="wx-detail" :inert="!view">

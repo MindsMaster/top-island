@@ -142,6 +142,7 @@ const zhCN: Messages = {
   settingsThemeCustom: '自定义',
   settingsWeather: '天气',
   weatherAuto: '自动定位',
+  weatherPickCity: '切换城市',
   weatherCities: '我的城市',
   weatherSearch: '搜索城市，国外城市请用英文',
   weatherSearchEmpty: '没有找到这个城市',

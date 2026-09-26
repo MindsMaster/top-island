@@ -218,6 +218,8 @@ export async function fetchWeather() {
 
 export function startWeather() {
   void fetchWeather();
+  // 选中具体城市时也要知道自动定位在哪
+  if (settings.weather.auto && activeCity()) void tryFetchIpCity();
   watch(
     () => activeCity()?.id ?? 'auto',
     () => void fetchWeather()
