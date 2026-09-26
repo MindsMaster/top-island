@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { currentDate, currentTime } from '@/core/clock';
 import { useI18n } from '@/core/i18n';
 import { settings } from '@/core/settings';
+import { settingsApi } from '@/platform/settings';
 import { shellView } from '@/shell/view';
 import { artFor } from './art';
 import {
@@ -63,6 +64,11 @@ const currentPlace = computed(() => activeCity()?.id ?? 'auto');
 function pickPlace(id: string) {
   settings.weather.active = id;
   pickerOpen.value = false;
+}
+
+function manageCities() {
+  pickerOpen.value = false;
+  void settingsApi.open('weather');
 }
 
 const stripHours = computed(() => snap.hourly.slice(0, STRIP_HOURS));
@@ -253,6 +259,13 @@ const week = computed(() => {
                 class="fa-solid fa-check wx-picker-check"
                 aria-hidden="true"
               ></i>
+            </button>
+          </li>
+          <li class="wx-picker-sep" role="separator"></li>
+          <li>
+            <button class="wx-picker-item wx-picker-manage" @click.stop="manageCities">
+              <i class="fa-solid fa-gear" aria-hidden="true"></i>
+              <span class="wx-picker-text">{{ t('weatherManageCities') }}</span>
             </button>
           </li>
         </ul>

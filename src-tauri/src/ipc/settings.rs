@@ -21,6 +21,6 @@ pub async fn settings_update(app: AppHandle, settings: AppSettings) -> AppResult
 }
 
 #[tauri::command]
-pub async fn settings_open(app: AppHandle) -> AppResult<()> {
-    off_thread(move || infra::layout::open_settings(&app)).await
+pub async fn settings_open(app: AppHandle, section: Option<String>) -> AppResult<()> {
+    off_thread(move || infra::layout::open_settings(&app, section.as_deref())).await
 }

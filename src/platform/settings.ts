@@ -3,7 +3,9 @@ import type { AppSettings } from './types';
 
 export const settingsApi = {
   /** 已开则聚焦 */
-  open: () => call('settings_open'),
+  open: (section?: string) => call('settings_open', { section: section ?? null }),
+
+  onSection: (cb: (section: string) => void) => on<string>('settings:section', cb),
 
   /** 每次开窗触发 窗口常驻 */
   onOpened: (cb: () => void) => on('settings:opened', cb),

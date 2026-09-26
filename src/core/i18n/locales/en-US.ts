@@ -143,6 +143,7 @@ const enUS: Messages = {
   settingsWeather: 'Weather',
   weatherAuto: 'Locate automatically',
   weatherPickCity: 'Switch city',
+  weatherManageCities: 'Manage cities…',
   weatherCities: 'My cities',
   weatherSearch: 'Search for a city',
   weatherSearchEmpty: 'No matching city',

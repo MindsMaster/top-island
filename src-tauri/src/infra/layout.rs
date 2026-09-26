@@ -76,8 +76,8 @@ pub fn apply_settings_layout(app: &tauri::AppHandle, layout: &IslandLayout) -> A
     Ok(())
 }
 
-/// 已开则只聚焦
-pub fn open_settings(app: &tauri::AppHandle) -> AppResult<()> {
+/// 已开则只聚焦 section 为设置页分区 id
+pub fn open_settings(app: &tauri::AppHandle, section: Option<&str>) -> AppResult<()> {
     let win = app
         .get_webview_window("settings")
         .ok_or("error.io: 设置窗不存在")?;
@@ -91,6 +91,9 @@ pub fn open_settings(app: &tauri::AppHandle) -> AppResult<()> {
     }
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
+    if let Some(section) = section {
+        let _ = app.emit_to("settings", "settings:section", section);
+    }
     Ok(())
 }
 

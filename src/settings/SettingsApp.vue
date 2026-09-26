@@ -41,6 +41,9 @@ async function close() {
 }
 
 settingsApi.onOpened(reveal);
+settingsApi.onSection((id) => {
+  if (sections.some((s) => s.id === id)) active.value = id;
+});
 
 /** 聚焦瞬间的抖动宽限 */
 const FOCUS_BLUR_GRACE_MS = 500;

@@ -23,7 +23,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "quit" => app.exit(0),
             "open-settings" => {
-                if let Err(e) = crate::infra::layout::open_settings(app) {
+                if let Err(e) = crate::infra::layout::open_settings(app, None) {
                     eprintln!("[tray] 打开设置失败: {e}");
                 }
             }

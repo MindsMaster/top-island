@@ -277,6 +277,18 @@ html[data-scheme='light'] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.wx-picker-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: rgba(var(--ink), 0.1);
+}
+.wx-picker-manage {
+  min-height: 36px;
+  color: rgba(var(--ink), 0.7);
+}
+.wx-picker-manage .wx-picker-text {
+  font-weight: 500;
+}
 .wx-picker-item .wx-picker-check {
   font-size: 12px;
   opacity: 1;
