@@ -180,8 +180,8 @@ html[data-scheme='light'] {
   opacity: 0.75;
 }
 .wx-city-btn {
-  margin: -4px 0 0 -8px;
-  padding: 4px 8px;
+  margin-left: -8px;
+  padding: 3px 8px;
   border: none;
   border-radius: 9px;
   background: rgba(var(--ink), 0.08);
@@ -222,9 +222,11 @@ html[data-scheme='light'] {
   flex-direction: column;
   gap: 2px;
   border-radius: 16px;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+  /* 与 wx-card 同材质 垫底防透字 */
+  background: linear-gradient(rgba(var(--ink), 0.1), rgba(var(--ink), 0.1)), rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(24px) saturate(1.3);
+  border: 1px solid rgba(var(--ink), 0.12);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
   animation: wx-picker-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 @keyframes wx-picker-in {
@@ -232,6 +234,9 @@ html[data-scheme='light'] {
     opacity: 0;
     transform: translateY(-6px) scale(0.97);
   }
+}
+html[data-scheme='light'] .wx-picker {
+  background: linear-gradient(rgba(var(--ink), 0.06), rgba(var(--ink), 0.06)), rgba(255, 255, 255, 0.55);
 }
 .wx-picker-item {
   display: flex;
