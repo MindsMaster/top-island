@@ -7,14 +7,12 @@ import SettingSwitch from '@/ui/SettingSwitch.vue';
 import type { WeatherCity } from '@/platform/types';
 
 const MAX_CITIES = 5;
-const SEARCH_DEBOUNCE_MS = 350;
 
 const { t, lang } = useI18n();
 
 const autoCity = ref('');
 const query = ref('');
 const results = ref<WeatherCity[]>([]);
-const searching = ref(false);
 const listEl = ref<HTMLElement | null>(null);
 const dragFrom = ref(-1);
 
@@ -25,44 +23,32 @@ function place(c: WeatherCity): string {
   return [c.admin, c.country].filter(Boolean).join(' · ');
 }
 
-let searchTimer = 0;
+type SearchState = 'idle' | 'searching' | 'done' | 'failed';
+const searchState = ref<SearchState>('idle');
 let searchSeq = 0;
 
-function onQueryInput() {
-  window.clearTimeout(searchTimer);
+async function search() {
   const q = query.value.trim();
-  if (!q) {
-    searchSeq++;
+  if (!q || searchState.value === 'searching') return;
+  const seq = ++searchSeq;
+  searchState.value = 'searching';
+  try {
+    const hits = await weatherApi.searchCity(q, lang.value === 'zh-CN' ? 'zh-CN' : 'en');
+    if (seq !== searchSeq) return;
+    results.value = hits.slice(0, MAX_CITIES);
+    searchState.value = 'done';
+  } catch {
+    if (seq !== searchSeq) return;
     results.value = [];
-    searching.value = false;
-    return;
+    searchState.value = 'failed';
   }
-  searching.value = true;
-  searchTimer = window.setTimeout(() => void search(q), SEARCH_DEBOUNCE_MS);
 }
 
-async function search(q: string) {
-  const seq = ++searchSeq;
-  try {
-    const geo = await weatherApi.geocode(q, lang.value === 'zh-CN' ? 'zh' : 'en');
-    if (seq !== searchSeq) return;
-    // 结果混有山峰机场公园
-    results.value = (geo.results ?? [])
-      .filter((r) => r.feature_code?.startsWith('PPL'))
-      .slice(0, MAX_CITIES)
-      .map((r) => ({
-        id: String(r.id),
-        name: r.name ?? q,
-        admin: [...new Set([r.admin1, r.admin2].filter(Boolean))].join(' '),
-        country: r.country ?? '',
-        lat: r.latitude,
-        lon: r.longitude,
-      }));
-  } catch {
-    if (seq === searchSeq) results.value = [];
-  } finally {
-    if (seq === searchSeq) searching.value = false;
-  }
+function onQueryInput() {
+  if (query.value.trim()) return;
+  searchSeq++;
+  results.value = [];
+  searchState.value = 'idle';
 }
 
 function add(c: WeatherCity) {
@@ -70,6 +56,7 @@ function add(c: WeatherCity) {
   settings.weather.cities = [...cities.value, c];
   query.value = '';
   results.value = [];
+  searchState.value = 'idle';
 }
 
 function remove(id: string) {
@@ -148,19 +135,34 @@ onMounted(async () => {
       </li>
     </ul>
 
-    <label class="weather-search">
+    <form class="weather-search" role="search" @submit.prevent="search">
       <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
       <input
         v-model="query"
         type="text"
         maxlength="40"
+        enterkeyhint="search"
         :disabled="full"
         :aria-label="t('weatherSearch')"
         :placeholder="full ? t('weatherCitiesFull') : t('weatherSearch')"
         @input="onQueryInput"
       />
-    </label>
-    <ul v-if="results.length" class="setting-group weather-city-list weather-results">
+      <button
+        v-if="!full"
+        type="submit"
+        class="weather-search-btn"
+        :class="{ busy: searchState === 'searching' }"
+        :disabled="!query.trim() || searchState === 'searching'"
+      >
+        <i v-if="searchState === 'searching'" class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+        {{ searchState === 'searching' ? t('weatherSearching') : t('weatherSearchGo') }}
+      </button>
+    </form>
+    <ul
+      v-if="results.length"
+      class="setting-group weather-city-list weather-results"
+      :aria-busy="searchState === 'searching'"
+    >
       <li v-for="r in results" :key="r.id" class="weather-city-row">
         <i class="fa-solid fa-location-dot weather-city-pin" aria-hidden="true"></i>
         <div class="weather-city-text">
@@ -172,8 +174,11 @@ onMounted(async () => {
         </button>
       </li>
     </ul>
-    <p v-else-if="query.trim() && !searching" class="setting-feedback weather-empty" role="status">
+    <p v-else-if="searchState === 'done'" class="setting-feedback weather-empty" role="status">
       {{ t('weatherSearchEmpty') }}
+    </p>
+    <p v-else-if="searchState === 'failed'" class="setting-feedback weather-empty" role="status">
+      {{ t('weatherSearchFailed') }}
     </p>
   </section>
 </template>

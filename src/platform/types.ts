@@ -129,7 +129,7 @@ export interface NotificationsConfig {
 }
 
 export interface WeatherCity {
-  /** open-meteo 地理编码 id */
+  /** OSM 对象 如 r2769829 */
   id: string;
   name: string;
   admin: string;
@@ -169,17 +169,7 @@ export interface IpCityInfo {
 }
 
 export interface GeocodeResult {
-  results?: Array<{
-    id: number;
-    latitude: number;
-    longitude: number;
-    name?: string;
-    admin1?: string;
-    admin2?: string;
-    country?: string;
-    /** GeoNames 地物类别 PPL 开头才是居民点 */
-    feature_code?: string;
-  }>;
+  results?: Array<{ latitude: number; longitude: number; name?: string }>;
   error?: string;
 }
 

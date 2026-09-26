@@ -138,7 +138,7 @@ impl Default for MusicConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeatherCity {
-    /// open-meteo 地理编码 id
+    /// OSM 对象 如 r2769829
     pub id: String,
     pub name: String,
     pub admin: String,

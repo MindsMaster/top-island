@@ -623,7 +623,7 @@
   gap: 8px;
   height: 32px;
   margin-top: 10px;
-  padding: 0 10px;
+  padding: 0 3px 0 10px;
   border: 1px solid rgba(var(--ink), 0.14);
   border-radius: 10px;
   background: rgba(var(--ink), 0.04);
@@ -635,6 +635,26 @@
 }
 #settings-window .weather-search input:focus-visible {
   outline: none;
+}
+.weather-search-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.weather-search-btn:disabled:not(.busy) {
+  opacity: 0.45;
+  cursor: default;
 }
 .weather-search input {
   flex: 1;

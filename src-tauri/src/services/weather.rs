@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use island_core::{msn_api_key, msn_bundle_url, IpCityInfo};
+use island_core::{msn_api_key, msn_bundle_url, parse_city_search, IpCityInfo, WeatherCity};
 use ureq::tls::{RootCerts, TlsConfig};
 
 use crate::error::{AppError, AppResult};
@@ -14,10 +14,15 @@ const IP_CITY_TTL: Duration = Duration::from_secs(30 * 60);
 
 const MSN_PAGE_URL: &str = "https://www.msn.com/zh-cn/weather/forecast";
 const MSN_OVERVIEW_URL: &str = "https://api.msn.cn/weatherfalcon/weather/overview";
+const CITY_SEARCH_URL: &str = "https://nominatim.openstreetmap.org/search";
+/// Nominatim 用量政策 须带可识别应用的 UA 且每秒至多一次
+const CITY_SEARCH_UA: &str = "TopIsland/0.1 (Windows desktop widget)";
+const CITY_SEARCH_GAP: Duration = Duration::from_secs(1);
 const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0";
 
 static MSN_KEY: Mutex<Option<String>> = Mutex::new(None);
 static IP_CITY_CACHE: Mutex<Option<(Instant, String, IpCityInfo)>> = Mutex::new(None);
+static LAST_CITY_SEARCH: Mutex<Option<Instant>> = Mutex::new(None);
 
 /// 国内 CDN 证书链到旧根 只认系统证书库
 fn agent(timeout: Duration) -> ureq::Agent {
@@ -132,11 +137,36 @@ pub fn ip_city(lang: &str) -> AppResult<IpCityInfo> {
 pub fn geocode(city: &str, lang: &str) -> AppResult<serde_json::Value> {
     let lang = if lang.is_empty() { "zh" } else { lang };
     let url = format!(
-        "https://geocoding-api.open-meteo.com/v1/search?name={}&count=10&language={}",
+        "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1&language={}",
         urlencoded(city),
         urlencoded(lang),
     );
     fetch_json(&url)
+}
+
+pub fn search_city(query: &str, lang: &str) -> AppResult<Vec<WeatherCity>> {
+    {
+        let mut last = LAST_CITY_SEARCH.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(wait) = last.and_then(|t| CITY_SEARCH_GAP.checked_sub(t.elapsed())) {
+            std::thread::sleep(wait);
+        }
+        *last = Some(Instant::now());
+    }
+    let url = format!(
+        "{CITY_SEARCH_URL}?q={}&format=jsonv2&featureType=settlement&limit=8&accept-language={}",
+        urlencoded(query),
+        urlencoded(lang),
+    );
+    let mut resp = agent(TIMEOUT)
+        .get(&url)
+        .header("User-Agent", CITY_SEARCH_UA)
+        .call()
+        .map_err(|e| AppError::new(format!("error.network: {e}")))?;
+    let value: serde_json::Value = resp
+        .body_mut()
+        .read_json()
+        .map_err(|e| AppError::new(format!("error.network: 响应不是 JSON: {e}")))?;
+    Ok(parse_city_search(&value))
 }
 
 pub fn query(

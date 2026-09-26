@@ -1,4 +1,4 @@
-use island_core::IpCityInfo;
+use island_core::{IpCityInfo, WeatherCity};
 
 use crate::error::AppResult;
 use crate::services;
@@ -13,6 +13,11 @@ pub async fn weather_ip_city(lang: String) -> AppResult<IpCityInfo> {
 #[tauri::command]
 pub async fn weather_geocode(city: String, lang: String) -> AppResult<serde_json::Value> {
     off_thread(move || services::weather::geocode(&city, &lang)).await
+}
+
+#[tauri::command]
+pub async fn weather_search_city(query: String, lang: String) -> AppResult<Vec<WeatherCity>> {
+    off_thread(move || services::weather::search_city(&query, &lang)).await
 }
 
 #[tauri::command]
