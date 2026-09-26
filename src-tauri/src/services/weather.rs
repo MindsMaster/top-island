@@ -132,7 +132,7 @@ pub fn ip_city(lang: &str) -> AppResult<IpCityInfo> {
 pub fn geocode(city: &str, lang: &str) -> AppResult<serde_json::Value> {
     let lang = if lang.is_empty() { "zh" } else { lang };
     let url = format!(
-        "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1&language={}",
+        "https://geocoding-api.open-meteo.com/v1/search?name={}&count=10&language={}",
         urlencoded(city),
         urlencoded(lang),
     );
