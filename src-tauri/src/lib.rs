@@ -9,6 +9,7 @@ use tauri::Manager;
 use island_core::AppSettings;
 
 pub fn run() {
+    let started = std::time::Instant::now();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(win) = app.get_webview_window("island") {
@@ -18,12 +19,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // 首屏后再清 Electron 残留
-        .on_page_load(|webview, payload| {
+        .on_page_load(move |webview, payload| {
             if webview.label() == "island" && payload.event() == PageLoadEvent::Finished {
+                eprintln!("[startup] 首屏 {}ms", started.elapsed().as_millis());
                 infra::legacy::start();
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
+            eprintln!("[startup] 窗口就绪 {}ms", started.elapsed().as_millis());
             infra::persist::init()?;
 
             let settings = infra::persist::get("settings")
@@ -31,6 +34,7 @@ pub fn run() {
                 .unwrap_or_default();
             // 须先于热区初始化摆好窗位
             services::apply_settings(app.handle(), &settings)?;
+            eprintln!("[startup] 设置已应用 {}ms", started.elapsed().as_millis());
 
             infra::watchdog::start(app.handle().clone());
             infra::input::start(app.handle())?;
