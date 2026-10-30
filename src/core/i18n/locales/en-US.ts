@@ -222,6 +222,13 @@ const enUS: Messages = {
   bridgeStatusConflict: 'Another plugin is in the CloudMusic folder',
   bridgeStatusUnsupported: 'This CloudMusic version is not supported',
   bridgeStatusFailed: 'Component install failed',
+  bridgeGrantHint:
+    'Needs one-time administrator permission. CloudMusic will restart automatically afterwards.',
+  bridgeGrant: 'Grant access',
+  bridgeGranting: 'Waiting for permission…',
+  bridgeGrantOk: 'Access granted. Installing the component…',
+  bridgeGrantCancelled: 'Permission request cancelled',
+  bridgeGrantFail: 'Could not grant access. Try again.',
   settingsDiag: 'Advanced',
   settingsDiagTitle: 'Troubleshooting',
   settingsDiagHint:

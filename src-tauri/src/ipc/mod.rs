@@ -52,6 +52,7 @@ macro_rules! ipc_handlers {
             crate::ipc::music::music_seek,
             crate::ipc::music::music_lyrics,
             crate::ipc::music::music_bridge_status,
+            crate::ipc::music::music_bridge_grant,
             crate::ipc::notify::notify_activate,
             crate::ipc::clipboard::clipboard_read_text,
             crate::ipc::clipboard::clipboard_write_text,

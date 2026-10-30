@@ -220,6 +220,12 @@ const zhCN: Messages = {
   bridgeStatusConflict: '网易云目录已有其他插件',
   bridgeStatusUnsupported: '不支持此版本网易云',
   bridgeStatusFailed: '安装组件失败',
+  bridgeGrantHint: '需要管理员授权一次，授权后会自动重启网易云',
+  bridgeGrant: '授权',
+  bridgeGranting: '等待授权…',
+  bridgeGrantOk: '已授权，正在安装组件',
+  bridgeGrantCancelled: '已取消授权',
+  bridgeGrantFail: '授权失败，请重试',
   settingsDiag: '高级',
   settingsDiagTitle: '故障排查',
   settingsDiagHint:

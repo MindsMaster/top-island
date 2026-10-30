@@ -17,7 +17,7 @@ mod push;
 mod resolver;
 mod smtc;
 
-pub use ncm_deploy::BridgeStatus;
+pub use ncm_deploy::{BridgeStatus, GrantResult};
 
 use ncm_bridge::NcmBridgeProvider;
 use provider::{Control, MusicProvider};
@@ -78,6 +78,10 @@ pub fn bridge_status() -> BridgeStatus {
         .map(|s| s.bridge.is_connected())
         .unwrap_or(false);
     ncm_deploy::status(connected)
+}
+
+pub fn grant_bridge_access() -> GrantResult {
+    ncm_deploy::grant_access()
 }
 
 pub fn current_state() -> MusicState {

@@ -315,6 +315,112 @@ fn revert() {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GrantResult {
+    Granted,
+    Cancelled,
+    Failed,
+}
+
+pub fn grant_access() -> GrantResult {
+    let Some(dir) = ncm_dir(running_ncm().as_ref()) else {
+        return GrantResult::Failed;
+    };
+    let Some(sid) = current_user_sid() else {
+        eprintln!("[ncm-deploy] 取当前用户 SID 失败");
+        return GrantResult::Failed;
+    };
+    let Some(icacls) = system32("icacls.exe") else {
+        return GrantResult::Failed;
+    };
+    // 尾部反斜杠会转义引号
+    let dir = dir.to_string_lossy();
+    let params = format!("\"{}\" /grant *{sid}:(OI)(CI)M", dir.trim_end_matches('\\'));
+    let result = run_elevated(&icacls, &params);
+    if result == GrantResult::Granted {
+        kick();
+    }
+    result
+}
+
+fn run_elevated(exe: &Path, params: &str) -> GrantResult {
+    use windows::core::{w, HSTRING, PCWSTR};
+    use windows::Win32::Foundation::{ERROR_CANCELLED, WAIT_OBJECT_0};
+    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+    use windows::Win32::UI::Shell::{
+        ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+    let file = HSTRING::from(exe.as_os_str());
+    let params = HSTRING::from(params);
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
+        lpVerb: w!("runas"),
+        lpFile: PCWSTR(file.as_ptr()),
+        lpParameters: PCWSTR(params.as_ptr()),
+        nShow: SW_HIDE.0,
+        ..Default::default()
+    };
+    if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
+        if e.code() == ERROR_CANCELLED.to_hresult() {
+            return GrantResult::Cancelled;
+        }
+        eprintln!("[ncm-deploy] 提权启动 icacls 失败: {e}");
+        return GrantResult::Failed;
+    }
+    if info.hProcess.is_invalid() {
+        return GrantResult::Failed;
+    }
+    let mut code = 1u32;
+    unsafe {
+        let exited = WaitForSingleObject(info.hProcess, 60_000) == WAIT_OBJECT_0;
+        if !exited || GetExitCodeProcess(info.hProcess, &mut code).is_err() {
+            code = 1;
+        }
+        let _ = CloseHandle(info.hProcess);
+    }
+    if code == 0 {
+        GrantResult::Granted
+    } else {
+        eprintln!("[ncm-deploy] icacls 授权失败 exit={code}");
+        GrantResult::Failed
+    }
+}
+
+fn current_user_sid() -> Option<String> {
+    use windows::Win32::Foundation::{LocalFree, HANDLE, HLOCAL};
+    use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).ok()?;
+        let mut len = 0u32;
+        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut len);
+        // u64 保证 TOKEN_USER 对齐
+        let mut buf = vec![0u64; (len as usize).div_ceil(8)];
+        let queried = GetTokenInformation(
+            token,
+            TokenUser,
+            Some(buf.as_mut_ptr().cast()),
+            len,
+            &mut len,
+        );
+        let _ = CloseHandle(token);
+        queried.ok()?;
+        let user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let mut sid = PWSTR::null();
+        ConvertSidToStringSidW(user.User.Sid, &mut sid).ok()?;
+        let out = sid.to_string().ok();
+        let _ = LocalFree(Some(HLOCAL(sid.0.cast())));
+        out
+    }
+}
+
 pub fn status(connected: bool) -> BridgeStatus {
     let running = running_ncm();
     let dir = ncm_dir(running.as_ref());
@@ -647,8 +753,12 @@ fn from_registry() -> Option<PathBuf> {
 }
 
 fn system_msimg32() -> Option<PathBuf> {
+    system32("msimg32.dll")
+}
+
+fn system32(name: &str) -> Option<PathBuf> {
     let windir = std::env::var("WINDIR").ok()?;
-    let p = PathBuf::from(windir).join("System32").join("msimg32.dll");
+    let p = PathBuf::from(windir).join("System32").join(name);
     p.exists().then_some(p)
 }
 
@@ -859,6 +969,12 @@ mod tests {
 
         assert_eq!(parse_pe_machine(b"not a pe"), None);
         assert_eq!(parse_pe_machine(&[]), None);
+    }
+
+    #[test]
+    fn current_user_sid_is_string_form() {
+        let sid = current_user_sid().expect("sid");
+        assert!(sid.starts_with("S-1-"), "{sid}");
     }
 
     #[test]

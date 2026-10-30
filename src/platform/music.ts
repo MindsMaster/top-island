@@ -1,5 +1,5 @@
 import { call, on } from './invoke';
-import type { BridgeStatus, LyricsData, MusicAction, MusicState } from './types';
+import type { BridgeStatus, GrantResult, LyricsData, MusicAction, MusicState } from './types';
 
 export const musicApi = {
   state: () => call<MusicState>('music_state'),
@@ -15,4 +15,7 @@ export const musicApi = {
   lyrics: (id: string) => call<LyricsData | null>('music_lyrics', { id }),
 
   bridgeStatus: () => call<BridgeStatus>('music_bridge_status'),
+
+  /** 会弹 UAC */
+  bridgeGrant: () => call<GrantResult>('music_bridge_grant'),
 };

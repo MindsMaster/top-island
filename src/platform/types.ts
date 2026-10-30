@@ -47,6 +47,8 @@ export type BridgeStatus =
   | 'unsupported'
   | 'failed';
 
+export type GrantResult = 'granted' | 'cancelled' | 'failed';
+
 export interface MusicConfig {
   neteaseBridge: boolean;
 }
