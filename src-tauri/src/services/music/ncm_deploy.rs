@@ -535,44 +535,43 @@ fn stop_ncm_and_wait() -> bool {
         TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
     };
 
-    let pids = enum_ncm_pids();
-    if pids.is_empty() {
-        return true;
-    }
-    let mut handles = Vec::new();
-    for pid in &pids {
-        unsafe {
-            match OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, false, *pid) {
-                Ok(h) => {
-                    if let Err(e) = TerminateProcess(h, 1) {
+    // 网易云收尾常超 5 秒
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        // 快照含已退出的僵尸进程
+        let alive: Vec<_> = enum_ncm_pids()
+            .into_iter()
+            .filter_map(|pid| unsafe {
+                let h = OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, false, pid).ok()?;
+                if WaitForSingleObject(h, 0) == WAIT_OBJECT_0 {
+                    let _ = CloseHandle(h);
+                    return None;
+                }
+                Some((pid, h))
+            })
+            .collect();
+        if alive.is_empty() {
+            return true;
+        }
+        let expired = std::time::Instant::now() >= deadline;
+        for (pid, h) in &alive {
+            unsafe {
+                if !expired {
+                    if let Err(e) = TerminateProcess(*h, 1) {
                         eprintln!("[ncm-deploy] TerminateProcess pid={pid} 失败: {e}");
                     }
-                    handles.push(h);
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    let _ = WaitForSingleObject(*h, remaining.as_millis() as u32);
                 }
-                Err(e) => eprintln!("[ncm-deploy] OpenProcess pid={pid} 失败: {e}"),
+                let _ = CloseHandle(*h);
             }
         }
-    }
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    let mut all_exited = true;
-    for h in &handles {
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        let waited = unsafe { WaitForSingleObject(*h, remaining.as_millis() as u32) };
-        if waited != WAIT_OBJECT_0 {
-            all_exited = false;
+        if expired {
+            let left: Vec<u32> = alive.iter().map(|(pid, _)| *pid).collect();
+            eprintln!("[ncm-deploy] 仍存活的 cloudmusic 进程: {left:?}");
+            return false;
         }
     }
-    for h in handles {
-        unsafe {
-            let _ = CloseHandle(h);
-        }
-    }
-    if !all_exited {
-        let left = enum_ncm_pids();
-        eprintln!("[ncm-deploy] 仍存活的 cloudmusic 进程: {left:?}");
-        return false;
-    }
-    enum_ncm_pids().is_empty()
 }
 
 const DETACHED_PROCESS: u32 = 0x0000_0008;
