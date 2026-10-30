@@ -218,6 +218,10 @@ const enUS: Messages = {
   bridgeStatusInstalled: 'Component installed',
   bridgeStatusConnecting: 'Connecting…',
   bridgeStatusConnected: 'Connected',
+  bridgeStatusNoPermission: 'CloudMusic folder not writable',
+  bridgeStatusConflict: 'Another plugin is in the CloudMusic folder',
+  bridgeStatusUnsupported: 'This CloudMusic version is not supported',
+  bridgeStatusFailed: 'Component install failed',
   settingsDiag: 'Advanced',
   settingsDiagTitle: 'Troubleshooting',
   settingsDiagHint:

@@ -14,6 +14,10 @@ const STATUS_KEY: Record<BridgeStatus, string> = {
   installed: 'bridgeStatusInstalled',
   connecting: 'bridgeStatusConnecting',
   connected: 'bridgeStatusConnected',
+  noPermission: 'bridgeStatusNoPermission',
+  conflict: 'bridgeStatusConflict',
+  unsupported: 'bridgeStatusUnsupported',
+  failed: 'bridgeStatusFailed',
 };
 
 const POLL_MS = 2000;

@@ -36,7 +36,16 @@ export interface LyricsData {
 
 export type MusicAction = 'play' | 'pause' | 'next' | 'prev' | 'volume';
 
-export type BridgeStatus = 'notDetected' | 'needsRestart' | 'installed' | 'connecting' | 'connected';
+export type BridgeStatus =
+  | 'notDetected'
+  | 'needsRestart'
+  | 'installed'
+  | 'connecting'
+  | 'connected'
+  | 'noPermission'
+  | 'conflict'
+  | 'unsupported'
+  | 'failed';
 
 export interface MusicConfig {
   neteaseBridge: boolean;

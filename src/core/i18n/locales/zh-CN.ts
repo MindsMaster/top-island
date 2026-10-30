@@ -216,6 +216,10 @@ const zhCN: Messages = {
   bridgeStatusInstalled: '组件已安装',
   bridgeStatusConnecting: '连接中…',
   bridgeStatusConnected: '已连接',
+  bridgeStatusNoPermission: '无权写入网易云安装目录',
+  bridgeStatusConflict: '网易云目录已有其他插件',
+  bridgeStatusUnsupported: '不支持此版本网易云',
+  bridgeStatusFailed: '安装组件失败',
   settingsDiag: '高级',
   settingsDiagTitle: '故障排查',
   settingsDiagHint:

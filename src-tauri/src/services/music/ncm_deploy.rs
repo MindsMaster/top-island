@@ -3,7 +3,7 @@ use std::io::Read;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -38,8 +38,48 @@ const DIR_FRESH_MS: i64 = 180_000;
 
 static LAST_RESTART_MS: AtomicI64 = AtomicI64::new(0);
 static RESTART_ATTEMPTS: AtomicU32 = AtomicU32::new(0);
-/// 永久原因上闩 重开才清
-static DEPLOY_BLOCKED: AtomicBool = AtomicBool::new(false);
+/// 部署受阻原因 除不可写外均上闩 重开才清
+static BLOCK: AtomicU8 = AtomicU8::new(Block::None as u8);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum Block {
+    None = 0,
+    NoPermission = 1,
+    Conflict = 2,
+    Unsupported = 3,
+    Failed = 4,
+}
+
+impl Block {
+    fn load() -> Self {
+        match BLOCK.load(Ordering::Relaxed) {
+            1 => Self::NoPermission,
+            2 => Self::Conflict,
+            3 => Self::Unsupported,
+            4 => Self::Failed,
+            _ => Self::None,
+        }
+    }
+
+    fn set(self) {
+        BLOCK.store(self as u8, Ordering::Relaxed);
+    }
+
+    fn latched(self) -> bool {
+        !matches!(self, Self::None | Self::NoPermission)
+    }
+
+    fn status(self) -> Option<BridgeStatus> {
+        match self {
+            Self::None => None,
+            Self::NoPermission => Some(BridgeStatus::NoPermission),
+            Self::Conflict => Some(BridgeStatus::Conflict),
+            Self::Unsupported => Some(BridgeStatus::Unsupported),
+            Self::Failed => Some(BridgeStatus::Failed),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +89,10 @@ pub enum BridgeStatus {
     Installed,
     Connecting,
     Connected,
+    NoPermission,
+    Conflict,
+    Unsupported,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +121,7 @@ fn our_hash() -> &'static str {
 fn reset_restart_budget() {
     RESTART_ATTEMPTS.store(0, Ordering::Relaxed);
     LAST_RESTART_MS.store(0, Ordering::Relaxed);
-    DEPLOY_BLOCKED.store(false, Ordering::Relaxed);
+    Block::None.set();
 }
 
 static WANTED: AtomicBool = AtomicBool::new(false);
@@ -143,7 +187,7 @@ fn ensure_deployed() -> bool {
         eprintln!("[ncm-deploy] 本次构建未嵌入 bridge DLL，自动部署不可用");
         return false;
     }
-    if DEPLOY_BLOCKED.load(Ordering::Relaxed) {
+    if Block::load().latched() {
         return false;
     }
     let running = running_ncm();
@@ -154,20 +198,24 @@ fn ensure_deployed() -> bool {
     match classify(&dir) {
         DeployClass::Foreign => {
             eprintln!("[ncm-deploy] 网易云目录已存在非本应用的 msimg32，不覆盖");
-            DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
+            Block::Conflict.set();
             false
         }
         class => {
             // 32 位不部署
             if ncm_arch(&dir) != Some(PE_MACHINE_AMD64) {
                 eprintln!("[ncm-deploy] 网易云不是 x64，不部署");
-                DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
+                Block::Unsupported.set();
                 return false;
             }
-            match running {
+            let ok = match running {
                 Some(ncm) => ensure_while_running(&dir, class, &ncm),
                 None => ensure_while_stopped(&dir, class),
+            };
+            if ok {
+                Block::None.set();
             }
+            ok
         }
     }
 }
@@ -176,16 +224,7 @@ fn ensure_while_stopped(dir: &Path, class: DeployClass) -> bool {
     if class == DeployClass::OursCurrent {
         return true;
     }
-    if !ensure_backup(dir) {
-        DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
-        return false;
-    }
-    if write_proxy(dir) {
-        true
-    } else {
-        DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
-        false
-    }
+    ensure_backup(dir) && write_proxy(dir)
 }
 
 fn ensure_while_running(dir: &Path, class: DeployClass, ncm: &RunningNcm) -> bool {
@@ -199,8 +238,6 @@ fn ensure_while_running(dir: &Path, class: DeployClass, ncm: &RunningNcm) -> boo
     }
     // 杀前先验可写
     if !ensure_backup(dir) || !stage_proxy(dir) {
-        eprintln!("[ncm-deploy] 网易云目录不可写，放弃自动部署");
-        DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
         return false;
     }
     if !allow_restart() {
@@ -218,13 +255,13 @@ fn commit_restart(dir: &Path) -> bool {
     if !stop_ncm_and_wait() {
         eprintln!("[ncm-deploy] 网易云进程未能全部退出，放弃本次部署");
         relaunch_ncm(dir);
-        DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
+        Block::Failed.set();
         return false;
     }
     if !wait_unlocked(&proxy) {
         eprintln!("[ncm-deploy] 代理文件仍被占用，放弃本次部署");
         relaunch_ncm(dir);
-        DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
+        Block::Failed.set();
         return false;
     }
 
@@ -233,7 +270,7 @@ fn commit_restart(dir: &Path) -> bool {
         let _ = std::fs::write(dir.join(MARKER_NAME), our_hash());
     } else {
         eprintln!("[ncm-deploy] 替换代理失败");
-        DEPLOY_BLOCKED.store(true, Ordering::Relaxed);
+        Block::Failed.set();
     }
     relaunch_ncm(dir);
     swapped
@@ -294,6 +331,7 @@ pub fn status(connected: bool) -> BridgeStatus {
         running.map(|n| n.start_ms),
         proxy_ours,
         proxy_mtime,
+        Block::load().status(),
     )
 }
 
@@ -303,6 +341,7 @@ fn decide_status(
     running_start_ms: Option<i64>,
     proxy_ours: bool,
     proxy_mtime_ms: i64,
+    blocked: Option<BridgeStatus>,
 ) -> BridgeStatus {
     if connected {
         return BridgeStatus::Connected;
@@ -310,8 +349,18 @@ fn decide_status(
     if !dir_found {
         return BridgeStatus::NotDetected;
     }
+    if let Some(start) = running_start_ms {
+        if proxy_ours && start >= proxy_mtime_ms {
+            return BridgeStatus::Connecting;
+        }
+    }
+    // 代理已就位 重启即可
+    match blocked {
+        Some(BridgeStatus::NoPermission) if proxy_ours => {}
+        Some(b) => return b,
+        None => {}
+    }
     match running_start_ms {
-        Some(start) if proxy_ours && start >= proxy_mtime_ms => BridgeStatus::Connecting,
         Some(_) => BridgeStatus::NeedsRestart,
         None => BridgeStatus::Installed,
     }
@@ -342,19 +391,31 @@ fn ensure_backup(dir: &Path) -> bool {
     }
     let Some(system) = system_msimg32() else {
         eprintln!("[ncm-deploy] 找不到系统 msimg32.dll，放弃部署");
+        Block::Unsupported.set();
         return false;
     };
-    std::fs::copy(&system, &backup).is_ok()
+    write_ok(std::fs::copy(&system, &backup).map(|_| ()))
 }
 
 /// 兼作目录可写探测
 fn stage_proxy(dir: &Path) -> bool {
-    std::fs::write(dir.join(STAGED_NAME), PROXY_DLL).is_ok()
+    write_ok(std::fs::write(dir.join(STAGED_NAME), PROXY_DLL))
+}
+
+/// 不可写只记不闩 日志仅首次
+fn write_ok(res: std::io::Result<()>) -> bool {
+    let Err(e) = res else {
+        return true;
+    };
+    if Block::load() != Block::NoPermission {
+        eprintln!("[ncm-deploy] 网易云目录不可写，暂停自动部署: {e}");
+    }
+    Block::NoPermission.set();
+    false
 }
 
 fn write_proxy(dir: &Path) -> bool {
-    if std::fs::write(dir.join(PROXY_NAME), PROXY_DLL).is_err() {
-        eprintln!("[ncm-deploy] 写入代理 DLL 失败");
+    if !write_ok(std::fs::write(dir.join(PROXY_NAME), PROXY_DLL)) {
         return false;
     }
     let _ = std::fs::write(dir.join(MARKER_NAME), our_hash());
@@ -709,32 +770,68 @@ mod tests {
     #[test]
     fn decide_status_covers_all_five_labels() {
         assert_eq!(
-            decide_status(true, true, Some(5), true, 10),
+            decide_status(true, true, Some(5), true, 10, None),
             BridgeStatus::Connected
         );
         assert_eq!(
-            decide_status(false, true, None, false, 0),
+            decide_status(false, true, None, false, 0, None),
             BridgeStatus::Connected
         );
         assert_eq!(
-            decide_status(false, false, None, false, 0),
+            decide_status(false, false, None, false, 0, None),
             BridgeStatus::NotDetected
         );
         assert_eq!(
-            decide_status(true, false, None, true, 0),
+            decide_status(true, false, None, true, 0, None),
             BridgeStatus::Installed
         );
         assert_eq!(
-            decide_status(true, false, Some(100), true, 50),
+            decide_status(true, false, Some(100), true, 50, None),
             BridgeStatus::Connecting
         );
         assert_eq!(
-            decide_status(true, false, Some(40), true, 50),
+            decide_status(true, false, Some(40), true, 50, None),
             BridgeStatus::NeedsRestart
         );
         assert_eq!(
-            decide_status(true, false, Some(100), false, 50),
+            decide_status(true, false, Some(100), false, 50, None),
             BridgeStatus::NeedsRestart
+        );
+    }
+
+    #[test]
+    fn decide_status_surfaces_block_reason() {
+        let np = Some(BridgeStatus::NoPermission);
+        assert_eq!(
+            decide_status(true, false, Some(100), false, i64::MAX, np),
+            BridgeStatus::NoPermission
+        );
+        assert_eq!(
+            decide_status(true, false, None, false, i64::MAX, np),
+            BridgeStatus::NoPermission
+        );
+        assert_eq!(
+            decide_status(true, false, Some(40), true, 50, np),
+            BridgeStatus::NeedsRestart
+        );
+        assert_eq!(
+            decide_status(
+                true,
+                false,
+                Some(100),
+                false,
+                50,
+                Some(BridgeStatus::Conflict)
+            ),
+            BridgeStatus::Conflict
+        );
+        assert_eq!(
+            decide_status(true, false, Some(100), true, 50, Some(BridgeStatus::Failed)),
+            BridgeStatus::Connecting
+        );
+        assert_eq!(
+            decide_status(true, true, Some(100), false, 50, np),
+            BridgeStatus::Connected
         );
     }
 
