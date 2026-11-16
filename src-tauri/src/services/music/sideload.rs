@@ -26,10 +26,9 @@ const PE_MACHINE_AMD64: u16 = 0x8664;
 
 const RESTART_MIN_GAP_MS: i64 = 60_000;
 const RESTART_MAX_ATTEMPTS: u32 = 3;
-/// 太年轻或在自更新
-const YOUNG_PROC_MS: i64 = 60_000;
 /// 目录新动 或在自更新
 const DIR_FRESH_MS: i64 = 180_000;
+const OWN_WRITE_SLACK_MS: i64 = 2_000;
 const HEAL_EVERY: Duration = Duration::from_secs(20);
 
 #[derive(Debug)]
@@ -250,21 +249,44 @@ impl Deployer {
         if class == DeployClass::OursCurrent && running.start_ms >= proxy_mtime {
             return true;
         }
-        if now_ms() - running.start_ms < YOUNG_PROC_MS || dir_recently_modified(dir) {
+        if self.dir_updating(dir) {
             return false;
         }
-        // 杀前先验可写
-        if !self.ensure_backup(dir) || !self.stage_proxy(dir) {
-            return false;
-        }
+        let swap = match class {
+            DeployClass::OursCurrent => false,
+            // 未占用可直写 用户自行重启亦生效
+            DeployClass::Absent => {
+                if !(self.ensure_backup(dir) && self.write_proxy(dir)) {
+                    return false;
+                }
+                false
+            }
+            _ => {
+                // 杀前先验可写
+                if !(self.ensure_backup(dir) && self.stage_proxy(dir)) {
+                    return false;
+                }
+                true
+            }
+        };
         if !self.allow_restart() {
             return false;
         }
-        self.commit_restart(dir)
+        self.commit_restart(dir, swap)
+    }
+
+    /// 标记随每次写入刷新 据此排除自身改动
+    fn dir_updating(&self, dir: &Path) -> bool {
+        let Some(m) = file_mtime_ms(dir) else {
+            return false;
+        };
+        let ours = file_mtime_ms(&dir.join(self.target.marker))
+            .is_some_and(|k| k + OWN_WRITE_SLACK_MS >= m);
+        !ours && now_ms() - m < DIR_FRESH_MS
     }
 
     /// 失败须拉回并上闩
-    fn commit_restart(&self, dir: &Path) -> bool {
+    fn commit_restart(&self, dir: &Path, swap: bool) -> bool {
         let tag = self.target.tag;
         println!("[{tag}] 部署增强，正在重启播放器…");
         let staged = dir.join(self.target.staged);
@@ -275,6 +297,10 @@ impl Deployer {
             self.relaunch(dir);
             self.set_block(Block::Failed);
             return false;
+        }
+        if !swap {
+            self.relaunch(dir);
+            return true;
         }
         if !wait_unlocked(&proxy) {
             eprintln!("[{tag}] 代理文件仍被占用，放弃本次部署");
@@ -342,12 +368,14 @@ impl Deployer {
             ),
             None => (false, i64::MAX),
         };
+        let restarts_left = self.restart_attempts.load(Ordering::Relaxed) < RESTART_MAX_ATTEMPTS;
         decide_status(
             dir.is_some(),
             connected,
             running.map(|r| r.start_ms),
             proxy_ours,
             proxy_mtime,
+            restarts_left,
             self.block().status(),
         )
     }
@@ -447,12 +475,15 @@ impl Deployer {
             for (pid, h) in &alive {
                 unsafe {
                     if !expired {
-                        if let Err(e) = TerminateProcess(*h, 1) {
-                            eprintln!("[{tag}] TerminateProcess pid={pid} 失败: {e}");
-                        }
+                        // 退出中的进程同样报拒绝访问
+                        let killed = TerminateProcess(*h, 1);
                         let remaining =
                             deadline.saturating_duration_since(std::time::Instant::now());
-                        let _ = WaitForSingleObject(*h, remaining.as_millis() as u32);
+                        let exited =
+                            WaitForSingleObject(*h, remaining.as_millis() as u32) == WAIT_OBJECT_0;
+                        if let (Err(e), false) = (killed, exited) {
+                            eprintln!("[{tag}] TerminateProcess pid={pid} 失败: {e}");
+                        }
                     }
                     let _ = CloseHandle(*h);
                 }
@@ -608,6 +639,7 @@ fn decide_status(
     running_start_ms: Option<i64>,
     proxy_ours: bool,
     proxy_mtime_ms: i64,
+    restarts_left: bool,
     blocked: Option<IntegrationStatus>,
 ) -> IntegrationStatus {
     if connected {
@@ -628,6 +660,8 @@ fn decide_status(
         None => {}
     }
     match running_start_ms {
+        // 执行线程会自行重启
+        Some(_) if restarts_left => IntegrationStatus::Connecting,
         Some(_) => IntegrationStatus::NeedsRestart,
         None => IntegrationStatus::Installed,
     }
@@ -749,12 +783,6 @@ fn file_mtime_ms(p: &Path) -> Option<i64> {
     Some(dur.as_millis() as i64)
 }
 
-fn dir_recently_modified(dir: &Path) -> bool {
-    file_mtime_ms(dir)
-        .map(|m| now_ms() - m < DIR_FRESH_MS)
-        .unwrap_or(false)
-}
-
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -842,78 +870,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decide_status_covers_all_five_labels() {
-        assert_eq!(
-            decide_status(true, true, Some(5), true, 10, None),
-            IntegrationStatus::Connected
-        );
-        assert_eq!(
-            decide_status(false, true, None, false, 0, None),
-            IntegrationStatus::Connected
-        );
-        assert_eq!(
-            decide_status(false, false, None, false, 0, None),
-            IntegrationStatus::NotDetected
-        );
-        assert_eq!(
-            decide_status(true, false, None, true, 0, None),
-            IntegrationStatus::Installed
-        );
-        assert_eq!(
-            decide_status(true, false, Some(100), true, 50, None),
-            IntegrationStatus::Connecting
-        );
-        assert_eq!(
-            decide_status(true, false, Some(40), true, 50, None),
-            IntegrationStatus::NeedsRestart
-        );
-        assert_eq!(
-            decide_status(true, false, Some(100), false, 50, None),
-            IntegrationStatus::NeedsRestart
-        );
+    fn decide_status_covers_lifecycle() {
+        use IntegrationStatus::*;
+        let cases = [
+            ((true, true, Some(5), true, 10, true), Connected),
+            ((false, true, None, false, 0, true), Connected),
+            ((false, false, None, false, 0, true), NotDetected),
+            ((true, false, None, true, 0, true), Installed),
+            ((true, false, Some(100), true, 50, true), Connecting),
+            ((true, false, Some(40), true, 50, true), Connecting),
+            ((true, false, Some(100), false, 50, true), Connecting),
+            ((true, false, Some(40), true, 50, false), NeedsRestart),
+        ];
+        for ((dir, conn, start, ours, mtime, left), want) in cases {
+            assert_eq!(
+                decide_status(dir, conn, start, ours, mtime, left, None),
+                want
+            );
+        }
     }
 
     #[test]
     fn decide_status_surfaces_block_reason() {
-        let np = Some(IntegrationStatus::NoPermission);
-        assert_eq!(
-            decide_status(true, false, Some(100), false, i64::MAX, np),
-            IntegrationStatus::NoPermission
-        );
-        assert_eq!(
-            decide_status(true, false, None, false, i64::MAX, np),
-            IntegrationStatus::NoPermission
-        );
-        assert_eq!(
-            decide_status(true, false, Some(40), true, 50, np),
-            IntegrationStatus::NeedsRestart
-        );
-        assert_eq!(
-            decide_status(
-                true,
-                false,
-                Some(100),
-                false,
-                50,
-                Some(IntegrationStatus::Conflict)
+        use IntegrationStatus::*;
+        let np = Some(NoPermission);
+        let cases = [
+            ((true, false, Some(100), false, i64::MAX, np), NoPermission),
+            ((true, false, None, false, i64::MAX, np), NoPermission),
+            ((true, false, Some(40), true, 50, np), Connecting),
+            (
+                (true, false, Some(100), false, 50, Some(Conflict)),
+                Conflict,
             ),
-            IntegrationStatus::Conflict
-        );
-        assert_eq!(
-            decide_status(
-                true,
-                false,
-                Some(100),
-                true,
-                50,
-                Some(IntegrationStatus::Failed)
-            ),
-            IntegrationStatus::Connecting
-        );
-        assert_eq!(
-            decide_status(true, true, Some(100), false, 50, np),
-            IntegrationStatus::Connected
-        );
+            ((true, false, Some(100), true, 50, Some(Failed)), Connecting),
+            ((true, true, Some(100), false, 50, np), Connected),
+        ];
+        for ((dir, conn, start, ours, mtime, blocked), want) in cases {
+            assert_eq!(
+                decide_status(dir, conn, start, ours, mtime, true, blocked),
+                want
+            );
+        }
     }
 
     #[test]
