@@ -37,6 +37,8 @@ export function usePanelDeck(options: PanelDeckOptions) {
   let startX = 0;
   let startY = 0;
   let moved = false;
+  /** 按下即捕获会吞掉子元素点击 */
+  let pendingCapture: HTMLElement | null = null;
   let containerWidth = DEFAULT_WIDTH;
   let rafId: number | null = null;
   let pendingDx = 0;
@@ -113,7 +115,7 @@ export function usePanelDeck(options: PanelDeckOptions) {
     isDragging.value = true;
     suppressClick.value = false;
     containerWidth = options.getContainerWidth() || DEFAULT_WIDTH;
-    (captureEl ?? (e.target as HTMLElement)).setPointerCapture?.(e.pointerId);
+    pendingCapture = captureEl ?? (e.target as HTMLElement);
   }
 
   function onPointerMove(e: PointerEvent) {
@@ -121,6 +123,10 @@ export function usePanelDeck(options: PanelDeckOptions) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+    if (moved && pendingCapture) {
+      pendingCapture.setPointerCapture?.(e.pointerId);
+      pendingCapture = null;
+    }
     // 按帧节流 优化高回报率鼠标场景
     pendingDx = dx;
     if (rafId === null) {
@@ -134,6 +140,7 @@ export function usePanelDeck(options: PanelDeckOptions) {
   function onPointerUp(e: PointerEvent) {
     if (!isDragging.value) return;
     isDragging.value = false;
+    pendingCapture = null;
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
       rafId = null;
