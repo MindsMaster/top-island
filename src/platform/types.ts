@@ -2,13 +2,14 @@
 
 /** positionMs 是 anchorEpochMs 时刻的位置 渲染层按 rate 本地外推 */
 export interface MusicState {
-  /** 'ncm-bridge' | 'smtc' | '' */
+  /** Rust MusicProvider::name 无源为空 */
   provider: string;
   isPlaying: boolean;
   track?: string;
   artist?: string;
   album?: string;
   sourceAppId?: string;
+  /** 带曲库前缀 如 ncm:123 */
   songId?: string;
   positionMs: number;
   anchorEpochMs: number;
@@ -21,6 +22,8 @@ export interface MusicState {
   artworkHash?: string;
   /** 据此调 musicLyrics 拉取一次 */
   lyricsId?: string;
+  /** 歌词定位前加到进度上 */
+  lyricOffsetMs: number;
 }
 
 export interface LyricLine {
@@ -36,7 +39,7 @@ export interface LyricsData {
 
 export type MusicAction = 'play' | 'pause' | 'next' | 'prev' | 'volume';
 
-export type BridgeStatus =
+export type IntegrationStatus =
   | 'notDetected'
   | 'needsRestart'
   | 'installed'
@@ -48,6 +51,11 @@ export type BridgeStatus =
   | 'failed';
 
 export type GrantResult = 'granted' | 'cancelled' | 'failed';
+
+export interface IntegrationInfo {
+  id: string;
+  status: IntegrationStatus;
+}
 
 export interface MusicConfig {
   neteaseBridge: boolean;

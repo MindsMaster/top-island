@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { builtinLyricOffset, extrapolate, formatTimeMs, lyricIndexAt, trackIdentity } from './math';
+import { extrapolate, formatTimeMs, lyricIndexAt, trackIdentity } from './math';
 
 describe('extrapolate（锚点外推）', () => {
   it('播放中按经过的时间推进', () => {
@@ -47,14 +47,6 @@ describe('lyricIndexAt（歌词行二分定位）', () => {
 
   it('位置 0 命中 timeMs=0 的首行', () => {
     expect(lyricIndexAt(lines, 0)).toBe(0);
-  });
-});
-
-describe('builtinLyricOffset', () => {
-  it('QQ 音乐补 400ms，其它源为 0', () => {
-    expect(builtinLyricOffset('QQMusic.exe')).toBe(400);
-    expect(builtinLyricOffset('cloudmusic.exe')).toBe(0);
-    expect(builtinLyricOffset('')).toBe(0);
   });
 });
 

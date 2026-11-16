@@ -7,19 +7,21 @@ use island_core::{AppSettings, LyricsData, MusicAction, MusicState};
 use crate::error::AppResult;
 use crate::services::media::Media;
 
+mod apps;
+mod catalog;
 mod hash;
+mod integration;
 mod lyrics;
-mod media_sources;
-mod ncm_bridge;
-mod ncm_deploy;
+mod ncm;
 mod provider;
 mod push;
 mod resolver;
 mod smtc;
 
-pub use ncm_deploy::{BridgeStatus, GrantResult};
+pub use integration::{GrantResult, IntegrationInfo};
 
-use ncm_bridge::NcmBridgeProvider;
+use catalog::SongRef;
+use integration::Integration;
 use provider::{Control, MusicProvider};
 use push::PushSignal;
 use resolver::Resolver;
@@ -28,7 +30,6 @@ use smtc::SmtcProvider;
 struct Service {
     /// 高到低 首个生效
     providers: Vec<&'static dyn MusicProvider>,
-    bridge: &'static NcmBridgeProvider,
     resolver: &'static Resolver,
     active: Mutex<&'static dyn MusicProvider>,
 }
@@ -40,6 +41,8 @@ impl std::fmt::Debug for Service {
 }
 
 static SERVICE: OnceLock<Service> = OnceLock::new();
+/// 优先于 SMTC
+static INTEGRATIONS: &[&dyn Integration] = &[&ncm::NETEASE];
 static PUSH: PushSignal = PushSignal::new();
 
 fn request_push() {
@@ -54,17 +57,21 @@ pub fn sync(app: &AppHandle, settings: &AppSettings) {
         START.call_once(|| init(app.clone()));
     }
     // 关着时连不上 不部署
-    ncm_deploy::set_wanted(enabled && settings.music.netease_bridge);
+    for integration in INTEGRATIONS {
+        integration.set_wanted(enabled && integration.enabled(&settings.music));
+    }
 }
 
 fn init(app: AppHandle) {
     let smtc: &'static SmtcProvider = Box::leak(Box::new(SmtcProvider::new()));
-    let bridge: &'static NcmBridgeProvider =
-        Box::leak(Box::new(NcmBridgeProvider::start(request_push)));
     let resolver: &'static Resolver = Box::leak(Box::new(Resolver::new(request_push)));
+    let providers = INTEGRATIONS
+        .iter()
+        .map(|i| i.provider(request_push))
+        .chain(std::iter::once(smtc as &'static dyn MusicProvider))
+        .collect();
     let _ = SERVICE.set(Service {
-        providers: vec![bridge, smtc],
-        bridge,
+        providers,
         resolver,
         active: Mutex::new(smtc),
     });
@@ -72,16 +79,21 @@ fn init(app: AppHandle) {
     island_windows::smtc::start_watch(request_push);
 }
 
-pub fn bridge_status() -> BridgeStatus {
-    let connected = SERVICE
-        .get()
-        .map(|s| s.bridge.is_connected())
-        .unwrap_or(false);
-    ncm_deploy::status(connected)
+pub fn integrations() -> Vec<IntegrationInfo> {
+    INTEGRATIONS
+        .iter()
+        .map(|i| IntegrationInfo {
+            id: i.id(),
+            status: i.status(),
+        })
+        .collect()
 }
 
-pub fn grant_bridge_access() -> GrantResult {
-    ncm_deploy::grant_access()
+pub fn grant_integration(id: &str) -> GrantResult {
+    INTEGRATIONS
+        .iter()
+        .find(|i| i.id() == id)
+        .map_or(GrantResult::Failed, |i| i.grant())
 }
 
 pub fn current_state() -> MusicState {
@@ -112,7 +124,7 @@ pub fn current_state() -> MusicState {
         artist: (!r.artist.is_empty()).then_some(r.artist),
         album: r.album,
         source_app_id: Some(src.source_app_id.clone()),
-        song_id: src.song_id.clone(),
+        song_id: src.song_id.as_ref().map(SongRef::key),
         position_ms: src.position_ms,
         anchor_epoch_ms: src.anchor_epoch_ms,
         rate: src.rate,
@@ -121,6 +133,7 @@ pub fn current_state() -> MusicState {
         artwork_url: r.artwork_url,
         artwork_hash: r.artwork_hash,
         lyrics_id: r.lyrics_id,
+        lyric_offset_ms: apps::lyric_offset_ms(&src.source_app_id),
     }
 }
 
