@@ -10,6 +10,8 @@ const WORD_TEXT_AT: usize = 8;
 const MAX_LINES: usize = 10_000;
 const MAX_WORDS: usize = 2_000;
 const MAX_CHARS: usize = 4_096;
+/// 翻译为 2 行数时间轴同原文
+const TRANSLATE_NONE: i32 = 0;
 /// MSVC basic_string<wchar_t> 内联容量
 const WSTR_INLINE_CAP: usize = 7;
 
@@ -85,10 +87,15 @@ pub struct Api {
     pub title: GetRefFn,
     pub artist: GetRefFn,
     pub length: GetIntFn,
+    pub translate_type: GetIntFn,
 }
 
+/// 每个歌词控件各收原文与翻译 只取原文
 pub unsafe fn read(api: &Api, lyric_text: *const c_void) -> Option<Lyric> {
     unsafe {
+        if (api.translate_type)(lyric_text) != TRANSLATE_NONE {
+            return None;
+        }
         Some(Lyric {
             title: wstr((api.title)(lyric_text))?,
             artist: wstr((api.artist)(lyric_text)).unwrap_or_default(),
