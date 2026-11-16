@@ -83,6 +83,7 @@ function onUp() {
 <template>
   <svg
     class="time-dial"
+    data-no-gesture
     :width="SIZE"
     :height="SIZE"
     :viewBox="`0 0 ${SIZE} ${SIZE}`"

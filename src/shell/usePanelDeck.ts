@@ -1,11 +1,6 @@
 import { nextTick, onUnmounted, ref, watch, type CSSProperties, type Ref } from 'vue';
 import { animationsSettled } from '@/ui/animations';
-
-/** 禁用滑动手势的控件 由控件自行处理 */
-const NON_SWIPE_SELECTOR =
-  'button, input, textarea, select, .cal-day-cell, .cal-month-cell, .cal-add-all-day, .alarm-quick, .alarm-row, .time-dial, .alarm-editor';
-
-const SCROLL_CAPTURE_SELECTOR = '.alarm-editor, .time-dial';
+import { NO_GESTURE, type DragHandler } from './usePointerDrag';
 
 const SWIPE_THRESHOLD = 40;
 const WHEEL_THRESHOLD = 60;
@@ -28,17 +23,11 @@ export function usePanelDeck(options: PanelDeckOptions) {
   const activePanel = ref(0);
   const dragOffset = ref(0);
   const isDragging = ref(false);
-  const suppressClick = ref(false);
   const mounted = ref(new Set<number>());
   const morphing = ref(false);
 
   const maxPanel = options.panelCount - 1;
 
-  let startX = 0;
-  let startY = 0;
-  let moved = false;
-  /** 按下即捕获会吞掉子元素点击 */
-  let pendingCapture: HTMLElement | null = null;
   let containerWidth = DEFAULT_WIDTH;
   let rafId: number | null = null;
   let pendingDx = 0;
@@ -105,55 +94,38 @@ export function usePanelDeck(options: PanelDeckOptions) {
     startBackfill(WARMUP_BACKFILL_MS);
   }
 
-  function onPointerDown(e: PointerEvent, captureEl?: HTMLElement | null) {
-    if (!options.isLarge.value) return;
-    if ((e.target as HTMLElement).closest(NON_SWIPE_SELECTOR)) return;
-    startX = e.clientX;
-    startY = e.clientY;
-    moved = false;
-    dragOffset.value = 0;
-    isDragging.value = true;
-    suppressClick.value = false;
-    containerWidth = options.getContainerWidth() || DEFAULT_WIDTH;
-    pendingCapture = captureEl ?? (e.target as HTMLElement);
+  function stopFrame() {
+    if (rafId === null) return;
+    cancelAnimationFrame(rafId);
+    rafId = null;
   }
 
-  function onPointerMove(e: PointerEvent) {
-    if (!options.isLarge.value || !isDragging.value) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
-    if (moved && pendingCapture) {
-      pendingCapture.setPointerCapture?.(e.pointerId);
-      pendingCapture = null;
-    }
-    // 按帧节流 优化高回报率鼠标场景
-    pendingDx = dx;
-    if (rafId === null) {
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        if (isDragging.value) dragOffset.value = pendingDx;
-      });
-    }
-  }
-
-  function onPointerUp(e: PointerEvent) {
-    if (!isDragging.value) return;
-    isDragging.value = false;
-    pendingCapture = null;
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    if (moved && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) >= SWIPE_THRESHOLD) {
-      switchPanel(activePanel.value + (dx < 0 ? 1 : -1));
-      suppressClick.value = true;
-    }
-    dragOffset.value = 0;
-  }
+  const swipe: DragHandler = {
+    begin() {
+      dragOffset.value = 0;
+      isDragging.value = true;
+      containerWidth = options.getContainerWidth() || DEFAULT_WIDTH;
+    },
+    move(dx) {
+      // 按帧节流 优化高回报率鼠标场景
+      pendingDx = dx;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (isDragging.value) dragOffset.value = pendingDx;
+        });
+      }
+    },
+    end(dx, dy, cancelled) {
+      isDragging.value = false;
+      stopFrame();
+      dragOffset.value = 0;
+      if (cancelled || !options.isLarge.value) return;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) >= SWIPE_THRESHOLD) {
+        switchPanel(activePanel.value + (dx < 0 ? 1 : -1));
+      }
+    },
+  };
 
   function switchPanel(idx: number) {
     if (idx < 0 || idx > maxPanel) return;
@@ -178,7 +150,7 @@ export function usePanelDeck(options: PanelDeckOptions) {
   function onWheel(e: WheelEvent) {
     if (!options.isLarge.value) return;
     const target = e.target as HTMLElement;
-    if (target.closest?.(SCROLL_CAPTURE_SELECTOR)) return;
+    if (target.closest?.(NO_GESTURE)) return;
     if (isInScrollable(target)) return;
     const now = Date.now();
     if (now - lastWheelAt > WHEEL_IDLE_RESET_MS) wheelAccum = 0;
@@ -195,15 +167,9 @@ export function usePanelDeck(options: PanelDeckOptions) {
     }
   }
 
-  function consumeSuppressedClick(): boolean {
-    if (!suppressClick.value) return false;
-    suppressClick.value = false;
-    return true;
-  }
-
   onUnmounted(() => {
     if (backfillTimer !== null) clearInterval(backfillTimer);
-    if (rafId !== null) cancelAnimationFrame(rafId);
+    stopFrame();
   });
 
   return {
@@ -215,10 +181,7 @@ export function usePanelDeck(options: PanelDeckOptions) {
     isParked,
     warmup,
     switchPanel,
-    onPointerDown,
-    onPointerMove,
-    onPointerUp,
+    swipe,
     onWheel,
-    consumeSuppressedClick,
   };
 }

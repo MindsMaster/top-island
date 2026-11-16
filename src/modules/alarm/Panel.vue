@@ -315,7 +315,7 @@ function onSoundPick(value: string) {
   </div>
 
   <!-- 编辑抽屉 -->
-  <div v-if="editor" class="alarm-editor" @click.stop>
+  <div v-if="editor" class="alarm-editor" data-no-gesture @click.stop>
     <div class="alarm-editor-time">
       <input
         ref="hourEl"

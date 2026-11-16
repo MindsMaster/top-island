@@ -15,6 +15,7 @@ import { useHideGesture } from './useHideGesture';
 import { useHotRectReporter } from './useHotRegion';
 import { useIslandMode } from './useIslandMode';
 import { usePanelDeck } from './usePanelDeck';
+import { CONTROLS, usePointerDrag } from './usePointerDrag';
 import { setShellView } from './view';
 
 const { t, initI18n } = useI18n();
@@ -28,10 +29,7 @@ const island = useIslandMode({
   holdContent: () => hide.dragging.value || modules.some((m) => m.holdContent?.() ?? false),
 });
 
-const hide = useHideGesture({
-  isEnabled: () => !isLarge.value && !island.isHidden.value,
-  onHide: island.hide,
-});
+const hide = useHideGesture(island.hide);
 
 const isQuick = computed(() => island.mode.value === 'quick');
 const isLarge = computed(() => island.mode.value === 'large');
@@ -41,6 +39,11 @@ const deck = usePanelDeck({
   isLarge,
   getContainerWidth: () => islandEl.value?.offsetWidth ?? 420,
   getIslandEl: () => islandEl.value,
+});
+
+const drag = usePointerDrag(() => {
+  if (island.isHidden.value) return null;
+  return isLarge.value ? deck.swipe : hide.handler;
 });
 
 const overlays = modules.filter((m) => m.overlay);
@@ -119,21 +122,6 @@ function jumpToRequestedPanel() {
   }
 }
 
-function onPointerDown(e: PointerEvent) {
-  deck.onPointerDown(e, islandEl.value);
-  hide.onPointerDown(e, islandEl.value);
-}
-
-function onPointerMove(e: PointerEvent) {
-  deck.onPointerMove(e);
-  hide.onPointerMove(e);
-}
-
-function onPointerUp(e: PointerEvent) {
-  deck.onPointerUp(e);
-  hide.end(e, islandEl.value, true);
-}
-
 function onIslandLeave() {
   // 拖动中 leave 属正常路径
   if (hide.dragging.value) return;
@@ -141,14 +129,13 @@ function onIslandLeave() {
 }
 
 function onIslandClick(e: MouseEvent) {
-  if (hide.consumeSuppressedClick()) return;
+  if (drag.consumeClick()) return;
   if (island.isHidden.value) {
     // 点细边唤出
     island.reveal();
     return;
   }
-  if ((e.target as HTMLElement).closest('button, input, select')) return;
-  if (deck.consumeSuppressedClick()) return;
+  if ((e.target as Element).closest(CONTROLS)) return;
   if (island.expand()) jumpToRequestedPanel();
 }
 
@@ -250,10 +237,10 @@ onBeforeUnmount(() => {
       @mouseenter="island.onEnter()"
       @mouseleave="onIslandLeave"
       @click="onIslandClick"
-      @pointerdown="onPointerDown"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerUp"
-      @pointercancel="hide.end($event, islandEl, false)"
+      @pointerdown="drag.onPointerDown"
+      @pointermove="drag.onPointerMove"
+      @pointerup="drag.onPointerUp"
+      @pointercancel="drag.onPointerCancel"
       @wheel.passive="deck.onWheel"
     >
       <AlertBar v-if="alertShown" />
