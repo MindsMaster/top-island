@@ -7,8 +7,6 @@ const DEFAULT_SOURCES: &[LyricSource] =
 struct AppProfile {
     /// SMTC SourceAppUserModelId 小写子串
     needle: &'static str,
-    /// SMTC 时间轴滞后补偿
-    lyric_offset_ms: i64,
     /// 按名搜歌词的先后
     lyric_sources: &'static [LyricSource],
 }
@@ -16,7 +14,6 @@ struct AppProfile {
 const fn app(needle: &'static str) -> AppProfile {
     AppProfile {
         needle,
-        lyric_offset_ms: 0,
         lyric_sources: DEFAULT_SOURCES,
     }
 }
@@ -26,13 +23,11 @@ const KNOWN_APPS: &[AppProfile] = &[
     app("cloudmusic"),
     AppProfile {
         needle: "qqmusic",
-        lyric_offset_ms: 400,
         lyric_sources: &[LyricSource::Qq, LyricSource::Netease, LyricSource::Kugou],
     },
     app("spotify"),
     AppProfile {
         needle: "kugou",
-        lyric_offset_ms: 0,
         lyric_sources: &[LyricSource::Kugou, LyricSource::Netease, LyricSource::Qq],
     },
     app("kuwo"),
@@ -60,10 +55,6 @@ pub fn lyric_sources(source_app_id: &str) -> &'static [LyricSource] {
     profile(source_app_id).map_or(DEFAULT_SOURCES, |p| p.lyric_sources)
 }
 
-pub fn lyric_offset_ms(source_app_id: &str) -> i64 {
-    profile(source_app_id).map_or(0, |p| p.lyric_offset_ms)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,12 +70,5 @@ mod tests {
     fn unknown_sources_do_not_trigger_lyric_search() {
         assert!(!lyrics_supported("chrome.exe"));
         assert!(!lyrics_supported(""));
-    }
-
-    #[test]
-    fn lyric_offset_only_for_lagging_players() {
-        assert_eq!(lyric_offset_ms("QQMusic.exe"), 400);
-        assert_eq!(lyric_offset_ms("cloudmusic.exe"), 0);
-        assert_eq!(lyric_offset_ms(""), 0);
     }
 }

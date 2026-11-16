@@ -22,8 +22,6 @@ export interface MusicState {
   artworkHash?: string;
   /** 据此调 musicLyrics 拉取一次 */
   lyricsId?: string;
-  /** 歌词定位前加到进度上 */
-  lyricOffsetMs: number;
 }
 
 export interface LyricLine {

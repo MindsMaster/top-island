@@ -17,7 +17,6 @@ export const musicState = reactive({
   currentArtist: '',
   currentAlbum: '',
   songId: '',
-  lyricOffsetMs: 0,
   artworkUrl: '',
   positionMs: 0,
   durationMs: 0,
@@ -62,7 +61,6 @@ function clearState() {
   musicState.currentArtist = '';
   musicState.currentAlbum = '';
   musicState.songId = '';
-  musicState.lyricOffsetMs = 0;
   musicState.isPlaying = false;
   musicState.artworkUrl = '';
   musicState.durationMs = 0;
@@ -106,7 +104,6 @@ function handleState(data: MusicState) {
   musicState.currentArtist = a;
   musicState.currentAlbum = data.album || '';
   musicState.songId = data.songId || '';
-  musicState.lyricOffsetMs = data.lyricOffsetMs || 0;
   musicState.hasMusic = true;
 
   // 点击后暂以本地为准 防推送回跳
@@ -252,8 +249,6 @@ export const hasTimeline = computed(() => musicState.durationMs > 0);
 export const seekable = computed(() => musicState.seekSupported && hasTimeline.value);
 
 /** 未到首句为 -1 */
-export const lyricIndex = computed(() =>
-  lyricIndexAt(musicState.lyricLines, musicState.positionMs + musicState.lyricOffsetMs)
-);
+export const lyricIndex = computed(() => lyricIndexAt(musicState.lyricLines, musicState.positionMs));
 
 export const currentLyric = computed(() => musicState.lyricLines[lyricIndex.value]?.text ?? '');

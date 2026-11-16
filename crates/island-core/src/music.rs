@@ -35,8 +35,6 @@ pub struct MusicState {
     /// 据此调 music_lyrics 拉取一次
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics_id: Option<String>,
-    /// 歌词定位前加到进度上
-    pub lyric_offset_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

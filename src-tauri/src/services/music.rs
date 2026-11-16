@@ -158,7 +158,6 @@ pub fn current_state() -> MusicState {
         artwork_url: r.artwork_url,
         artwork_hash: r.artwork_hash,
         lyrics_id: r.lyrics_id,
-        lyric_offset_ms: apps::lyric_offset_ms(&src.source_app_id),
     }
 }
 
