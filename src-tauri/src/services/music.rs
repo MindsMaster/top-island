@@ -8,6 +8,7 @@ use crate::error::AppResult;
 use crate::services::media::Media;
 
 mod apps;
+mod arbiter;
 mod bridge_server;
 mod catalog;
 mod hash;
@@ -23,17 +24,26 @@ mod smtc;
 
 pub use integration::{GrantResult, IntegrationInfo};
 
+use arbiter::Arbiter;
 use catalog::SongRef;
 use integration::Integration;
-use provider::{Control, MusicProvider};
+use provider::{now_epoch_ms, Control, MusicProvider, ProviderState};
 use push::PushSignal;
 use resolver::Resolver;
+use smtc::SMTC;
+
+/// 每个来源应用一条 增强器认领同名 SMTC 会话
+struct Session {
+    state: ProviderState,
+    enhancer: Option<&'static dyn MusicProvider>,
+}
 
 struct Service {
-    /// 高到低 首个生效
-    providers: Vec<&'static dyn MusicProvider>,
+    enhancers: Vec<&'static dyn MusicProvider>,
     resolver: &'static Resolver,
-    active: Mutex<&'static dyn MusicProvider>,
+    arbiter: Mutex<Arbiter>,
+    /// 控制发往当前上岛的会话
+    shown: Mutex<Option<(String, Option<&'static dyn MusicProvider>)>>,
 }
 
 impl std::fmt::Debug for Service {
@@ -43,7 +53,6 @@ impl std::fmt::Debug for Service {
 }
 
 static SERVICE: OnceLock<Service> = OnceLock::new();
-/// 优先于 SMTC
 static INTEGRATIONS: &[&dyn Integration] = &[&ncm::NETEASE, &kugou::KUGOU];
 static PUSH: PushSignal = PushSignal::new();
 
@@ -65,17 +74,16 @@ pub fn sync(app: &AppHandle, settings: &AppSettings) {
 }
 
 fn init(app: AppHandle) {
-    let smtc: &'static dyn MusicProvider = &smtc::SMTC;
     let resolver: &'static Resolver = Box::leak(Box::new(Resolver::new(request_push)));
-    let providers = INTEGRATIONS
+    let enhancers = INTEGRATIONS
         .iter()
         .map(|i| i.provider(request_push))
-        .chain(std::iter::once(smtc))
         .collect();
     let _ = SERVICE.set(Service {
-        providers,
+        enhancers,
         resolver,
-        active: Mutex::new(smtc),
+        arbiter: Mutex::new(Arbiter::default()),
+        shown: Mutex::new(None),
     });
     push::start(app, &PUSH, "music:state", current_state);
     island_windows::smtc::start_watch(request_push);
@@ -103,24 +111,37 @@ pub fn current_state() -> MusicState {
         return MusicState::default();
     };
 
-    let Some((provider, src)) = svc
-        .providers
+    let mut sessions = gather(&svc.enhancers, SMTC.sessions());
+    let keys: Vec<(&str, bool)> = sessions
         .iter()
-        .find_map(|p| p.snapshot().map(|s| (*p, s)))
-    else {
+        .map(|s| (s.state.source_app_id.as_str(), s.state.is_playing))
+        .collect();
+    let picked = svc
+        .arbiter
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .pick(&keys, now_epoch_ms());
+    let mut shown = svc.shown.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(i) = picked else {
+        *shown = None;
         svc.resolver.reset();
         return MusicState::default();
     };
-    *svc.active.lock().unwrap_or_else(|e| e.into_inner()) = provider;
+    let Session {
+        state: src,
+        enhancer,
+    } = sessions.swap_remove(i);
+    *shown = Some((src.source_app_id.clone(), enhancer));
+    drop(shown);
 
-    let r = svc.resolver.observe(&src, provider);
+    let r = svc.resolver.observe(&src);
     let track = if r.title.is_empty() {
         fallback_track(&src.source_app_id)
     } else {
         r.title
     };
     MusicState {
-        provider: provider.name().to_string(),
+        provider: enhancer.map_or("smtc", |e| e.name()).to_string(),
         is_playing: src.is_playing,
         track: Some(track),
         artist: (!r.artist.is_empty()).then_some(r.artist),
@@ -137,6 +158,30 @@ pub fn current_state() -> MusicState {
         lyrics_id: r.lyrics_id,
         lyric_offset_ms: apps::lyric_offset_ms(&src.source_app_id),
     }
+}
+
+fn gather(enhancers: &[&'static dyn MusicProvider], mut bases: Vec<ProviderState>) -> Vec<Session> {
+    let mut out = Vec::new();
+    for &e in enhancers {
+        let idx = bases
+            .iter()
+            .position(|b| b.source_app_id.to_lowercase().contains(e.claims()));
+        let Some(mut state) = e.snapshot(idx.map(|i| &bases[i])) else {
+            continue;
+        };
+        if let Some(i) = idx {
+            state.source_app_id = bases.swap_remove(i).source_app_id;
+        }
+        out.push(Session {
+            state,
+            enhancer: Some(e),
+        });
+    }
+    out.extend(bases.into_iter().map(|state| Session {
+        state,
+        enhancer: None,
+    }));
+    out
 }
 
 fn fallback_track(source_app_id: &str) -> String {
@@ -205,34 +250,22 @@ pub fn control(action: MusicAction, level: Option<i64>) -> AppResult<String> {
     Ok(msg.to_string())
 }
 
-/// 未送达退 fallback
+/// 增强器做不了的改走同一来源的 SMTC
 fn route(action: Control) -> bool {
     let Some(svc) = SERVICE.get() else {
         return false;
     };
-    let active: &'static dyn MusicProvider = *svc.active.lock().unwrap_or_else(|e| e.into_inner());
-    let fallback = svc
-        .providers
-        .iter()
-        .copied()
-        .find(|p| p.capabilities().fallback);
-
-    let capable = !action.needs_skip() || active.capabilities().skip;
-    if capable {
-        match active.control(action) {
+    let Some((app, enhancer)) = svc.shown.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        return false;
+    };
+    if let Some(e) = enhancer {
+        match e.control(action) {
             Ok(true) => return true,
             Ok(false) => {}
-            Err(e) => eprintln!("[music] {} 控制失败，回退: {e}", active.name()),
+            Err(err) => eprintln!("[music] {} 控制失败，改走 SMTC: {err}", e.name()),
         }
     }
-    let is_active = |f: &&'static dyn MusicProvider| std::ptr::addr_eq(*f, active);
-    match fallback.filter(|f| !is_active(f)) {
-        Some(f) => f.control(action).unwrap_or_else(|e| {
-            eprintln!("[music] {} 控制失败: {e}", f.name());
-            false
-        }),
-        None => false,
-    }
+    SMTC.control(&app, action)
 }
 
 #[cfg(test)]

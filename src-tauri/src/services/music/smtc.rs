@@ -1,25 +1,23 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use island_windows::smtc::{MediaAction, SmtcClient};
+use island_windows::smtc::{MediaAction, SmtcClient, SmtcSessionInfo};
 
-use super::provider::{now_epoch_ms, Capabilities, Control, MusicProvider, ProviderState};
-use crate::error::AppResult;
+use super::provider::{now_epoch_ms, Control, ProviderState};
 
-/// query 是阻塞 WinRT 调用
+/// sessions 是阻塞 WinRT 调用
 const SNAPSHOT_TTL: Duration = Duration::from_millis(900);
 
-/// 增强源借它取曲目与切歌
-pub static SMTC: SmtcProvider = SmtcProvider::new();
+pub static SMTC: Smtc = Smtc::new();
 
 #[derive(Debug)]
-pub struct SmtcProvider {
+pub struct Smtc {
     client: Mutex<SmtcClient>,
-    cache: Mutex<Option<(Instant, Option<ProviderState>)>>,
+    cache: Mutex<Option<(Instant, Vec<ProviderState>)>>,
 }
 
-impl SmtcProvider {
-    pub const fn new() -> Self {
+impl Smtc {
+    const fn new() -> Self {
         Self {
             client: Mutex::new(SmtcClient::new()),
             cache: Mutex::new(None),
@@ -30,95 +28,70 @@ impl SmtcProvider {
         self.client.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn state_from(info: Option<island_windows::smtc::SmtcSessionInfo>) -> Option<ProviderState> {
-        let info = info?;
-        if info.title.is_empty() && info.app.is_empty() {
-            return None;
-        }
-        let has_timeline = info.duration_ms > 0;
-        Some(ProviderState {
-            is_playing: info.playing,
-            title: info.title,
-            artist: info.artist,
-            album: None,
-            source_app_id: info.app,
-            song_id: None,
-            position_ms: if has_timeline { info.position_ms } else { 0 },
-            anchor_epoch_ms: now_epoch_ms(),
-            rate: if info.playing && has_timeline {
-                1.0
-            } else {
-                0.0
-            },
-            duration_ms: has_timeline.then_some(info.duration_ms),
-            seek_supported: info.seek_supported && has_timeline,
-            artwork_url: None,
-        })
-    }
-}
-
-impl MusicProvider for SmtcProvider {
-    fn name(&self) -> &'static str {
-        "smtc"
+    fn cached(&self) -> Option<(Instant, Vec<ProviderState>)> {
+        self.cache.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    fn snapshot(&self) -> Option<ProviderState> {
-        {
-            let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some((at, state)) = cache.as_ref() {
-                if at.elapsed() < SNAPSHOT_TTL {
-                    return state.clone();
-                }
+    pub fn sessions(&self) -> Vec<ProviderState> {
+        if let Some((at, sessions)) = self.cached() {
+            if at.elapsed() < SNAPSHOT_TTL {
+                return sessions;
             }
         }
         // 持锁方可能在阻塞 回旧缓存
         let Ok(mut client) = self.client.try_lock() else {
-            return self
-                .cache
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .as_ref()
-                .and_then(|(_, s)| s.clone());
+            return self.cached().map(|(_, s)| s).unwrap_or_default();
         };
-        let state = Self::state_from(client.query());
+        let sessions: Vec<ProviderState> = client
+            .sessions()
+            .into_iter()
+            .filter_map(state_from)
+            .collect();
         drop(client);
         *self.cache.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some((Instant::now(), state.clone()));
-        state
+            Some((Instant::now(), sessions.clone()));
+        sessions
     }
 
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            skip: true,
-            artwork_bitmap: true,
-            fallback: true,
-        }
-    }
-
-    fn control(&self, action: Control) -> AppResult<bool> {
+    pub fn control(&self, app: &str, action: Control) -> bool {
         let mut client = self.lock();
-        Ok(match action {
-            Control::Seek(ms) => client.seek(ms.max(0)).is_ok(),
-            Control::Play => {
-                client.control(MediaAction::Play);
-                true
-            }
-            Control::Pause => {
-                client.control(MediaAction::Pause);
-                true
-            }
-            Control::Next => {
-                client.control(MediaAction::Next);
-                true
-            }
-            Control::Prev => {
-                client.control(MediaAction::Prev);
-                true
-            }
-        })
+        let action = match action {
+            Control::Seek(ms) => return client.seek(app, ms.max(0)).is_ok(),
+            Control::Play => MediaAction::Play,
+            Control::Pause => MediaAction::Pause,
+            Control::Next => MediaAction::Next,
+            Control::Prev => MediaAction::Prev,
+        };
+        client.control(app, action);
+        true
     }
 
-    fn artwork_bytes(&self) -> Option<Vec<u8>> {
-        self.lock().thumbnail()
+    pub fn artwork(&self, app: &str) -> Option<Vec<u8>> {
+        self.lock().thumbnail(app)
     }
+}
+
+fn state_from(info: SmtcSessionInfo) -> Option<ProviderState> {
+    if info.title.is_empty() && info.app.is_empty() {
+        return None;
+    }
+    let has_timeline = info.duration_ms > 0;
+    Some(ProviderState {
+        is_playing: info.playing,
+        title: info.title,
+        artist: info.artist,
+        album: None,
+        source_app_id: info.app,
+        song_id: None,
+        position_ms: if has_timeline { info.position_ms } else { 0 },
+        anchor_epoch_ms: now_epoch_ms(),
+        rate: if info.playing && has_timeline {
+            1.0
+        } else {
+            0.0
+        },
+        duration_ms: has_timeline.then_some(info.duration_ms),
+        seek_supported: info.seek_supported && has_timeline,
+        artwork_url: None,
+    })
 }

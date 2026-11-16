@@ -10,9 +10,7 @@ use serde_json::json;
 use crate::error::AppResult;
 use crate::services::music::bridge_server::{BridgeServer, Endpoint};
 use crate::services::music::catalog::{Catalog, SongRef};
-use crate::services::music::provider::{
-    now_epoch_ms, Capabilities, Control, MusicProvider, ProviderState,
-};
+use crate::services::music::provider::{now_epoch_ms, Control, MusicProvider, ProviderState};
 
 /// 端口与 token 须与 bridge.js 一致
 const ENDPOINT: Endpoint = Endpoint {
@@ -58,19 +56,16 @@ impl MusicProvider for NcmBridgeProvider {
         "ncm-bridge"
     }
 
-    fn snapshot(&self) -> Option<ProviderState> {
+    fn claims(&self) -> &'static str {
+        "cloudmusic"
+    }
+
+    /// 自带完整曲目 不依赖 SMTC
+    fn snapshot(&self, _base: Option<&ProviderState>) -> Option<ProviderState> {
         if !self.server.is_connected() {
             return None;
         }
         self.state.lock().unwrap_or_else(|e| e.into_inner()).clone()
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            skip: false,
-            artwork_bitmap: false,
-            fallback: false,
-        }
     }
 
     fn control(&self, action: Control) -> AppResult<bool> {

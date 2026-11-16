@@ -10,21 +10,6 @@ pub enum Control {
     Seek(i64),
 }
 
-impl Control {
-    pub fn needs_skip(self) -> bool {
-        matches!(self, Control::Next | Control::Prev)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Capabilities {
-    /// bridge 不覆盖
-    pub skip: bool,
-    /// 位图字节流 否则直链
-    pub artwork_bitmap: bool,
-    pub fallback: bool,
-}
-
 /// position_ms 为锚点时刻位置
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderState {
@@ -53,19 +38,19 @@ pub struct TrackMeta {
     pub duration_ms: i64,
 }
 
+/// 播放器增强 叠加在同名 SMTC 会话上
 pub trait MusicProvider: Send + Sync {
     fn name(&self) -> &'static str;
 
+    /// SMTC 来源应用 ID 小写子串
+    fn claims(&self) -> &'static str;
+
     /// 每帧调用 不得阻塞
-    fn snapshot(&self) -> Option<ProviderState>;
+    fn snapshot(&self, base: Option<&ProviderState>) -> Option<ProviderState>;
 
-    fn capabilities(&self) -> Capabilities;
-
-    /// false 则聚合回退
-    fn control(&self, action: Control) -> AppResult<bool>;
-
-    fn artwork_bytes(&self) -> Option<Vec<u8>> {
-        None
+    /// false 则改走 SMTC
+    fn control(&self, _action: Control) -> AppResult<bool> {
+        Ok(false)
     }
 }
 

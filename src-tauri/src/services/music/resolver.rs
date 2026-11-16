@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -7,14 +8,18 @@ use super::apps;
 use super::catalog::{self, SongRef};
 use super::hash::content_hash;
 use super::lyrics::{self as api, LyricSource};
-use super::provider::{MusicProvider, ProviderState, TrackMeta};
+use super::provider::{ProviderState, TrackMeta};
+use super::smtc::SMTC;
 use crate::services::media::Media;
+
+/// 来源间切换不丢
+const SLOT_CAPACITY: usize = 4;
 
 #[derive(Debug)]
 struct Slot<T> {
     /// 兼作切歌水位
     key: String,
-    value: Option<(String, T)>,
+    values: VecDeque<(String, T)>,
     fetching: Option<String>,
 }
 
@@ -23,7 +28,7 @@ impl<T> Default for Slot<T> {
     fn default() -> Self {
         Self {
             key: String::new(),
-            value: None,
+            values: VecDeque::new(),
             fetching: None,
         }
     }
@@ -31,10 +36,15 @@ impl<T> Default for Slot<T> {
 
 impl<T> Slot<T> {
     fn get(&self, key: &str) -> Option<&T> {
-        self.value
-            .as_ref()
-            .filter(|(k, _)| k == key)
-            .map(|(_, v)| v)
+        self.values.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    fn insert(&mut self, key: String, value: T) {
+        self.values.retain(|(k, _)| *k != key);
+        if self.values.len() >= SLOT_CAPACITY {
+            self.values.pop_front();
+        }
+        self.values.push_back((key, value));
     }
 }
 
@@ -102,11 +112,7 @@ impl Resolver {
         c.artwork.key.clear();
     }
 
-    pub fn observe(
-        &'static self,
-        src: &ProviderState,
-        provider: &'static dyn MusicProvider,
-    ) -> Resolved {
+    pub fn observe(&'static self, src: &ProviderState) -> Resolved {
         let mut out = Resolved {
             title: src.title.clone(),
             artist: src.artist.clone(),
@@ -119,7 +125,7 @@ impl Resolver {
         // spawn 内要拿锁 须出锁
         let mut fetch_meta: Option<SongRef> = None;
         let mut fetch_lyrics: Option<LyricsQuery> = None;
-        let mut fetch_artwork: Option<String> = None;
+        let mut fetch_artwork: Option<(String, String)> = None;
 
         {
             let mut c = self.lock();
@@ -129,7 +135,9 @@ impl Resolver {
                     let key = song.key();
                     if key != c.meta.key {
                         c.meta.key = key.clone();
-                        fetch_meta = Some(song.clone());
+                        if c.meta.get(&key).is_none() {
+                            fetch_meta = Some(song.clone());
+                        }
                     }
                     if let Some(m) = c.meta.get(&key) {
                         if out.title.is_empty() {
@@ -160,10 +168,12 @@ impl Resolver {
                 SongRef::key,
             );
 
-            if out.artwork_url.is_none() && provider.capabilities().artwork_bitmap {
+            if out.artwork_url.is_none() {
                 if track_key != c.artwork.key {
                     c.artwork.key = track_key.clone();
-                    fetch_artwork = Some(track_key.clone());
+                    if c.artwork.get(&track_key).is_none() {
+                        fetch_artwork = Some((track_key.clone(), src.source_app_id.clone()));
+                    }
                 }
                 if let Some(a) = c.artwork.get(&track_key) {
                     out.artwork_hash = Some(a.hash.clone());
@@ -175,7 +185,9 @@ impl Resolver {
             let can_fetch = src.song_id.is_some() || !out.title.is_empty();
             if lyrics_key != c.lyrics.key && can_fetch {
                 c.lyrics.key = lyrics_key.clone();
-                if src.song_id.is_some() || apps::lyrics_supported(&src.source_app_id) {
+                let cached = c.lyrics.get(&lyrics_key).is_some();
+                if !cached && (src.song_id.is_some() || apps::lyrics_supported(&src.source_app_id))
+                {
                     fetch_lyrics = Some(LyricsQuery {
                         key: lyrics_key.clone(),
                         title: out.title.clone(),
@@ -199,23 +211,26 @@ impl Resolver {
         if let Some(q) = fetch_lyrics {
             self.spawn_lyrics(q);
         }
-        if let Some(k) = fetch_artwork {
-            self.spawn_artwork(k, provider);
+        if let Some((k, app)) = fetch_artwork {
+            self.spawn_artwork(k, app);
         }
         out
     }
 
     pub fn artwork(&self, hash: &str) -> Option<Media> {
         let c = self.lock();
-        let (_, a) = c.artwork.value.as_ref()?;
-        (a.hash == hash).then(|| a.media.clone())
+        c.artwork
+            .values
+            .iter()
+            .find(|(_, a)| a.hash == hash)
+            .map(|(_, a)| a.media.clone())
     }
 
     pub fn lyrics(&self, id: &str) -> Option<LyricsData> {
         self.lock().lyrics.get(id).cloned()
     }
 
-    /// 键仍当前才写入
+    /// 键仍当前才通知
     fn fetch_once<T: Send + 'static>(
         &'static self,
         thread_name: &'static str,
@@ -245,15 +260,15 @@ impl Resolver {
                         slot.fetching = None;
                     }
                     match result {
-                        Some(v) if still_current => {
-                            slot.value = Some((key.clone(), v));
-                            true
+                        Some(v) => {
+                            slot.insert(key.clone(), v);
+                            still_current
                         }
                         None if still_current => {
                             slot.key.clear();
                             false
                         }
-                        _ => false,
+                        None => false,
                     }
                 };
                 if notify {
@@ -293,7 +308,7 @@ impl Resolver {
         );
     }
 
-    fn spawn_artwork(&'static self, key: String, provider: &'static dyn MusicProvider) {
+    fn spawn_artwork(&'static self, key: String, app: String) {
         let key_for_check = key.clone();
         let this: &'static Resolver = self;
         self.fetch_once(
@@ -307,7 +322,7 @@ impl Resolver {
                     if this.lock().artwork.key != key_for_check {
                         return None;
                     }
-                    if let Some(media) = provider.artwork_bytes().map(Media::image_or_jpeg) {
+                    if let Some(media) = SMTC.artwork(&app).map(Media::image_or_jpeg) {
                         return Some(Artwork {
                             hash: content_hash(&media.bytes),
                             media,
@@ -328,8 +343,21 @@ mod tests {
     #[test]
     fn slot_get_only_hits_matching_key() {
         let mut s: Slot<i32> = Slot::default();
-        s.value = Some(("a".into(), 1));
+        s.insert("a".into(), 1);
         assert_eq!(s.get("a"), Some(&1));
         assert_eq!(s.get("b"), None);
+    }
+
+    #[test]
+    fn slot_keeps_recent_entries_and_evicts_oldest() {
+        let mut s: Slot<i32> = Slot::default();
+        for (i, k) in ["a", "b", "c", "d", "e"].iter().enumerate() {
+            s.insert((*k).into(), i as i32);
+        }
+        assert_eq!(s.get("a"), None);
+        assert_eq!(s.get("b"), Some(&1));
+        s.insert("b".into(), 9);
+        assert_eq!(s.get("b"), Some(&9));
+        assert_eq!(s.values.len(), SLOT_CAPACITY);
     }
 }

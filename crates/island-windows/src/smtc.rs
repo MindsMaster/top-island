@@ -108,8 +108,6 @@ fn now_1601_100ns() -> i64 {
 pub struct SmtcClient {
     manager: Option<SessionManager>,
     manager_time: Option<Instant>,
-    /// 控制目标跟随上次 query 展示的会话
-    last_app: String,
 }
 
 impl SmtcClient {
@@ -117,7 +115,6 @@ impl SmtcClient {
         Self {
             manager: None,
             manager_time: None,
-            last_app: String::new(),
         }
     }
 
@@ -138,160 +135,63 @@ impl SmtcClient {
         Ok(self.manager.as_ref().expect("manager 刚写入"))
     }
 
-    fn target_session(&mut self, prefer_app: &str) -> Option<Session> {
-        let manager = match self.manager() {
-            Ok(m) => m,
+    /// 同一来源多会话时播放中的在前
+    fn all(&mut self) -> Vec<(String, Session)> {
+        let sessions = match self.manager().and_then(|m| {
+            m.GetSessions()
+                .map_err(|e| WinError::api("SMTC 会话列表", e))
+        }) {
+            Ok(s) => s,
             Err(e) => {
-                eprintln!("[smtc] 会话管理器不可用: {e}");
-                return None;
+                eprintln!("[smtc] 枚举媒体会话失败: {e}");
+                return Vec::new();
             }
         };
-
-        if !prefer_app.is_empty() && !is_self_session(prefer_app) {
-            match manager.GetSessions() {
-                Ok(sessions) => {
-                    for i in 0..sessions.Size().unwrap_or(0) {
-                        if let Ok(s) = sessions.GetAt(i) {
-                            if s.SourceAppUserModelId().map(|a| a.to_string_lossy())
-                                == Ok(prefer_app.to_string())
-                            {
-                                return Some(s);
-                            }
-                        }
-                    }
-                }
-                Err(e) => eprintln!("[smtc] 枚举媒体会话失败: {e}"),
-            }
-        }
-
-        if let Ok(current) = manager.GetCurrentSession() {
-            let cur_app = current
+        let mut out: Vec<(String, Session, bool)> = Vec::new();
+        for s in (0..sessions.Size().unwrap_or(0)).filter_map(|i| sessions.GetAt(i).ok()) {
+            let app = s
                 .SourceAppUserModelId()
                 .map(|a| a.to_string_lossy())
                 .unwrap_or_default();
-            if !is_self_session(&cur_app) {
-                return Some(current);
+            if app.is_empty() || is_self_session(&app) {
+                continue;
+            }
+            let playing = s
+                .GetPlaybackInfo()
+                .and_then(|i| i.PlaybackStatus())
+                .is_ok_and(|st| st == PlaybackStatus::Playing);
+            match out.iter_mut().find(|(a, _, _)| *a == app) {
+                Some(slot) if playing && !slot.2 => *slot = (app, s, playing),
+                Some(_) => {}
+                None => out.push((app, s, playing)),
             }
         }
+        out.into_iter().map(|(a, s, _)| (a, s)).collect()
+    }
 
-        let mut first: Option<Session> = None;
-        match manager.GetSessions() {
-            Ok(sessions) => {
-                for i in 0..sessions.Size().unwrap_or(0) {
-                    if let Ok(s) = sessions.GetAt(i) {
-                        let app = s
-                            .SourceAppUserModelId()
-                            .map(|a| a.to_string_lossy())
-                            .unwrap_or_default();
-                        if is_self_session(&app) {
-                            continue;
-                        }
-                        if first.is_none() {
-                            first = Some(s.clone());
-                        }
-                        let playing = s
-                            .GetPlaybackInfo()
-                            .and_then(|i| i.PlaybackStatus())
-                            .map(|st| st == PlaybackStatus::Playing)
-                            .unwrap_or(false);
-                        if playing {
-                            return Some(s);
-                        }
-                    }
+    fn find(&mut self, app: &str) -> Option<Session> {
+        self.all()
+            .into_iter()
+            .find_map(|(a, s)| (a == app).then_some(s))
+    }
+
+    /// 每个来源应用一条
+    pub fn sessions(&mut self) -> Vec<SmtcSessionInfo> {
+        self.all()
+            .into_iter()
+            .filter_map(|(app, s)| match info_of(app, &s) {
+                Ok(info) => Some(info),
+                Err(e) => {
+                    eprintln!("[smtc] 读取会话失败: {e}");
+                    None
                 }
-            }
-            Err(e) => eprintln!("[smtc] 枚举媒体会话失败: {e}"),
-        }
-        first
+            })
+            .collect()
     }
 
-    pub fn query(&mut self) -> Option<SmtcSessionInfo> {
-        match self.query_inner() {
-            Ok(q) => q,
-            Err(e) => {
-                eprintln!("[smtc] 查询当前会话失败: {e}");
-                None
-            }
-        }
-    }
-
-    fn query_inner(&mut self) -> Result<Option<SmtcSessionInfo>> {
-        let Some(session) = self.target_session("") else {
-            return Ok(None);
-        };
-        let app = session
-            .SourceAppUserModelId()
-            .map_err(|e| WinError::api("SMTC 来源应用", e))?
-            .to_string_lossy();
-        self.last_app = app.clone();
-
-        let props = block_on(
-            &session
-                .TryGetMediaPropertiesAsync()
-                .map_err(|e| WinError::api("SMTC 曲目信息", e))?,
-        )
-        .map_err(|e| WinError::api("SMTC 曲目信息", e))?;
-        let playback = session
-            .GetPlaybackInfo()
-            .map_err(|e| WinError::api("SMTC 播放状态", e))?;
-        let playing = playback
-            .PlaybackStatus()
-            .map_err(|e| WinError::api("SMTC 播放状态", e))?
-            == PlaybackStatus::Playing;
-
-        let mut position_ms = 0i64;
-        let mut duration_ms = 0i64;
-        match session.GetTimelineProperties() {
-            Ok(timeline) => {
-                let end_ms = timeline.EndTime().map(|t| t.Duration / 10_000).unwrap_or(0);
-                if end_ms > 0 {
-                    position_ms = timeline
-                        .Position()
-                        .map(|t| t.Duration / 10_000)
-                        .unwrap_or(0);
-                    duration_ms = end_ms;
-                    if playing {
-                        let elapsed = timeline
-                            .LastUpdatedTime()
-                            .map(|t| (now_1601_100ns() - t.UniversalTime) / 10_000)
-                            .unwrap_or(i64::MAX);
-                        // 播放中 Position 冻结 按 LastUpdatedTime 墙钟补偿
-                        if (0..30_000).contains(&elapsed) {
-                            position_ms = (position_ms + elapsed).min(duration_ms);
-                        }
-                    }
-                }
-            }
-            Err(e) => eprintln!("[smtc] 读取时间轴失败（按无时间轴处理）: {e}"),
-        }
-
-        let seek_supported = match playback.Controls() {
-            Ok(c) => c.IsPlaybackPositionEnabled().unwrap_or(false),
-            Err(e) => {
-                eprintln!("[smtc] 读取控制能力失败（按不支持 seek 处理）: {e}");
-                false
-            }
-        };
-
-        Ok(Some(SmtcSessionInfo {
-            title: props
-                .Title()
-                .map(|s| s.to_string_lossy())
-                .unwrap_or_default(),
-            artist: props
-                .Artist()
-                .map(|s| s.to_string_lossy())
-                .unwrap_or_default(),
-            app,
-            playing,
-            position_ms,
-            duration_ms,
-            seek_supported,
-        }))
-    }
-
-    pub fn thumbnail(&mut self) -> Option<Vec<u8>> {
-        match self.thumbnail_inner() {
+    pub fn thumbnail(&mut self, app: &str) -> Option<Vec<u8>> {
+        let session = self.find(app)?;
+        match thumbnail_of(&session) {
             Ok(t) => t,
             Err(e) => {
                 eprintln!("[smtc] 读取封面失败: {e}");
@@ -300,60 +200,9 @@ impl SmtcClient {
         }
     }
 
-    fn thumbnail_inner(&mut self) -> Result<Option<Vec<u8>>> {
-        let prefer = self.last_app.clone();
-        let Some(session) = self.target_session(&prefer) else {
-            return Ok(None);
-        };
-        let props = block_on(
-            &session
-                .TryGetMediaPropertiesAsync()
-                .map_err(|e| WinError::api("SMTC 曲目信息", e))?,
-        )
-        .map_err(|e| WinError::api("SMTC 曲目信息", e))?;
-        let Ok(thumb_ref) = props.Thumbnail() else {
-            return Ok(None);
-        };
-        let stream = block_on(
-            &thumb_ref
-                .OpenReadAsync()
-                .map_err(|e| WinError::api("SMTC 封面流", e))?,
-        )
-        .map_err(|e| WinError::api("SMTC 封面流", e))?;
-
-        let reader =
-            DataReader::CreateDataReader(&stream).map_err(|e| WinError::api("SMTC 封面流", e))?;
-        let mut out = Vec::new();
-        loop {
-            let loaded = block_on_load(
-                &reader
-                    .LoadAsync(64 * 1024)
-                    .map_err(|e| WinError::api("SMTC 封面读取", e))?,
-            )
-            .map_err(|e| WinError::api("SMTC 封面读取", e))?;
-            if loaded == 0 {
-                break;
-            }
-            let mut chunk = vec![0u8; loaded as usize];
-            reader
-                .ReadBytes(&mut chunk)
-                .map_err(|e| WinError::api("SMTC 封面读取", e))?;
-            out.extend_from_slice(&chunk);
-            // 异常来源防内存拖垮
-            if out.len() > 16 * 1024 * 1024 {
-                return Err(WinError::api("SMTC 封面读取", "封面超过 16MB，放弃"));
-            }
-        }
-        if out.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(out))
-    }
-
     /// 位置参数单位 100ns
-    pub fn seek(&mut self, position_ms: i64) -> Result<()> {
-        let prefer = self.last_app.clone();
-        let Some(session) = self.target_session(&prefer) else {
+    pub fn seek(&mut self, app: &str, position_ms: i64) -> Result<()> {
+        let Some(session) = self.find(app) else {
             return Err(WinError::api("SMTC seek", "没有媒体会话"));
         };
         block_on(
@@ -367,15 +216,9 @@ impl SmtcClient {
 
     /// 逐级回退 会话接口 定向 APPCOMMAND 全局媒体键
     /// 网易云 TryPauseAsync 会假成功 上层按播放态纠偏
-    pub fn control(&mut self, action: MediaAction) {
+    pub fn control(&mut self, app: &str, action: MediaAction) {
         let mut ok = false;
-        let mut app = String::new();
-        let prefer = self.last_app.clone();
-        if let Some(session) = self.target_session(&prefer) {
-            app = session
-                .SourceAppUserModelId()
-                .map(|a| a.to_string_lossy())
-                .unwrap_or_default();
+        if let Some(session) = self.find(app) {
             let op = match action {
                 MediaAction::Play => session.TryPlayAsync(),
                 MediaAction::Pause => session.TryPauseAsync(),
@@ -390,9 +233,6 @@ impl SmtcClient {
         if ok {
             return;
         }
-        if app.is_empty() {
-            app = prefer;
-        }
         // APPCOMMAND_MEDIA_PLAY PAUSE NEXTTRACK PREVIOUSTRACK
         let cmd = match action {
             MediaAction::Play => 46,
@@ -400,7 +240,7 @@ impl SmtcClient {
             MediaAction::Next => 11,
             MediaAction::Prev => 12,
         };
-        if !app.is_empty() && send_app_command(&app, cmd) {
+        if send_app_command(app, cmd) {
             return;
         }
         let vk = match action {
@@ -410,6 +250,118 @@ impl SmtcClient {
         };
         press_media_key(vk);
     }
+}
+
+fn info_of(app: String, session: &Session) -> Result<SmtcSessionInfo> {
+    let props = block_on(
+        &session
+            .TryGetMediaPropertiesAsync()
+            .map_err(|e| WinError::api("SMTC 曲目信息", e))?,
+    )
+    .map_err(|e| WinError::api("SMTC 曲目信息", e))?;
+    let playback = session
+        .GetPlaybackInfo()
+        .map_err(|e| WinError::api("SMTC 播放状态", e))?;
+    let playing = playback
+        .PlaybackStatus()
+        .map_err(|e| WinError::api("SMTC 播放状态", e))?
+        == PlaybackStatus::Playing;
+
+    let mut position_ms = 0i64;
+    let mut duration_ms = 0i64;
+    match session.GetTimelineProperties() {
+        Ok(timeline) => {
+            let end_ms = timeline.EndTime().map(|t| t.Duration / 10_000).unwrap_or(0);
+            if end_ms > 0 {
+                position_ms = timeline
+                    .Position()
+                    .map(|t| t.Duration / 10_000)
+                    .unwrap_or(0);
+                duration_ms = end_ms;
+                if playing {
+                    let elapsed = timeline
+                        .LastUpdatedTime()
+                        .map(|t| (now_1601_100ns() - t.UniversalTime) / 10_000)
+                        .unwrap_or(i64::MAX);
+                    // 播放中 Position 冻结 按 LastUpdatedTime 墙钟补偿
+                    if (0..30_000).contains(&elapsed) {
+                        position_ms = (position_ms + elapsed).min(duration_ms);
+                    }
+                }
+            }
+        }
+        Err(e) => eprintln!("[smtc] 读取时间轴失败（按无时间轴处理）: {e}"),
+    }
+
+    let seek_supported = match playback.Controls() {
+        Ok(c) => c.IsPlaybackPositionEnabled().unwrap_or(false),
+        Err(e) => {
+            eprintln!("[smtc] 读取控制能力失败（按不支持 seek 处理）: {e}");
+            false
+        }
+    };
+
+    Ok(SmtcSessionInfo {
+        title: props
+            .Title()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default(),
+        artist: props
+            .Artist()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default(),
+        app,
+        playing,
+        position_ms,
+        duration_ms,
+        seek_supported,
+    })
+}
+
+fn thumbnail_of(session: &Session) -> Result<Option<Vec<u8>>> {
+    let props = block_on(
+        &session
+            .TryGetMediaPropertiesAsync()
+            .map_err(|e| WinError::api("SMTC 曲目信息", e))?,
+    )
+    .map_err(|e| WinError::api("SMTC 曲目信息", e))?;
+    let Ok(thumb_ref) = props.Thumbnail() else {
+        return Ok(None);
+    };
+    let stream = block_on(
+        &thumb_ref
+            .OpenReadAsync()
+            .map_err(|e| WinError::api("SMTC 封面流", e))?,
+    )
+    .map_err(|e| WinError::api("SMTC 封面流", e))?;
+
+    let reader =
+        DataReader::CreateDataReader(&stream).map_err(|e| WinError::api("SMTC 封面流", e))?;
+    let mut out = Vec::new();
+    loop {
+        let loaded = block_on_load(
+            &reader
+                .LoadAsync(64 * 1024)
+                .map_err(|e| WinError::api("SMTC 封面读取", e))?,
+        )
+        .map_err(|e| WinError::api("SMTC 封面读取", e))?;
+        if loaded == 0 {
+            break;
+        }
+        let mut chunk = vec![0u8; loaded as usize];
+        reader
+            .ReadBytes(&mut chunk)
+            .map_err(|e| WinError::api("SMTC 封面读取", e))?;
+        out.extend_from_slice(&chunk);
+        // 异常来源防内存拖垮
+        if out.len() > 16 * 1024 * 1024 {
+            return Err(WinError::api("SMTC 封面读取", "封面超过 16MB，放弃"));
+        }
+    }
+    if out.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(out))
 }
 
 /// keybd_event 已废弃 走 SendInput
