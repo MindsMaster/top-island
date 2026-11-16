@@ -1,0 +1,41 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  nexus:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: nexus
+    env:
+      CARGO_TERM_COLOR: always
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ github.event.release.tag_name }}" --repo "$GITHUB_REPOSITORY" --dir release-feed
+
+      - name: Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Upload to Nexus
+        env:
+          AZURA_REPO_USERNAME: ${{ secrets.AZURA_REPO_USERNAME }}
+          AZURA_REPO_PASSWORD: ${{ secrets.AZURA_REPO_PASSWORD }}
+        run: cargo xtask publish
