@@ -1,5 +1,5 @@
 import { call, on } from './invoke';
-import type { BridgeStatus, GrantResult, LyricsData, MusicAction, MusicState } from './types';
+import type { GrantResult, IntegrationInfo, LyricsData, MusicAction, MusicState } from './types';
 
 export const musicApi = {
   state: () => call<MusicState>('music_state'),
@@ -14,8 +14,8 @@ export const musicApi = {
   /** id 不匹配返回 null */
   lyrics: (id: string) => call<LyricsData | null>('music_lyrics', { id }),
 
-  bridgeStatus: () => call<BridgeStatus>('music_bridge_status'),
+  integrations: () => call<IntegrationInfo[]>('music_integrations'),
 
   /** 会弹 UAC */
-  bridgeGrant: () => call<GrantResult>('music_bridge_grant'),
+  integrationGrant: (id: string) => call<GrantResult>('music_integration_grant', { id }),
 };

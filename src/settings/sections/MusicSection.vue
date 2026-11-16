@@ -1,14 +1,26 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, reactive } from 'vue';
 import { musicApi } from '@/platform/music';
 import { useI18n } from '@/core/i18n';
 import { settings } from '@/core/settings';
 import SettingSwitch from '@/ui/SettingSwitch.vue';
-import type { BridgeStatus, GrantResult } from '@/platform/types';
+import type { GrantResult, IntegrationStatus, MusicConfig } from '@/platform/types';
 
 const { t } = useI18n();
 
-const STATUS_KEY: Record<BridgeStatus, string> = {
+interface IntegrationEntry {
+  /** 与 Rust Integration::id 一致 */
+  id: string;
+  setting: keyof MusicConfig;
+  labelKey: string;
+  hintKey: string;
+}
+
+const INTEGRATIONS: IntegrationEntry[] = [
+  { id: 'netease', setting: 'neteaseBridge', labelKey: 'musicNeteaseLabel', hintKey: 'settingsMusicHint' },
+];
+
+const STATUS_KEY: Record<IntegrationStatus, string> = {
   notDetected: 'bridgeStatusNotDetected',
   needsRestart: 'bridgeStatusNeedsRestart',
   installed: 'bridgeStatusInstalled',
@@ -28,29 +40,32 @@ const GRANT_KEY: Record<GrantResult, string> = {
 
 const POLL_MS = 2000;
 
-const status = ref<BridgeStatus>('notDetected');
-const statusText = computed(() => t(STATUS_KEY[status.value]));
+const statuses = reactive<Record<string, IntegrationStatus>>({});
+const granting = reactive<Record<string, boolean>>({});
+const grantResults = reactive<Record<string, GrantResult | undefined>>({});
 
-const granting = ref(false);
-const grantResult = ref<GrantResult | null>(null);
+const statusOf = (id: string) => statuses[id] ?? 'notDetected';
+
 // 授权后保留按钮行 直到部署走完
-const showGrant = computed(
-  () => status.value === 'noPermission' || granting.value || grantResult.value === 'granted'
-);
+const showGrant = (id: string) =>
+  statusOf(id) === 'noPermission' || granting[id] || grantResults[id] === 'granted';
 
 let timer: number | undefined;
 
 async function refresh() {
-  if (!settings.music.neteaseBridge) return;
-  status.value = await musicApi.bridgeStatus().catch(() => 'notDetected' as BridgeStatus);
-  if (grantResult.value === 'granted' && status.value !== 'noPermission') grantResult.value = null;
+  if (!INTEGRATIONS.some((i) => settings.music[i.setting])) return;
+  const list = await musicApi.integrations().catch(() => []);
+  for (const { id, status } of list) {
+    statuses[id] = status;
+    if (grantResults[id] === 'granted' && status !== 'noPermission') grantResults[id] = undefined;
+  }
 }
 
-async function grant() {
-  if (granting.value) return;
-  granting.value = true;
-  grantResult.value = await musicApi.bridgeGrant().catch(() => 'failed' as GrantResult);
-  granting.value = false;
+async function grant(id: string) {
+  if (granting[id]) return;
+  granting[id] = true;
+  grantResults[id] = await musicApi.integrationGrant(id).catch(() => 'failed' as GrantResult);
+  granting[id] = false;
   void refresh();
 }
 
@@ -68,25 +83,35 @@ onBeforeUnmount(() => window.clearInterval(timer));
   </section>
   <section class="setting-section">
     <h2 class="setting-group-title">{{ t('settingsMusicTitle') }}</h2>
-    <div class="setting-group">
+    <div v-for="entry in INTEGRATIONS" :key="entry.id" class="setting-group">
       <SettingSwitch
-        v-model="settings.music.neteaseBridge"
-        :label="t('musicNeteaseLabel')"
-        :description="t('settingsMusicHint')"
+        v-model="settings.music[entry.setting]"
+        :label="t(entry.labelKey)"
+        :description="t(entry.hintKey)"
       >
-        <span v-if="settings.music.neteaseBridge" class="setting-status" :title="statusText" role="status">{{
-          statusText
-        }}</span>
+        <span
+          v-if="settings.music[entry.setting]"
+          class="setting-status"
+          :title="t(STATUS_KEY[statusOf(entry.id)])"
+          role="status"
+          >{{ t(STATUS_KEY[statusOf(entry.id)]) }}</span
+        >
       </SettingSwitch>
-      <template v-if="settings.music.neteaseBridge && showGrant">
+      <template v-if="settings.music[entry.setting] && showGrant(entry.id)">
         <div class="setting-row">
           <div class="setting-label">{{ t('bridgeGrantHint') }}</div>
-          <button class="setting-action-btn" :disabled="granting || grantResult === 'granted'" @click="grant">
-            <i v-if="granting" class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
-            {{ granting ? t('bridgeGranting') : t('bridgeGrant') }}
+          <button
+            class="setting-action-btn"
+            :disabled="granting[entry.id] || grantResults[entry.id] === 'granted'"
+            @click="grant(entry.id)"
+          >
+            <i v-if="granting[entry.id]" class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+            {{ granting[entry.id] ? t('bridgeGranting') : t('bridgeGrant') }}
           </button>
         </div>
-        <p v-if="grantResult" class="setting-feedback" role="status">{{ t(GRANT_KEY[grantResult]) }}</p>
+        <p v-if="grantResults[entry.id]" class="setting-feedback" role="status">
+          {{ t(GRANT_KEY[grantResults[entry.id]!]) }}
+        </p>
       </template>
     </div>
   </section>

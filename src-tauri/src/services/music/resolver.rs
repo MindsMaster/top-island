@@ -3,9 +3,10 @@ use std::time::Duration;
 
 use island_core::LyricsData;
 
+use super::apps;
+use super::catalog::{self, SongRef};
 use super::hash::content_hash;
 use super::lyrics as api;
-use super::media_sources;
 use super::provider::{MusicProvider, ProviderState, TrackMeta};
 use crate::services::media::Media;
 
@@ -106,20 +107,21 @@ impl Resolver {
         };
 
         // spawn 内要拿锁 须出锁
-        let mut fetch_meta: Option<String> = None;
-        let mut fetch_lyrics: Option<(String, String, String, Option<String>)> = None;
+        let mut fetch_meta: Option<SongRef> = None;
+        let mut fetch_lyrics: Option<(String, String, String, Option<SongRef>)> = None;
         let mut fetch_artwork: Option<String> = None;
 
         {
             let mut c = self.lock();
 
             match &src.song_id {
-                Some(id) => {
-                    if *id != c.meta.key {
-                        c.meta.key = id.clone();
-                        fetch_meta = Some(id.clone());
+                Some(song) => {
+                    let key = song.key();
+                    if key != c.meta.key {
+                        c.meta.key = key.clone();
+                        fetch_meta = Some(song.clone());
                     }
-                    if let Some(m) = c.meta.get(id) {
+                    if let Some(m) = c.meta.get(&key) {
                         if out.title.is_empty() {
                             out.title = m.title.clone();
                         }
@@ -142,10 +144,10 @@ impl Resolver {
 
             // 键按补全后标题算
             let track_key = format!("{}|{}|{}", out.title, out.artist, src.source_app_id);
-            let lyrics_key = match &src.song_id {
-                Some(id) => format!("163:{id}"),
-                None => track_key.clone(),
-            };
+            let lyrics_key = src
+                .song_id
+                .as_ref()
+                .map_or_else(|| track_key.clone(), SongRef::key);
 
             if out.artwork_url.is_none() && provider.capabilities().artwork_bitmap {
                 if track_key != c.artwork.key {
@@ -162,7 +164,7 @@ impl Resolver {
             let can_fetch = src.song_id.is_some() || !out.title.is_empty();
             if lyrics_key != c.lyrics.key && can_fetch {
                 c.lyrics.key = lyrics_key.clone();
-                if src.song_id.is_some() || media_sources::lyrics_supported(&src.source_app_id) {
+                if src.song_id.is_some() || apps::lyrics_supported(&src.source_app_id) {
                     fetch_lyrics = Some((
                         lyrics_key.clone(),
                         out.title.clone(),
@@ -178,8 +180,8 @@ impl Resolver {
             }
         }
 
-        if let Some(id) = fetch_meta {
-            self.spawn_meta(id);
+        if let Some(song) = fetch_meta {
+            self.spawn_meta(song);
         }
         if let Some((k, t, a, sid)) = fetch_lyrics {
             self.spawn_lyrics(k, t, a, sid);
@@ -255,13 +257,12 @@ impl Resolver {
         }
     }
 
-    fn spawn_meta(&'static self, song_id: String) {
-        let id = song_id.clone();
+    fn spawn_meta(&'static self, song: SongRef) {
         self.fetch_once(
             "music-meta",
-            song_id,
+            song.key(),
             |c| &mut c.meta,
-            move || api::fetch_163_detail(&id),
+            move || catalog::detail(&song),
         );
     }
 
@@ -270,17 +271,16 @@ impl Resolver {
         key: String,
         title: String,
         artist: String,
-        song_id: Option<String>,
+        song: Option<SongRef>,
     ) {
         self.fetch_once(
             "music-lyrics",
             key,
             |c| &mut c.lyrics,
-            move || match &song_id {
-                Some(sid) => {
-                    api::fetch_163_by_id(sid).or_else(|| api::fetch_lyrics(&title, &artist))
-                }
-                None => api::fetch_lyrics(&title, &artist),
+            move || {
+                song.as_ref()
+                    .and_then(catalog::lyrics)
+                    .or_else(|| api::fetch_lyrics(&title, &artist))
             },
         );
     }

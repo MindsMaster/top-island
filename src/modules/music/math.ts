@@ -12,11 +12,6 @@ export function extrapolate(anchor: Anchor, nowMs: number, durationMs: number): 
   return Math.max(0, capped);
 }
 
-/** QQ 音乐 SMTC 时间轴滞后 */
-export function builtinLyricOffset(sourceAppId: string): number {
-  return sourceAppId.toLowerCase().includes('qqmusic') ? 400 : 0;
-}
-
 export function lyricIndexAt(lines: readonly LyricLine[], positionMs: number): number {
   if (!lines.length) return -1;
   let lo = 0;

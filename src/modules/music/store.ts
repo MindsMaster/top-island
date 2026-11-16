@@ -4,13 +4,7 @@ import { mediaUrl } from '@/platform/media';
 import { settings } from '@/core/settings';
 import { on as onAppEvent } from '@/core/bus';
 import type { LyricLine, MusicAction, MusicState } from '@/platform/types';
-import {
-  builtinLyricOffset,
-  extrapolate as extrapolateAnchor,
-  formatTimeMs,
-  lyricIndexAt,
-  trackIdentity,
-} from './math';
+import { extrapolate as extrapolateAnchor, formatTimeMs, lyricIndexAt, trackIdentity } from './math';
 
 export { formatTimeMs };
 
@@ -22,8 +16,8 @@ export const musicState = reactive({
   currentTrack: '',
   currentArtist: '',
   currentAlbum: '',
-  currentSourceApp: '',
   songId: '',
+  lyricOffsetMs: 0,
   artworkUrl: '',
   positionMs: 0,
   durationMs: 0,
@@ -67,8 +61,8 @@ function clearState() {
   musicState.currentTrack = '';
   musicState.currentArtist = '';
   musicState.currentAlbum = '';
-  musicState.currentSourceApp = '';
   musicState.songId = '';
+  musicState.lyricOffsetMs = 0;
   musicState.isPlaying = false;
   musicState.artworkUrl = '';
   musicState.durationMs = 0;
@@ -111,8 +105,8 @@ function handleState(data: MusicState) {
   musicState.currentTrack = t;
   musicState.currentArtist = a;
   musicState.currentAlbum = data.album || '';
-  musicState.currentSourceApp = data.sourceAppId || '';
   musicState.songId = data.songId || '';
+  musicState.lyricOffsetMs = data.lyricOffsetMs || 0;
   musicState.hasMusic = true;
 
   // 点击后暂以本地为准 防推送回跳
@@ -259,7 +253,7 @@ export const seekable = computed(() => musicState.seekSupported && hasTimeline.v
 
 /** 未到首句为 -1 */
 export const lyricIndex = computed(() =>
-  lyricIndexAt(musicState.lyricLines, musicState.positionMs + builtinLyricOffset(musicState.currentSourceApp))
+  lyricIndexAt(musicState.lyricLines, musicState.positionMs + musicState.lyricOffsetMs)
 );
 
 export const currentLyric = computed(() => musicState.lyricLines[lyricIndex.value]?.text ?? '');

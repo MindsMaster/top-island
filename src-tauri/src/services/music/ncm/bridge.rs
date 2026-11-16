@@ -14,8 +14,11 @@ use serde_json::json;
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::Message;
 
-use super::provider::{now_epoch_ms, Capabilities, Control, MusicProvider, ProviderState};
 use crate::error::AppResult;
+use crate::services::music::catalog::{Catalog, SongRef};
+use crate::services::music::provider::{
+    now_epoch_ms, Capabilities, Control, MusicProvider, ProviderState,
+};
 
 /// 端口与 token 须与 bridge.js 一致
 pub const BRIDGE_PORT: u16 = 52847;
@@ -260,7 +263,9 @@ fn parse_state_frame(v: &serde_json::Value, now_ms: i64) -> ProviderState {
         artist: str_of("artist").unwrap_or_default(),
         album: str_of("album"),
         source_app_id: "cloudmusic.exe".to_string(),
-        song_id: str_of("songId").filter(|s| !s.is_empty()),
+        song_id: str_of("songId")
+            .filter(|s| !s.is_empty())
+            .map(|id| SongRef::new(Catalog::Netease, id)),
         position_ms: num_of("positionMs").unwrap_or(0).max(0),
         anchor_epoch_ms: num_of("anchorEpochMs").unwrap_or(now_ms),
         rate: if playing { 1.0 } else { 0.0 },
@@ -342,7 +347,7 @@ mod tests {
         );
         match r {
             Inbound::State(s) => {
-                assert_eq!(s.song_id.as_deref(), Some("7"));
+                assert_eq!(s.song_id, Some(SongRef::new(Catalog::Netease, "7")));
                 assert_eq!(s.position_ms, 1234);
             }
             other => panic!("expected State, got {other:?}"),

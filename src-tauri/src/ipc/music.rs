@@ -3,7 +3,7 @@ use island_core::{LyricsData, MusicAction, MusicState};
 use super::off_thread;
 use crate::error::AppResult;
 use crate::services;
-use crate::services::music::{BridgeStatus, GrantResult};
+use crate::services::music::{GrantResult, IntegrationInfo};
 
 #[tauri::command]
 pub async fn music_state() -> AppResult<MusicState> {
@@ -27,12 +27,12 @@ pub async fn music_lyrics(id: String) -> AppResult<Option<LyricsData>> {
 }
 
 #[tauri::command]
-pub async fn music_bridge_status() -> AppResult<BridgeStatus> {
-    off_thread(|| Ok(services::music::bridge_status())).await
+pub async fn music_integrations() -> AppResult<Vec<IntegrationInfo>> {
+    off_thread(|| Ok(services::music::integrations())).await
 }
 
 /// 弹 UAC 阻塞到用户应答
 #[tauri::command]
-pub async fn music_bridge_grant() -> AppResult<GrantResult> {
-    off_thread(|| Ok(services::music::grant_bridge_access())).await
+pub async fn music_integration_grant(id: String) -> AppResult<GrantResult> {
+    off_thread(move || Ok(services::music::grant_integration(&id))).await
 }

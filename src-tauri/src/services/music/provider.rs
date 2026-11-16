@@ -1,3 +1,4 @@
+use super::catalog::SongRef;
 use crate::error::AppResult;
 
 #[derive(Debug, Clone, Copy)]
@@ -33,7 +34,7 @@ pub struct ProviderState {
     pub album: Option<String>,
     /// SMTC SourceAppUserModelId
     pub source_app_id: String,
-    pub song_id: Option<String>,
+    pub song_id: Option<SongRef>,
     pub position_ms: i64,
     pub anchor_epoch_ms: i64,
     /// 播放 1 暂停 0

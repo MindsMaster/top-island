@@ -17,7 +17,8 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 
-use super::hash::content_hash;
+use crate::services::music::hash::content_hash;
+use crate::services::music::integration::{GrantResult, IntegrationStatus};
 
 /// build.rs 嵌入 未构建为空
 static PROXY_DLL: &[u8] = include_bytes!(env!("NCM_BRIDGE_DLL"));
@@ -70,29 +71,15 @@ impl Block {
         !matches!(self, Self::None | Self::NoPermission)
     }
 
-    fn status(self) -> Option<BridgeStatus> {
+    fn status(self) -> Option<IntegrationStatus> {
         match self {
             Self::None => None,
-            Self::NoPermission => Some(BridgeStatus::NoPermission),
-            Self::Conflict => Some(BridgeStatus::Conflict),
-            Self::Unsupported => Some(BridgeStatus::Unsupported),
-            Self::Failed => Some(BridgeStatus::Failed),
+            Self::NoPermission => Some(IntegrationStatus::NoPermission),
+            Self::Conflict => Some(IntegrationStatus::Conflict),
+            Self::Unsupported => Some(IntegrationStatus::Unsupported),
+            Self::Failed => Some(IntegrationStatus::Failed),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum BridgeStatus {
-    NotDetected,
-    NeedsRestart,
-    Installed,
-    Connecting,
-    Connected,
-    NoPermission,
-    Conflict,
-    Unsupported,
-    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,14 +302,6 @@ fn revert() {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum GrantResult {
-    Granted,
-    Cancelled,
-    Failed,
-}
-
 pub fn grant_access() -> GrantResult {
     let Some(dir) = ncm_dir(running_ncm().as_ref()) else {
         return GrantResult::Failed;
@@ -421,7 +400,7 @@ fn current_user_sid() -> Option<String> {
     }
 }
 
-pub fn status(connected: bool) -> BridgeStatus {
+pub fn status(connected: bool) -> IntegrationStatus {
     let running = running_ncm();
     let dir = ncm_dir(running.as_ref());
     let (proxy_ours, proxy_mtime) = match &dir {
@@ -447,28 +426,28 @@ fn decide_status(
     running_start_ms: Option<i64>,
     proxy_ours: bool,
     proxy_mtime_ms: i64,
-    blocked: Option<BridgeStatus>,
-) -> BridgeStatus {
+    blocked: Option<IntegrationStatus>,
+) -> IntegrationStatus {
     if connected {
-        return BridgeStatus::Connected;
+        return IntegrationStatus::Connected;
     }
     if !dir_found {
-        return BridgeStatus::NotDetected;
+        return IntegrationStatus::NotDetected;
     }
     if let Some(start) = running_start_ms {
         if proxy_ours && start >= proxy_mtime_ms {
-            return BridgeStatus::Connecting;
+            return IntegrationStatus::Connecting;
         }
     }
     // 代理已就位 重启即可
     match blocked {
-        Some(BridgeStatus::NoPermission) if proxy_ours => {}
+        Some(IntegrationStatus::NoPermission) if proxy_ours => {}
         Some(b) => return b,
         None => {}
     }
     match running_start_ms {
-        Some(_) => BridgeStatus::NeedsRestart,
-        None => BridgeStatus::Installed,
+        Some(_) => IntegrationStatus::NeedsRestart,
+        None => IntegrationStatus::Installed,
     }
 }
 
@@ -880,48 +859,48 @@ mod tests {
     fn decide_status_covers_all_five_labels() {
         assert_eq!(
             decide_status(true, true, Some(5), true, 10, None),
-            BridgeStatus::Connected
+            IntegrationStatus::Connected
         );
         assert_eq!(
             decide_status(false, true, None, false, 0, None),
-            BridgeStatus::Connected
+            IntegrationStatus::Connected
         );
         assert_eq!(
             decide_status(false, false, None, false, 0, None),
-            BridgeStatus::NotDetected
+            IntegrationStatus::NotDetected
         );
         assert_eq!(
             decide_status(true, false, None, true, 0, None),
-            BridgeStatus::Installed
+            IntegrationStatus::Installed
         );
         assert_eq!(
             decide_status(true, false, Some(100), true, 50, None),
-            BridgeStatus::Connecting
+            IntegrationStatus::Connecting
         );
         assert_eq!(
             decide_status(true, false, Some(40), true, 50, None),
-            BridgeStatus::NeedsRestart
+            IntegrationStatus::NeedsRestart
         );
         assert_eq!(
             decide_status(true, false, Some(100), false, 50, None),
-            BridgeStatus::NeedsRestart
+            IntegrationStatus::NeedsRestart
         );
     }
 
     #[test]
     fn decide_status_surfaces_block_reason() {
-        let np = Some(BridgeStatus::NoPermission);
+        let np = Some(IntegrationStatus::NoPermission);
         assert_eq!(
             decide_status(true, false, Some(100), false, i64::MAX, np),
-            BridgeStatus::NoPermission
+            IntegrationStatus::NoPermission
         );
         assert_eq!(
             decide_status(true, false, None, false, i64::MAX, np),
-            BridgeStatus::NoPermission
+            IntegrationStatus::NoPermission
         );
         assert_eq!(
             decide_status(true, false, Some(40), true, 50, np),
-            BridgeStatus::NeedsRestart
+            IntegrationStatus::NeedsRestart
         );
         assert_eq!(
             decide_status(
@@ -930,17 +909,24 @@ mod tests {
                 Some(100),
                 false,
                 50,
-                Some(BridgeStatus::Conflict)
+                Some(IntegrationStatus::Conflict)
             ),
-            BridgeStatus::Conflict
+            IntegrationStatus::Conflict
         );
         assert_eq!(
-            decide_status(true, false, Some(100), true, 50, Some(BridgeStatus::Failed)),
-            BridgeStatus::Connecting
+            decide_status(
+                true,
+                false,
+                Some(100),
+                true,
+                50,
+                Some(IntegrationStatus::Failed)
+            ),
+            IntegrationStatus::Connecting
         );
         assert_eq!(
             decide_status(true, true, Some(100), false, 50, np),
-            BridgeStatus::Connected
+            IntegrationStatus::Connected
         );
     }
 

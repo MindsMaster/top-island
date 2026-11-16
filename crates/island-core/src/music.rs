@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MusicState {
-    /// "ncm-bridge" | "smtc" | ""
+    /// MusicProvider::name 无源为空
     pub provider: String,
     pub is_playing: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -17,7 +17,7 @@ pub struct MusicState {
     pub album: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_app_id: Option<String>,
-    /// 有则歌词按 ID 精确获取
+    /// 带曲库前缀 如 ncm:123
     #[serde(skip_serializing_if = "Option::is_none")]
     pub song_id: Option<String>,
     pub position_ms: i64,
@@ -35,6 +35,8 @@ pub struct MusicState {
     /// 据此调 music_lyrics 拉取一次
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics_id: Option<String>,
+    /// 歌词定位前加到进度上
+    pub lyric_offset_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
