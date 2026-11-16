@@ -4,7 +4,6 @@ import { storeApi } from '@/platform/store';
 import { mediaUrl } from '@/platform/media';
 import { showAlert } from '@/ui/alert';
 import { settings } from '@/core/settings';
-import { shell } from '@/shell/commands';
 import { shellView } from '@/shell/view';
 import { useI18n } from '@/core/i18n';
 import type { NotificationItem } from '@/platform/types';
@@ -67,8 +66,9 @@ export async function activate(n: NotificationItem) {
 }
 
 export function openPopup() {
+  const entry = notifyState.popup;
   closePopup();
-  shell.openPanel('messages');
+  if (entry) void activate(entry);
 }
 
 export function closePopup() {
