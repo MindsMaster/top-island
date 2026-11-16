@@ -27,7 +27,7 @@ const KNOWN_APPS: &[AppProfile] = &[
     AppProfile {
         needle: "qqmusic",
         lyric_offset_ms: 400,
-        lyric_sources: DEFAULT_SOURCES,
+        lyric_sources: &[LyricSource::Qq, LyricSource::Netease, LyricSource::Kugou],
     },
     app("spotify"),
     AppProfile {

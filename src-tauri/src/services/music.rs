@@ -18,6 +18,7 @@ mod lyrics;
 mod ncm;
 mod provider;
 mod push;
+mod qqmusic;
 mod resolver;
 mod sideload;
 mod smtc;
@@ -53,7 +54,7 @@ impl std::fmt::Debug for Service {
 }
 
 static SERVICE: OnceLock<Service> = OnceLock::new();
-static INTEGRATIONS: &[&dyn Integration] = &[&ncm::NETEASE, &kugou::KUGOU];
+static INTEGRATIONS: &[&dyn Integration] = &[&ncm::NETEASE, &kugou::KUGOU, &qqmusic::QQMUSIC];
 static PUSH: PushSignal = PushSignal::new();
 
 fn request_push() {

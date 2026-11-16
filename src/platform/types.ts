@@ -60,6 +60,7 @@ export interface IntegrationInfo {
 export interface MusicConfig {
   neteaseBridge: boolean;
   kugouBridge: boolean;
+  qqmusicBridge: boolean;
 }
 
 /** 故障排查用 逐个停用定位鼠标卡顿等问题来源 */

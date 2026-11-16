@@ -212,6 +212,8 @@ const zhCN: Messages = {
   musicNeteaseLabel: '网易云音乐',
   musicKugouLabel: '酷狗音乐',
   settingsMusicKugouHint: '连接酷狗音乐，显示准确的进度和时长。会在酷狗安装目录加载组件，不影响其他播放器。',
+  musicQqLabel: 'QQ 音乐',
+  settingsMusicQqHint: '通过 QQ 音乐自带的本机接口连接，显示准确的进度并支持拖动。不修改播放器文件。',
   musicStatusLabel: '连接状态',
   bridgeStatusNotDetected: '未检测到播放器',
   bridgeStatusNeedsRestart: '请重启播放器',

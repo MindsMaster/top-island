@@ -790,6 +790,10 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+pub fn is_running(exe: &str) -> bool {
+    !enum_pids(exe).is_empty()
+}
+
 fn enum_pids(exe: &str) -> Vec<u32> {
     let mut pids = Vec::new();
     unsafe {

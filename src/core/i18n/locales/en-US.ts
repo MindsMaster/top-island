@@ -215,6 +215,9 @@ const enUS: Messages = {
   musicKugouLabel: 'KuGou Music',
   settingsMusicKugouHint:
     'Connect KuGou Music for accurate progress and duration. This loads a component in the KuGou folder. Other players are not affected.',
+  musicQqLabel: 'QQ Music',
+  settingsMusicQqHint:
+    "Connect through QQ Music's built-in local interface for accurate progress and seeking. No player files are modified.",
   musicStatusLabel: 'Connection status',
   bridgeStatusNotDetected: 'Player not detected',
   bridgeStatusNeedsRestart: 'Restart the player',

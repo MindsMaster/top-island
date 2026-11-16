@@ -126,6 +126,7 @@ pub struct MusicConfig {
     /// 网易云进程内增强
     pub netease_bridge: bool,
     pub kugou_bridge: bool,
+    pub qqmusic_bridge: bool,
 }
 
 impl Default for MusicConfig {
@@ -133,6 +134,7 @@ impl Default for MusicConfig {
         Self {
             netease_bridge: true,
             kugou_bridge: true,
+            qqmusic_bridge: true,
         }
     }
 }
