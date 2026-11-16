@@ -14,7 +14,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # 绕开 msvc 主机工具链锁定
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: rustup toolchain install stable --profile minimal --component rustfmt --no-self-update
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  rust:
     # rust-toolchain.toml 锁定 msvc 工具链
     runs-on: windows-latest
     timeout-minutes: 60
@@ -33,17 +60,13 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # tauri 上下文宏要求 dist/renderer 已存在
+      - run: pnpm build
 
       - name: Rust toolchain
         run: rustup toolchain install --no-self-update
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: pnpm format:check
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
-      # tauri 上下文宏要求 dist/renderer 已存在
-      - run: pnpm build
       - run: cargo check --workspace --all-targets
       - run: cargo test --workspace
