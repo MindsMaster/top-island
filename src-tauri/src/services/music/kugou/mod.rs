@@ -8,7 +8,6 @@ use island_core::MusicConfig;
 use super::integration::{GrantResult, Integration, IntegrationStatus};
 use super::provider::MusicProvider;
 use super::sideload::{self, Deployer, Target};
-use super::smtc;
 use bridge::KugouBridgeProvider;
 
 const EXE: &str = "KuGou.exe";
@@ -45,7 +44,7 @@ impl Integration for Kugou {
 
     fn provider(&'static self, on_change: fn()) -> &'static dyn MusicProvider {
         self.bridge
-            .get_or_init(|| KugouBridgeProvider::start(on_change, &smtc::SMTC))
+            .get_or_init(|| KugouBridgeProvider::start(on_change))
     }
 
     fn set_wanted(&self, want: bool) {

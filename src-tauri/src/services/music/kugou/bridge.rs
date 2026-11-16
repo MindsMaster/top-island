@@ -1,12 +1,10 @@
 //! 协议须与 island-kugou-bridge 的 report.rs 同步
-//! 曲目与切歌走 SMTC 组件只补进度 播放状态与总时长
+//! 曲目与控制走 SMTC 组件只补进度 播放状态与总时长
 
 use std::sync::{Arc, Mutex};
 
-use crate::error::AppResult;
 use crate::services::music::bridge_server::{BridgeServer, Endpoint};
-use crate::services::music::provider::{Capabilities, Control, MusicProvider, ProviderState};
-use crate::services::music::smtc::SmtcProvider;
+use crate::services::music::provider::{MusicProvider, ProviderState};
 
 /// 端口与 token 须与 island-kugou-bridge 一致
 const ENDPOINT: Endpoint = Endpoint {
@@ -27,11 +25,12 @@ struct Progress {
 pub struct KugouBridgeProvider {
     server: BridgeServer,
     progress: Arc<Mutex<Option<Progress>>>,
-    smtc: &'static SmtcProvider,
+    /// 识别进度条偶有落空 按曲目沿用
+    last_duration: Mutex<Option<(String, i64)>>,
 }
 
 impl KugouBridgeProvider {
-    pub fn start(on_change: fn(), smtc: &'static SmtcProvider) -> Self {
+    pub fn start(on_change: fn()) -> Self {
         let progress: Arc<Mutex<Option<Progress>>> = Arc::default();
         let on_frame_progress = Arc::clone(&progress);
         let on_close_progress = Arc::clone(&progress);
@@ -50,7 +49,7 @@ impl KugouBridgeProvider {
         Self {
             server,
             progress,
-            smtc,
+            last_duration: Mutex::new(None),
         }
     }
 
@@ -64,35 +63,23 @@ impl MusicProvider for KugouBridgeProvider {
         "kugou-bridge"
     }
 
-    fn snapshot(&self) -> Option<ProviderState> {
+    fn claims(&self) -> &'static str {
+        "kugou"
+    }
+
+    fn snapshot(&self, base: Option<&ProviderState>) -> Option<ProviderState> {
         if !self.server.is_connected() {
             return None;
         }
-        let p = (*self.progress.lock().unwrap_or_else(|e| e.into_inner()))?;
-        let base = self
-            .smtc
-            .snapshot()
-            .filter(|s| s.source_app_id.to_lowercase().contains("kugou"))?;
+        let mut p = (*self.progress.lock().unwrap_or_else(|e| e.into_inner()))?;
+        let base = base?.clone();
+        let track = format!("{}|{}", base.title, base.artist);
+        let mut last = self.last_duration.lock().unwrap_or_else(|e| e.into_inner());
+        match p.duration_ms {
+            Some(d) => *last = Some((track, d)),
+            None => p.duration_ms = last.as_ref().filter(|(t, _)| *t == track).map(|(_, d)| *d),
+        }
         Some(merge(base, p))
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            skip: true,
-            artwork_bitmap: true,
-            fallback: false,
-        }
-    }
-
-    fn control(&self, action: Control) -> AppResult<bool> {
-        match action {
-            Control::Seek(_) => Ok(false),
-            _ => self.smtc.control(action),
-        }
-    }
-
-    fn artwork_bytes(&self) -> Option<Vec<u8>> {
-        self.smtc.artwork_bytes()
     }
 }
 
