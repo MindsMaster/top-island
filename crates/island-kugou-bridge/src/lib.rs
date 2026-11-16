@@ -3,6 +3,7 @@
 mod hooks;
 mod lyric;
 mod report;
+mod seek;
 mod slider;
 
 use std::ffi::c_void;

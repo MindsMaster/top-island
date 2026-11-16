@@ -1,5 +1,5 @@
 //! 协议须与 island-kugou-bridge 的 report.rs 同步
-//! 曲目与控制走 SMTC 组件补进度 播放状态 总时长与歌词
+//! 曲目与播控走 SMTC 余下走组件
 
 use std::sync::{Arc, Mutex};
 
@@ -7,7 +7,10 @@ use island_core::{LyricLine, LyricsData};
 
 use crate::services::music::bridge_server::{BridgeServer, Endpoint};
 use crate::services::music::hash::content_hash;
-use crate::services::music::provider::{LocalLyrics, MusicProvider, ProviderState};
+use serde_json::json;
+
+use crate::error::AppResult;
+use crate::services::music::provider::{Control, LocalLyrics, MusicProvider, ProviderState};
 
 /// 端口与 token 须与 island-kugou-bridge 一致
 const ENDPOINT: Endpoint = Endpoint {
@@ -105,12 +108,21 @@ impl MusicProvider for KugouBridgeProvider {
         let (title, l) = s.lyrics.as_ref()?;
         same_title(title, &state.title).then(|| l.clone())
     }
+
+    fn control(&self, action: Control) -> AppResult<bool> {
+        let Control::Seek(ms) = action else {
+            return Ok(false);
+        };
+        let frame = json!({ "type": "control", "action": "seek", "positionMs": ms.max(0) });
+        Ok(self.server.send(frame.to_string()))
+    }
 }
 
 fn same_title(a: &str, b: &str) -> bool {
     a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 
+/// 认出进度条才能跳转
 fn merge(base: ProviderState, p: Progress) -> ProviderState {
     ProviderState {
         is_playing: p.playing,
@@ -118,7 +130,7 @@ fn merge(base: ProviderState, p: Progress) -> ProviderState {
         anchor_epoch_ms: p.anchor_epoch_ms,
         rate: if p.playing { 1.0 } else { 0.0 },
         duration_ms: p.duration_ms.or(base.duration_ms),
-        seek_supported: false,
+        seek_supported: p.duration_ms.is_some(),
         ..base
     }
 }
@@ -245,5 +257,6 @@ mod tests {
         assert_eq!(s.duration_ms, Some(279_370));
         assert!(!s.is_playing);
         assert_eq!(s.rate, 0.0);
+        assert!(s.seek_supported);
     }
 }
