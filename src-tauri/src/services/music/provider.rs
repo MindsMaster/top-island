@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use island_core::LyricsData;
+
 use super::catalog::SongRef;
 use crate::error::AppResult;
 
@@ -38,6 +42,13 @@ pub struct TrackMeta {
     pub duration_ms: i64,
 }
 
+/// 播放器已加载的歌词 键随内容变
+#[derive(Debug, Clone)]
+pub struct LocalLyrics {
+    pub key: String,
+    pub data: Arc<LyricsData>,
+}
+
 /// 播放器增强 叠加在同名 SMTC 会话上
 pub trait MusicProvider: Send + Sync {
     fn name(&self) -> &'static str;
@@ -47,6 +58,11 @@ pub trait MusicProvider: Send + Sync {
 
     /// 每帧调用 不得阻塞
     fn snapshot(&self, base: Option<&ProviderState>) -> Option<ProviderState>;
+
+    /// 须属于 state 这首 否则按名搜
+    fn lyrics(&self, _state: &ProviderState) -> Option<LocalLyrics> {
+        None
+    }
 
     /// false 则改走 SMTC
     fn control(&self, _action: Control) -> AppResult<bool> {

@@ -1,6 +1,7 @@
 //! 协议须与 services/music/kugou 同步
 //! 组件 → 岛 `{type:"hello", token}` 连上即发
 //! 组件 → 岛 `{type:"progress", positionMs, anchorEpochMs, playing, durationMs?}`
+//! 组件 → 岛 `{type:"lyrics", title, artist, lengthMs, lines:[[timeMs, text]]}`
 
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::Ordering;
@@ -9,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 use tungstenite::{Message, WebSocket};
 
-use crate::hooks::{epoch_ms, POSITION_MS, SLIDERS, TICK_EPOCH_MS};
+use crate::hooks::{epoch_ms, LYRIC, POSITION_MS, SLIDERS, TICK_EPOCH_MS};
 
 /// 端口与 token 须与 services/music/kugou 一致
 const PORT: u16 = 52848;
@@ -87,8 +88,14 @@ fn session(mut ws: WebSocket<TcpStream>) {
     }
     let mut last: Option<Sample> = None;
     let mut last_sent = Instant::now();
+    let mut lyric_sent = 0u64;
     loop {
         std::thread::sleep(SAMPLE_EVERY);
+        if let Some(frame) = lyric_frame(&mut lyric_sent) {
+            if ws.send(Message::text(frame)).is_err() {
+                return;
+            }
+        }
         let Some(cur) = sample(epoch_ms()) else {
             continue;
         };
@@ -109,6 +116,26 @@ fn session(mut ws: WebSocket<TcpStream>) {
         last = Some(cur);
         last_sent = Instant::now();
     }
+}
+
+/// 只在代号变时出帧
+fn lyric_frame(sent: &mut u64) -> Option<String> {
+    let cur = LYRIC.lock().unwrap_or_else(|e| e.into_inner());
+    let (generation, l) = cur.as_ref()?;
+    if *generation == *sent {
+        return None;
+    }
+    *sent = *generation;
+    Some(
+        json!({
+            "type": "lyrics",
+            "title": l.title,
+            "artist": l.artist,
+            "lengthMs": l.length_ms,
+            "lines": l.lines,
+        })
+        .to_string(),
+    )
 }
 
 #[cfg(test)]
