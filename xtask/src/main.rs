@@ -24,10 +24,9 @@ fn main() {
         Some("keygen") => keygen(),
         Some("keycheck") => keycheck(),
         Some("build") => build(),
-        Some("legacy-feed") => legacy_feed(),
         Some("publish") => publish(),
         _ => {
-            eprintln!("usage: cargo xtask <bridge|dev|keygen|build|legacy-feed|publish>");
+            eprintln!("usage: cargo xtask <bridge|dev|keygen|build|publish>");
             std::process::exit(2);
         }
     };
@@ -291,56 +290,6 @@ fn publish() -> Result<()> {
         );
     }
     println!("全部上传完成");
-    Ok(())
-}
-
-/// 老 electron-updater 只认 yml feed 迁移完可删
-fn legacy_feed() -> Result<()> {
-    use sha2::Digest;
-
-    let version = conf_version()?;
-    let name = format!("TopIsland_{version}_x64-setup.exe");
-    let out = PathBuf::from("release-feed");
-    let exe = out.join(&name);
-    anyhow::ensure!(exe.exists(), "缺少 {}，先 cargo xtask build", exe.display());
-
-    let bytes = std::fs::read(&exe).context("读安装包")?;
-    let sha512 = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        sha2::Sha512::digest(&bytes),
-    );
-    let size = bytes.len();
-    let date = time::OffsetDateTime::now_utc()
-        .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_default();
-
-    let yml = format!(
-        "version: {version}\n\
-         files:\n\
-         \x20 - url: {name}\n\
-         \x20   sha512: {sha512}\n\
-         \x20   size: {size}\n\
-         path: {name}\n\
-         sha512: {sha512}\n\
-         releaseDate: '{date}'\n"
-    );
-    std::fs::write(out.join("latest.yml"), &yml).context("写 latest.yml")?;
-    std::fs::write(out.join("snapshot.yml"), &yml).context("写 snapshot.yml")?;
-
-    // 0.0.1-SNAPSHOT 老客户端读的是 snapshot.json
-    let latest_json = out.join("latest.json");
-    anyhow::ensure!(
-        latest_json.exists(),
-        "缺少 latest.json，先 cargo xtask build"
-    );
-    std::fs::copy(&latest_json, out.join("snapshot.json")).context("镜像 snapshot.json")?;
-
-    println!("version: {version}");
-    println!("sha512: {sha512}");
-    println!("size: {size}");
-    println!(
-        "已写 latest.yml / snapshot.yml / snapshot.json，检查后用 cargo xtask publish 一并上传"
-    );
     Ok(())
 }
 
