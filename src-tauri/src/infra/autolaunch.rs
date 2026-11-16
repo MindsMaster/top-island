@@ -9,7 +9,7 @@ const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 /// Run 值名共用命名空间 撞名会互相覆盖
 const VALUE_NAME: &str = "cc.azuramc.topisland";
 /// 历代版本用过的值名 每次 sync 清一遍
-const STALE_VALUE_NAMES: &[&str] = &["TopIsland", "electron.app.TopIsland"];
+const STALE_VALUE_NAMES: &[&str] = &["TopIsland"];
 
 pub fn sync(enabled: bool) -> AppResult<()> {
     if tauri::is_dev() {
