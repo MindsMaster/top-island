@@ -1,16 +1,19 @@
 //! 协议须与 services/music/kugou 同步
-//! 组件 → 岛 `{type:"hello", token}` 连上即发
-//! 组件 → 岛 `{type:"progress", positionMs, anchorEpochMs, playing, durationMs?}`
-//! 组件 → 岛 `{type:"lyrics", title, artist, lengthMs, lines:[[timeMs, text]]}`
+//! 上行 `{type:"hello", token}` 连上即发
+//! 上行 `{type:"progress", positionMs, anchorEpochMs, playing, durationMs?}`
+//! 上行 `{type:"lyrics", title, artist, lengthMs, lines:[[timeMs, text]]}`
+//! 下行 `{type:"control", action:"seek", positionMs}`
 
+use std::io::ErrorKind;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
-use tungstenite::{Message, WebSocket};
+use tungstenite::{Error, Message, WebSocket};
 
 use crate::hooks::{epoch_ms, LYRIC, POSITION_MS, SLIDERS, TICK_EPOCH_MS};
+use crate::seek;
 
 /// 端口与 token 须与 services/music/kugou 一致
 const PORT: u16 = 52848;
@@ -76,11 +79,12 @@ fn connect() -> Option<WebSocket<TcpStream>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(1)).ok()?;
     let _ = tcp.set_nodelay(true);
+    // 读超时兼作采样节拍
+    tcp.set_read_timeout(Some(SAMPLE_EVERY)).ok()?;
     let (ws, _) = tungstenite::client(format!("ws://127.0.0.1:{PORT}/"), tcp).ok()?;
     Some(ws)
 }
 
-/// 只写不读 岛退出时写失败即重连
 fn session(mut ws: WebSocket<TcpStream>) {
     let hello = json!({ "type": "hello", "token": TOKEN });
     if ws.send(Message::text(hello.to_string())).is_err() {
@@ -90,7 +94,17 @@ fn session(mut ws: WebSocket<TcpStream>) {
     let mut last_sent = Instant::now();
     let mut lyric_sent = 0u64;
     loop {
-        std::thread::sleep(SAMPLE_EVERY);
+        match ws.read() {
+            Ok(Message::Text(text)) => {
+                if let Some(ms) = seek_target(&text) {
+                    seek::request(ms);
+                }
+            }
+            Ok(_) => {}
+            Err(Error::Io(e))
+                if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+            Err(_) => return,
+        }
         if let Some(frame) = lyric_frame(&mut lyric_sent) {
             if ws.send(Message::text(frame)).is_err() {
                 return;
@@ -116,6 +130,14 @@ fn session(mut ws: WebSocket<TcpStream>) {
         last = Some(cur);
         last_sent = Instant::now();
     }
+}
+
+fn seek_target(text: &str) -> Option<i64> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    if v.get("type")?.as_str()? != "control" || v.get("action")?.as_str()? != "seek" {
+        return None;
+    }
+    v.get("positionMs")?.as_i64()
 }
 
 /// 只在代号变时出帧
@@ -149,6 +171,16 @@ mod tests {
             playing,
             duration_ms: Some(200_000),
         }
+    }
+
+    #[test]
+    fn parses_seek_control_only() {
+        assert_eq!(
+            seek_target(r#"{"type":"control","action":"seek","positionMs":42000}"#),
+            Some(42_000)
+        );
+        assert_eq!(seek_target(r#"{"type":"control","action":"pause"}"#), None);
+        assert_eq!(seek_target("not json"), None);
     }
 
     #[test]

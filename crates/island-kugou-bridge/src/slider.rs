@@ -1,7 +1,7 @@
 //! 从界面所有 TrackBar 里认出播放进度条
 
 /// 播放进度条刻度为 10ms
-const TICK_MS: i64 = 10;
+pub const TICK_MS: i64 = 10;
 /// 刻度与进度回调的允许偏差
 const MATCH_TOLERANCE_MS: i64 = 1500;
 const CAPACITY: usize = 16;
@@ -49,13 +49,18 @@ impl Sliders {
     }
 
     /// 音量条等也会凑巧对上 取量程最大者
-    pub fn duration_ms(&self, position_ms: i64) -> Option<i64> {
+    pub fn play_slider(&self, position_ms: i64) -> Option<(usize, i32)> {
         self.items
             .iter()
             .filter(|s| s.max > 0 && s.pos <= s.max)
             .filter(|s| (i64::from(s.pos) * TICK_MS - position_ms).abs() <= MATCH_TOLERANCE_MS)
-            .map(|s| i64::from(s.max) * TICK_MS)
-            .max()
+            .max_by_key(|s| s.max)
+            .map(|s| (s.this, s.max))
+    }
+
+    pub fn duration_ms(&self, position_ms: i64) -> Option<i64> {
+        self.play_slider(position_ms)
+            .map(|(_, max)| i64::from(max) * TICK_MS)
     }
 }
 

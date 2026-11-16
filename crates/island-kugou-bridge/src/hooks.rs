@@ -9,8 +9,10 @@ use retour::GenericDetour;
 use windows::core::{s, w, PCSTR};
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+use windows::Win32::System::Threading::GetCurrentThreadId;
 
 use crate::lyric::{self, Api, GetIntFn, GetRefFn, Lyric};
+use crate::seek::{self, MsgFn, PointPosFn, RectFn, UI_THREAD};
 use crate::slider::Sliders;
 
 type IntArgFn = unsafe extern "system" fn(*mut c_void, i32);
@@ -63,6 +65,7 @@ unsafe extern "system" fn hook_set_pos(this: *mut c_void, pos: i32) {
     if let Some(d) = SET_POS.get() {
         unsafe { d.call(this, pos) };
     }
+    UI_THREAD.store(unsafe { GetCurrentThreadId() }, Ordering::Release);
     SLIDERS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -101,6 +104,26 @@ fn lyric_api(ui: HMODULE) -> Option<Api> {
     }
 }
 
+fn seek_api(ui: HMODULE) -> Option<seek::Api> {
+    let f = |name: PCSTR| unsafe { GetProcAddress(ui, name) }.map(|p| p as usize);
+    unsafe {
+        Some(seek::Api {
+            thumb_rect: std::mem::transmute::<usize, RectFn>(f(s!(
+                "?GetThumbRect@TrackBar@kugou_ui@@QEBA?AUtagRECT@@XZ"
+            ))?),
+            pos_from_point: std::mem::transmute::<usize, PointPosFn>(f(s!(
+                "?GetPosFromPoint@TrackBar@kugou_ui@@MEAAHUtagPOINT@@@Z"
+            ))?),
+            mouse_down: std::mem::transmute::<usize, MsgFn>(f(s!(
+                "?DoMouseDown@TrackBar@kugou_ui@@MEAA_NI_K_JAEA_J@Z"
+            ))?),
+            mouse_up: std::mem::transmute::<usize, MsgFn>(f(s!(
+                "?DoMouseUp@TrackBar@kugou_ui@@MEAA_NI_K_JAEA_J@Z"
+            ))?),
+        })
+    }
+}
+
 /// 进度钩子装上才算成功
 pub fn install() -> bool {
     let Some(ui) = wait_ui_dll() else {
@@ -125,6 +148,9 @@ pub fn install() -> bool {
             s!("?SetTrackBarPosNoNotify@TrackBar@kugou_ui@@QEAAXH@Z"),
             hook_set_pos as IntArgFn,
         );
+        if let Some(api) = seek_api(ui) {
+            let _ = seek::API.set(api);
+        }
         if let Some(api) = lyric_api(ui) {
             let _ = LYRIC_API.set(api);
             let _ = detour(
