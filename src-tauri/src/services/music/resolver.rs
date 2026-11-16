@@ -6,7 +6,7 @@ use island_core::LyricsData;
 use super::apps;
 use super::catalog::{self, SongRef};
 use super::hash::content_hash;
-use super::lyrics as api;
+use super::lyrics::{self as api, LyricSource};
 use super::provider::{MusicProvider, ProviderState, TrackMeta};
 use crate::services::media::Media;
 
@@ -49,6 +49,16 @@ struct Caches {
     meta: Slot<TrackMeta>,
     lyrics: Slot<LyricsData>,
     artwork: Slot<Artwork>,
+}
+
+#[derive(Debug)]
+struct LyricsQuery {
+    key: String,
+    title: String,
+    artist: String,
+    duration_ms: Option<i64>,
+    song: Option<SongRef>,
+    sources: &'static [LyricSource],
 }
 
 #[derive(Debug, Default)]
@@ -108,7 +118,7 @@ impl Resolver {
 
         // spawn 内要拿锁 须出锁
         let mut fetch_meta: Option<SongRef> = None;
-        let mut fetch_lyrics: Option<(String, String, String, Option<SongRef>)> = None;
+        let mut fetch_lyrics: Option<LyricsQuery> = None;
         let mut fetch_artwork: Option<String> = None;
 
         {
@@ -144,10 +154,11 @@ impl Resolver {
 
             // 键按补全后标题算
             let track_key = format!("{}|{}|{}", out.title, out.artist, src.source_app_id);
-            let lyrics_key = src
-                .song_id
-                .as_ref()
-                .map_or_else(|| track_key.clone(), SongRef::key);
+            // 按名搜须带时长 时长晚到则重搜
+            let lyrics_key = src.song_id.as_ref().map_or_else(
+                || format!("{track_key}|{}", out.duration_ms.map_or(0, |d| d / 1000)),
+                SongRef::key,
+            );
 
             if out.artwork_url.is_none() && provider.capabilities().artwork_bitmap {
                 if track_key != c.artwork.key {
@@ -165,12 +176,14 @@ impl Resolver {
             if lyrics_key != c.lyrics.key && can_fetch {
                 c.lyrics.key = lyrics_key.clone();
                 if src.song_id.is_some() || apps::lyrics_supported(&src.source_app_id) {
-                    fetch_lyrics = Some((
-                        lyrics_key.clone(),
-                        out.title.clone(),
-                        out.artist.clone(),
-                        src.song_id.clone(),
-                    ));
+                    fetch_lyrics = Some(LyricsQuery {
+                        key: lyrics_key.clone(),
+                        title: out.title.clone(),
+                        artist: out.artist.clone(),
+                        duration_ms: out.duration_ms,
+                        song: src.song_id.clone(),
+                        sources: apps::lyric_sources(&src.source_app_id),
+                    });
                 }
             }
             if let Some(l) = c.lyrics.get(&lyrics_key) {
@@ -183,8 +196,8 @@ impl Resolver {
         if let Some(song) = fetch_meta {
             self.spawn_meta(song);
         }
-        if let Some((k, t, a, sid)) = fetch_lyrics {
-            self.spawn_lyrics(k, t, a, sid);
+        if let Some(q) = fetch_lyrics {
+            self.spawn_lyrics(q);
         }
         if let Some(k) = fetch_artwork {
             self.spawn_artwork(k, provider);
@@ -266,21 +279,16 @@ impl Resolver {
         );
     }
 
-    fn spawn_lyrics(
-        &'static self,
-        key: String,
-        title: String,
-        artist: String,
-        song: Option<SongRef>,
-    ) {
+    fn spawn_lyrics(&'static self, q: LyricsQuery) {
         self.fetch_once(
             "music-lyrics",
-            key,
+            q.key,
             |c| &mut c.lyrics,
             move || {
-                song.as_ref()
+                q.song
+                    .as_ref()
                     .and_then(catalog::lyrics)
-                    .or_else(|| api::fetch_lyrics(&title, &artist))
+                    .or_else(|| api::fetch_lyrics(&q.title, &q.artist, q.duration_ms, q.sources))
             },
         );
     }

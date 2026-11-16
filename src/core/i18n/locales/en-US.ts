@@ -212,6 +212,9 @@ const enUS: Messages = {
   settingsMusicHint:
     'Connect NetEase CloudMusic for progress, lyrics, cover art and playback controls. This loads a component inside the player. Other players are not affected.',
   musicNeteaseLabel: 'NetEase CloudMusic',
+  musicKugouLabel: 'KuGou Music',
+  settingsMusicKugouHint:
+    'Connect KuGou Music for accurate progress and duration. This loads a component in the KuGou folder. Other players are not affected.',
   musicStatusLabel: 'Connection status',
   bridgeStatusNotDetected: 'Player not detected',
   bridgeStatusNeedsRestart: 'Restart the player',

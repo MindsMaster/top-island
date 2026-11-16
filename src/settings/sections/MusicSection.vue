@@ -18,6 +18,7 @@ interface IntegrationEntry {
 
 const INTEGRATIONS: IntegrationEntry[] = [
   { id: 'netease', setting: 'neteaseBridge', labelKey: 'musicNeteaseLabel', hintKey: 'settingsMusicHint' },
+  { id: 'kugou', setting: 'kugouBridge', labelKey: 'musicKugouLabel', hintKey: 'settingsMusicKugouHint' },
 ];
 
 const STATUS_KEY: Record<IntegrationStatus, string> = {

@@ -9,6 +9,9 @@ use crate::error::AppResult;
 /// query 是阻塞 WinRT 调用
 const SNAPSHOT_TTL: Duration = Duration::from_millis(900);
 
+/// 增强源借它取曲目与切歌
+pub static SMTC: SmtcProvider = SmtcProvider::new();
+
 #[derive(Debug)]
 pub struct SmtcProvider {
     client: Mutex<SmtcClient>,
