@@ -40,7 +40,7 @@ const DEFAULT_NOTIFICATIONS: NotificationsConfig = {
   wechat: false,
 };
 
-const DEFAULT_MUSIC: MusicConfig = { neteaseBridge: true };
+const DEFAULT_MUSIC: MusicConfig = { neteaseBridge: true, kugouBridge: true };
 
 const DEFAULT_WEATHER: WeatherConfig = { auto: true, cities: [], active: 'auto' };
 

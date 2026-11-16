@@ -12,6 +12,7 @@ mod bridge_server;
 mod catalog;
 mod hash;
 mod integration;
+mod kugou;
 mod lyrics;
 mod ncm;
 mod provider;
@@ -27,7 +28,6 @@ use integration::Integration;
 use provider::{Control, MusicProvider};
 use push::PushSignal;
 use resolver::Resolver;
-use smtc::SmtcProvider;
 
 struct Service {
     /// 高到低 首个生效
@@ -44,7 +44,7 @@ impl std::fmt::Debug for Service {
 
 static SERVICE: OnceLock<Service> = OnceLock::new();
 /// 优先于 SMTC
-static INTEGRATIONS: &[&dyn Integration] = &[&ncm::NETEASE];
+static INTEGRATIONS: &[&dyn Integration] = &[&ncm::NETEASE, &kugou::KUGOU];
 static PUSH: PushSignal = PushSignal::new();
 
 fn request_push() {
@@ -65,12 +65,12 @@ pub fn sync(app: &AppHandle, settings: &AppSettings) {
 }
 
 fn init(app: AppHandle) {
-    let smtc: &'static SmtcProvider = Box::leak(Box::new(SmtcProvider::new()));
+    let smtc: &'static dyn MusicProvider = &smtc::SMTC;
     let resolver: &'static Resolver = Box::leak(Box::new(Resolver::new(request_push)));
     let providers = INTEGRATIONS
         .iter()
         .map(|i| i.provider(request_push))
-        .chain(std::iter::once(smtc as &'static dyn MusicProvider))
+        .chain(std::iter::once(smtc))
         .collect();
     let _ = SERVICE.set(Service {
         providers,

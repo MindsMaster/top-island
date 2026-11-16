@@ -1,15 +1,23 @@
+use super::lyrics::LyricSource;
+
+const DEFAULT_SOURCES: &[LyricSource] =
+    &[LyricSource::Netease, LyricSource::Qq, LyricSource::Kugou];
+
 #[derive(Debug)]
 struct AppProfile {
     /// SMTC SourceAppUserModelId 小写子串
     needle: &'static str,
     /// SMTC 时间轴滞后补偿
     lyric_offset_ms: i64,
+    /// 按名搜歌词的先后
+    lyric_sources: &'static [LyricSource],
 }
 
 const fn app(needle: &'static str) -> AppProfile {
     AppProfile {
         needle,
         lyric_offset_ms: 0,
+        lyric_sources: DEFAULT_SOURCES,
     }
 }
 
@@ -19,9 +27,14 @@ const KNOWN_APPS: &[AppProfile] = &[
     AppProfile {
         needle: "qqmusic",
         lyric_offset_ms: 400,
+        lyric_sources: DEFAULT_SOURCES,
     },
     app("spotify"),
-    app("kugou"),
+    AppProfile {
+        needle: "kugou",
+        lyric_offset_ms: 0,
+        lyric_sources: &[LyricSource::Kugou, LyricSource::Netease, LyricSource::Qq],
+    },
     app("kuwo"),
     app("itunes"),
     app("applemusic"),
@@ -41,6 +54,10 @@ fn profile(source_app_id: &str) -> Option<&'static AppProfile> {
 
 pub fn lyrics_supported(source_app_id: &str) -> bool {
     profile(source_app_id).is_some()
+}
+
+pub fn lyric_sources(source_app_id: &str) -> &'static [LyricSource] {
+    profile(source_app_id).map_or(DEFAULT_SOURCES, |p| p.lyric_sources)
 }
 
 pub fn lyric_offset_ms(source_app_id: &str) -> i64 {

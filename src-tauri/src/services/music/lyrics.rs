@@ -434,14 +434,84 @@ fn provider_qq_fetch(title: &str, artist: &str) -> Option<LyricsData> {
     }
 }
 
+/// 酷狗客户端同源 时长相差超此值视为另一版本
+const KUGOU_DURATION_TOLERANCE_MS: i64 = 3000;
+
+fn search_kugou(
+    title: &str,
+    artist: &str,
+    duration_ms: Option<i64>,
+) -> Option<(String, String, i64)> {
+    let keyword = if artist.is_empty() {
+        title.to_string()
+    } else {
+        format!("{artist} - {title}")
+    };
+    let url = format!(
+        "https://krcs.kugou.com/search?ver=1&man=yes&client=pc&keyword={}&duration={}",
+        url_encode(&keyword),
+        duration_ms.unwrap_or(0)
+    );
+    let json = fetch_json(&url, None)?;
+    let candidates = json.get("candidates")?.as_array()?;
+    let picked = candidates.iter().find(|c| {
+        let d = c.get("duration").and_then(|d| d.as_i64()).unwrap_or(0);
+        match duration_ms {
+            Some(want) => (d - want).abs() <= KUGOU_DURATION_TOLERANCE_MS,
+            None => c
+                .get("song")
+                .and_then(|n| n.as_str())
+                .is_some_and(|n| query_matches_song(title, n)),
+        }
+    })?;
+    Some((
+        picked.get("id")?.as_str()?.to_string(),
+        picked.get("accesskey")?.as_str()?.to_string(),
+        picked.get("duration").and_then(|d| d.as_i64()).unwrap_or(0),
+    ))
+}
+
+fn fetch_kugou(title: &str, artist: &str, duration_ms: Option<i64>) -> Option<LyricsData> {
+    let (id, accesskey, duration_ms) = search_kugou(title, artist, duration_ms)?;
+    let json = fetch_json(
+        &format!(
+            "https://lyrics.kugou.com/download?ver=1&client=pc&id={id}&accesskey={accesskey}&fmt=lrc&charset=utf8"
+        ),
+        None,
+    )?;
+    let content = json.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    let lrc = LENIENT_BASE64.decode(content).ok()?;
+    Some(LyricsData {
+        lines: parse_lrc(&String::from_utf8_lossy(&lrc)),
+        duration_ms,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LyricSource {
+    Netease,
+    Qq,
+    Kugou,
+}
+
 /// 有行即优 时长兜底
-pub fn fetch_lyrics(title: &str, artist: &str) -> Option<LyricsData> {
+pub fn fetch_lyrics(
+    title: &str,
+    artist: &str,
+    duration_ms: Option<i64>,
+    sources: &[LyricSource],
+) -> Option<LyricsData> {
     if title.is_empty() {
         return None;
     }
     let mut best: Option<LyricsData> = None;
-    for fetch in [provider_163_fetch, provider_qq_fetch] {
-        let Some(r) = fetch(title, artist) else {
+    for source in sources {
+        let r = match source {
+            LyricSource::Netease => provider_163_fetch(title, artist),
+            LyricSource::Qq => provider_qq_fetch(title, artist),
+            LyricSource::Kugou => fetch_kugou(title, artist, duration_ms),
+        };
+        let Some(r) = r else {
             continue;
         };
         if !r.lines.is_empty() {

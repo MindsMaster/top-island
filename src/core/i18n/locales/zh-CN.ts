@@ -210,6 +210,8 @@ const zhCN: Messages = {
   settingsMusicHint:
     '连接网易云音乐，显示进度、歌词和封面，并控制播放。会在播放器内加载组件，不影响其他播放器。',
   musicNeteaseLabel: '网易云音乐',
+  musicKugouLabel: '酷狗音乐',
+  settingsMusicKugouHint: '连接酷狗音乐，显示准确的进度和时长。会在酷狗安装目录加载组件，不影响其他播放器。',
   musicStatusLabel: '连接状态',
   bridgeStatusNotDetected: '未检测到播放器',
   bridgeStatusNeedsRestart: '请重启播放器',
