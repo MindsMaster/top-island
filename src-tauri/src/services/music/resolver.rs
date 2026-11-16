@@ -8,7 +8,7 @@ use super::apps;
 use super::catalog::{self, SongRef};
 use super::hash::content_hash;
 use super::lyrics::{self as api, LyricSource};
-use super::provider::{ProviderState, TrackMeta};
+use super::provider::{LocalLyrics, ProviderState, TrackMeta};
 use super::smtc::SMTC;
 use crate::services::media::Media;
 
@@ -112,7 +112,7 @@ impl Resolver {
         c.artwork.key.clear();
     }
 
-    pub fn observe(&'static self, src: &ProviderState) -> Resolved {
+    pub fn observe(&'static self, src: &ProviderState, local: Option<LocalLyrics>) -> Resolved {
         let mut out = Resolved {
             title: src.title.clone(),
             artist: src.artist.clone(),
@@ -163,10 +163,11 @@ impl Resolver {
             // 键按补全后标题算
             let track_key = format!("{}|{}|{}", out.title, out.artist, src.source_app_id);
             // 按名搜须带时长 时长晚到则重搜
-            let lyrics_key = src.song_id.as_ref().map_or_else(
-                || format!("{track_key}|{}", out.duration_ms.map_or(0, |d| d / 1000)),
-                SongRef::key,
-            );
+            let lyrics_key = match (&local, &src.song_id) {
+                (Some(l), _) => l.key.clone(),
+                (None, Some(song)) => song.key(),
+                (None, None) => format!("{track_key}|{}", out.duration_ms.map_or(0, |d| d / 1000)),
+            };
 
             if out.artwork_url.is_none() {
                 if track_key != c.artwork.key {
@@ -183,7 +184,12 @@ impl Resolver {
             }
 
             let can_fetch = src.song_id.is_some() || !out.title.is_empty();
-            if lyrics_key != c.lyrics.key && can_fetch {
+            if let Some(l) = local {
+                c.lyrics.key = lyrics_key.clone();
+                if c.lyrics.get(&lyrics_key).is_none() {
+                    c.lyrics.insert(l.key, (*l.data).clone());
+                }
+            } else if lyrics_key != c.lyrics.key && can_fetch {
                 c.lyrics.key = lyrics_key.clone();
                 let cached = c.lyrics.get(&lyrics_key).is_some();
                 if !cached && (src.song_id.is_some() || apps::lyrics_supported(&src.source_app_id))

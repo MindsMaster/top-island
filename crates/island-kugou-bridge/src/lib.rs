@@ -1,6 +1,7 @@
 //! version.dll 代理 置于酷狗安装根目录 只在主进程挂钩
 
 mod hooks;
+mod lyric;
 mod report;
 mod slider;
 

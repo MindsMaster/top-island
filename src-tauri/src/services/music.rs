@@ -134,7 +134,8 @@ pub fn current_state() -> MusicState {
     *shown = Some((src.source_app_id.clone(), enhancer));
     drop(shown);
 
-    let r = svc.resolver.observe(&src);
+    let local = enhancer.and_then(|e| e.lyrics(&src));
+    let r = svc.resolver.observe(&src, local);
     let track = if r.title.is_empty() {
         fallback_track(&src.source_app_id)
     } else {
