@@ -22,7 +22,6 @@ mod trampolines {
 
     pub(super) static REAL_V_SET_DDRAW_FLAG: AtomicUsize = AtomicUsize::new(0);
     pub(super) static REAL_ALPHA_BLEND: AtomicUsize = AtomicUsize::new(0);
-    pub(super) static REAL_DLL_INITIALIZE: AtomicUsize = AtomicUsize::new(0);
     pub(super) static REAL_GRADIENT_FILL: AtomicUsize = AtomicUsize::new(0);
     pub(super) static REAL_TRANSPARENT_BLT: AtomicUsize = AtomicUsize::new(0);
 
@@ -41,7 +40,6 @@ mod trampolines {
 
     trampoline!(vSetDdrawflag => REAL_V_SET_DDRAW_FLAG);
     trampoline!(AlphaBlend => REAL_ALPHA_BLEND);
-    trampoline!(DllInitialize => REAL_DLL_INITIALIZE);
     trampoline!(GradientFill => REAL_GRADIENT_FILL);
     trampoline!(TransparentBlt => REAL_TRANSPARENT_BLT);
 }
@@ -97,7 +95,6 @@ fn load_real_msimg32() -> bool {
 
     bind(s!("vSetDdrawflag"), &trampolines::REAL_V_SET_DDRAW_FLAG);
     bind(s!("AlphaBlend"), &trampolines::REAL_ALPHA_BLEND);
-    bind(s!("DllInitialize"), &trampolines::REAL_DLL_INITIALIZE);
     bind(s!("GradientFill"), &trampolines::REAL_GRADIENT_FILL);
     bind(s!("TransparentBlt"), &trampolines::REAL_TRANSPARENT_BLT);
     ok
