@@ -8,6 +8,7 @@ use crate::error::AppResult;
 use crate::services::media::Media;
 
 mod apps;
+mod bridge_server;
 mod catalog;
 mod hash;
 mod integration;
