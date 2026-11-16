@@ -18,11 +18,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // 首屏后再清 Electron 残留
         .on_page_load(move |webview, payload| {
             if webview.label() == "island" && payload.event() == PageLoadEvent::Finished {
                 eprintln!("[startup] 首屏 {}ms", started.elapsed().as_millis());
-                infra::legacy::start();
             }
         })
         .setup(move |app| {
