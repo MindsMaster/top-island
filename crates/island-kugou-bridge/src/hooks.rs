@@ -96,6 +96,7 @@ fn lyric_api(ui: HMODULE) -> Option<Api> {
             title: std::mem::transmute::<usize, GetRefFn>(f(s!("?GetTitle@LyricText@kugou_ui@@QEAAAEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ"))?),
             artist: std::mem::transmute::<usize, GetRefFn>(f(s!("?GetArtist@LyricText@kugou_ui@@QEAAAEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ"))?),
             length: std::mem::transmute::<usize, GetIntFn>(f(s!("?GetLength@LyricText@kugou_ui@@QEAAHXZ"))?),
+            translate_type: std::mem::transmute::<usize, GetIntFn>(f(s!("?GetTranslateType@LyricText@kugou_ui@@QEBA?AW4LyricTranslateType@12@XZ"))?),
         })
     }
 }
