@@ -35,6 +35,7 @@ mod forward {
 
             $(
                 #[no_mangle]
+                #[allow(non_snake_case)]
                 #[unsafe(naked)]
                 pub extern "system" fn $name() {
                     core::arch::naked_asm!("jmp qword ptr [rip + {slot}]", slot = sym slot::$name);
