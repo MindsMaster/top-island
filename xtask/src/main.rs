@@ -42,11 +42,18 @@ fn key_dir() -> PathBuf {
 }
 
 fn build_bridge() -> Result<()> {
-    println!("编译网易云 bridge 代理 DLL (release)…");
+    println!("编译播放器 bridge 代理 DLL (release)…");
     let status = Command::new("cargo")
-        .args(["build", "-p", "island-cloudmusic-bridge", "--release"])
+        .args([
+            "build",
+            "-p",
+            "island-cloudmusic-bridge",
+            "-p",
+            "island-kugou-bridge",
+            "--release",
+        ])
         .status()
-        .context("cargo build island-cloudmusic-bridge")?;
+        .context("cargo build bridge DLL")?;
     anyhow::ensure!(status.success(), "编译 bridge DLL 失败");
     Ok(())
 }

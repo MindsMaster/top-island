@@ -2091,6 +2091,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "island-kugou-bridge"
+version = "0.0.1"
+dependencies = [
+ "retour",
+ "serde_json",
+ "tungstenite",
+ "windows",
+]
+
+[[package]]
 name = "island-wechat"
 version = "0.0.1"
 dependencies = [
