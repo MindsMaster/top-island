@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Pipes::PeekNamedPipe;
 
-use island_core::{LyricLine, LyricsData};
+use island_core::LyricsData;
 
 use super::qrc;
 use crate::error::AppResult;
@@ -317,16 +317,11 @@ fn load_lyrics(shared: &Mutex<Shared>, dir: &Path) -> bool {
         s.lyrics_tried_ms = now;
         (song, d)
     };
-    let Some((xml, found)) = qrc::find(dir, &song.title, &song.artist, duration_ms) else {
+    let Some((text, lines)) = qrc::find(dir, &song.title, &song.artist, duration_ms) else {
         return false;
     };
-    let lines = found
-        .lines
-        .into_iter()
-        .map(|(time_ms, text)| LyricLine { time_ms, text })
-        .collect();
     let lyrics = LocalLyrics {
-        key: format!("qqmusic:{}", content_hash(xml.as_bytes())),
+        key: format!("qqmusic:{}", content_hash(text.as_bytes())),
         data: Arc::new(LyricsData { lines, duration_ms }),
     };
     let mut s = shared.lock().unwrap_or_else(|e| e.into_inner());

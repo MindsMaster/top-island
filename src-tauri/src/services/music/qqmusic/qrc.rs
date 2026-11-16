@@ -5,6 +5,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use flate2::read::ZlibDecoder;
+use island_core::LyricLine;
+
+use crate::services::music::lyrics::parse_lrc;
 
 const HEADER_LEN: usize = 11;
 const KEY: &[u8; 24] = b"!@#)(*$%123ZXC!@!@#)(NHL";
@@ -197,12 +200,6 @@ fn unescape(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
-fn tag<'a>(content: &'a str, name: &str) -> Option<&'a str> {
-    let open = format!("[{name}:");
-    let line = content.lines().find(|l| l.trim().starts_with(&open))?;
-    line.trim().strip_prefix(&open)?.strip_suffix(']')
-}
-
 /// 去掉逐字时间 `字(起,长)`
 fn strip_word_times(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -233,30 +230,25 @@ fn is_num(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
-pub struct Qrc {
-    pub title: String,
-    pub artist: String,
-    pub lines: Vec<(i64, String)>,
-}
-
-pub fn parse(xml: &str) -> Option<Qrc> {
+/// 部分缓存为普通 LRC
+pub fn parse(text: &str) -> Vec<LyricLine> {
     const ATTR: &str = "LyricContent=\"";
-    let start = xml.find(ATTR)? + ATTR.len();
-    let content = unescape(&xml[start..start + xml[start..].find('"')?]);
-    let lines = content
+    let Some(start) = text.find(ATTR).map(|i| i + ATTR.len()) else {
+        return parse_lrc(text);
+    };
+    let end = text[start..].find('"').map_or(text.len(), |i| start + i);
+    unescape(&text[start..end])
         .lines()
         .filter_map(|l| {
-            let (stamp, text) = l.trim().strip_prefix('[')?.split_once(']')?;
+            let (stamp, rest) = l.trim().strip_prefix('[')?.split_once(']')?;
             let (time, _) = stamp.split_once(',')?;
-            let text = strip_word_times(text).trim().to_string();
-            (!text.is_empty()).then_some((time.parse().ok()?, text))
+            let text = strip_word_times(rest).trim().to_string();
+            (!text.is_empty()).then_some(LyricLine {
+                time_ms: time.parse().ok()?,
+                text,
+            })
         })
-        .collect();
-    Some(Qrc {
-        title: tag(&content, "ti").unwrap_or_default().to_string(),
-        artist: tag(&content, "ar").unwrap_or_default().to_string(),
-        lines,
-    })
+        .collect()
 }
 
 pub fn cache_dir() -> Option<PathBuf> {
@@ -264,32 +256,49 @@ pub fn cache_dir() -> Option<PathBuf> {
     Some(Path::new(&appdata).join(r"Tencent\QQMusic\QQMusicCache\QQMusicLyricNew"))
 }
 
-/// 文件名为 `歌手 - 歌名 - 秒数 - 专辑_qm.qrc` 歌名可能被改写 按秒数筛再比标签
-/// 部分缓存标签为空 退回比文件名
-pub fn find(dir: &Path, title: &str, artist: &str, duration_ms: i64) -> Option<(String, Qrc)> {
+/// 文件名 `歌手_歌手 - 歌名 - 秒数 - 专辑_qm.qrc`
+/// 标点被改写 只比字母数字
+pub fn find(
+    dir: &Path,
+    title: &str,
+    artist: &str,
+    duration_ms: i64,
+) -> Option<(String, Vec<LyricLine>)> {
+    let title = normalize(title);
+    if title.is_empty() {
+        return None;
+    }
+    let artists: Vec<String> = artist
+        .split('/')
+        .map(normalize)
+        .filter(|a| !a.is_empty())
+        .collect();
     let secs = duration_ms / 1000;
     let stamps: Vec<String> = (secs - 1..=secs + 1)
         .map(|s| format!(" - {s} - "))
         .collect();
-    let titled = format!(" - {title} - ");
     std::fs::read_dir(dir).ok()?.flatten().find_map(|e| {
         let name = e.file_name().to_string_lossy().into_owned();
-        if !name.ends_with(SUFFIX) || !stamps.iter().any(|s| name.contains(s.as_str())) {
+        if !name.ends_with(SUFFIX) {
             return None;
         }
-        let xml = decrypt(&std::fs::read(e.path()).ok()?)?;
-        let qrc = parse(&xml)?;
-        let matched = if qrc.title.is_empty() {
-            name.contains(&titled)
-        } else {
-            same(&qrc.title, title) && (qrc.artist.is_empty() || same(&qrc.artist, artist))
-        };
-        matched.then_some((xml, qrc))
+        let head = stamps.iter().find_map(|s| name.find(s.as_str()))?;
+        let key = normalize(&name[..head]);
+        let singers = key.strip_suffix(&title)?;
+        if !artists.is_empty() && !artists.iter().any(|a| singers.contains(a.as_str())) {
+            return None;
+        }
+        let text = decrypt(&std::fs::read(e.path()).ok()?)?;
+        let lines = parse(&text);
+        (!lines.is_empty()).then_some((text, lines))
     })
 }
 
-fn same(a: &str, b: &str) -> bool {
-    a.trim().eq_ignore_ascii_case(b.trim())
+fn normalize(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 #[cfg(test)]
@@ -337,41 +346,49 @@ mod tests {
     }
 
     #[test]
-    fn parses_lines_and_tags() {
-        let q = parse(XML).unwrap();
-        assert_eq!(q.title, "DD backseat");
-        assert_eq!(q.artist, "Top Barry/Rapeter");
+    fn parses_lines() {
+        let lines = |text| -> Vec<(i64, String)> {
+            parse(text)
+                .into_iter()
+                .map(|l| (l.time_ms, l.text))
+                .collect()
+        };
         assert_eq!(
-            q.lines,
+            lines(XML),
             vec![
                 (2042, "词：Top Barry/Rapeter".to_string()),
                 (41571, "我不是个bad guy".to_string()),
                 (45000, "Tom & Jerry (Live)".to_string()),
             ]
         );
+        assert_eq!(
+            lines("[ti:想你就写信]\n[00:41.93]看你在摇椅上 织围巾\n"),
+            vec![(41930, "看你在摇椅上 织围巾".to_string())]
+        );
     }
 
     #[test]
-    fn finds_by_tags_or_file_name() {
+    fn finds_by_file_name() {
         let dir = std::env::temp_dir().join(format!("qrc-find-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let untagged = XML
-            .replace("[ti:DD backseat]", "[ti:]")
-            .replace("[ar:Top Barry/Rapeter]", "[ar:]");
-        std::fs::write(
-            dir.join("可楼 - 隔岸 - 231 - 隔岸_qm.qrc"),
-            encrypt(&untagged),
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("Top Barry_Rapeter - DD backseat - 196 - DD backseat_qm.qrc"),
-            encrypt(XML),
-        )
-        .unwrap();
-        assert!(find(&dir, "DD backseat", "Top Barry/Rapeter", 196_875).is_some());
-        assert!(find(&dir, "隔岸", "可楼", 231_500).is_some());
-        assert!(find(&dir, "DD backseat", "Top Barry/Rapeter", 150_000).is_none());
-        assert!(find(&dir, "林宛瑜", "Rapeter", 196_875).is_none());
+        for name in [
+            "Capper_罗言RollFlash - 雪 Distance - 165 - Uniconfication (Explicit)_qm.qrc",
+            "Blake Shelton_Ashley Monroe - Lonely Tonight (feat_ Ashley Monroe) - 218 - Reloaded_ 20 #1 Hits_qm.qrc",
+            "可楼 - 隔岸 (女版) - 231 - 隔岸 (女版)_qmts.qrc",
+        ] {
+            std::fs::write(dir.join(name), encrypt(XML)).unwrap();
+        }
+        let hit = |title, artist, ms| find(&dir, title, artist, ms).is_some();
+        assert!(hit("雪 Distance", "Capper/罗言RollFlash", 165_400));
+        assert!(hit(
+            "Lonely Tonight (feat. Ashley Monroe)",
+            "Blake Shelton/Ashley Monroe",
+            217_900
+        ));
+        assert!(!hit("雪 Distance", "Capper/罗言RollFlash", 150_000));
+        assert!(!hit("雪", "Capper", 165_400));
+        assert!(!hit("雪 Distance", "可楼", 165_400));
+        assert!(!hit("隔岸 (女版)", "可楼", 231_000));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
