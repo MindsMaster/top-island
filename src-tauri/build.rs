@@ -21,14 +21,14 @@ fn main() {
 fn embed_bridge(target: &Path, out_dir: &Path, package: &str, env: &str) {
     let file = format!("{}.dll", package.replace('-', "_"));
     let dest = out_dir.join(&file);
-    let found = ["release", "debug"]
-        .iter()
-        .map(|profile| target.join(profile).join(&file))
-        .find(|candidate| candidate.exists());
-    match found {
+    let candidates = ["release", "debug"].map(|profile| target.join(profile).join(&file));
+    // 缺失路径也须声明 否则后编出的 DLL 不触发重跑
+    for candidate in &candidates {
+        println!("cargo:rerun-if-changed={}", candidate.display());
+    }
+    match candidates.iter().find(|c| c.exists()) {
         Some(candidate) => {
-            std::fs::copy(&candidate, &dest).expect("copy bridge dll into OUT_DIR");
-            println!("cargo:rerun-if-changed={}", candidate.display());
+            std::fs::copy(candidate, &dest).expect("copy bridge dll into OUT_DIR");
         }
         None => {
             std::fs::write(&dest, b"").expect("write empty bridge dll placeholder");
