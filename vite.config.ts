@@ -17,6 +17,8 @@ export default defineConfig({
   server: {
     port: devPort,
     strictPort: true,
+    /** 避开 cargo 产物 防 EBUSY */
+    watch: { ignored: ['**/target/**', '**/src-tauri/**', '**/crates/**', '**/xtask/**'] },
   },
   build: {
     outDir: 'dist/renderer',
