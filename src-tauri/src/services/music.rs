@@ -7,7 +7,6 @@ use island_core::{AppSettings, LyricsData, MusicAction, MusicState};
 use crate::error::AppResult;
 use crate::services::media::Media;
 
-mod apps;
 mod arbiter;
 mod bridge_server;
 mod catalog;

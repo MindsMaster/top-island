@@ -1,9 +1,6 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
-use base64::engine::DecodePaddingMode;
-use base64::Engine;
 use island_core::{LyricLine, LyricsData};
 
 use super::provider::TrackMeta;
@@ -21,12 +18,8 @@ fn agent() -> &'static ureq::Agent {
     })
 }
 
-fn fetch_json(url: &str, referer: Option<&str>) -> Option<serde_json::Value> {
-    let mut req = agent().get(url).header("User-Agent", UA);
-    if let Some(r) = referer {
-        req = req.header("Referer", r);
-    }
-    let mut resp = match req.call() {
+fn fetch_json(url: &str) -> Option<serde_json::Value> {
+    let mut resp = match agent().get(url).header("User-Agent", UA).call() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[music:lyrics] 请求失败 ({url}): {e}");
@@ -40,72 +33,6 @@ fn fetch_json(url: &str, referer: Option<&str>) -> Option<serde_json::Value> {
             None
         }
     }
-}
-
-/// 等价 encodeURIComponent
-fn url_encode(s: &str) -> String {
-    let mut out = String::new();
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z'
-            | b'a'..=b'z'
-            | b'0'..=b'9'
-            | b'-'
-            | b'_'
-            | b'.'
-            | b'!'
-            | b'~'
-            | b'*'
-            | b'\''
-            | b'('
-            | b')' => out.push(b as char),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
-fn norm_eq(a: &str, b: &str) -> bool {
-    a.to_lowercase() == b.to_lowercase()
-}
-
-pub fn query_matches_song(query: &str, song_name: &str) -> bool {
-    fn norm(s: &str) -> String {
-        s.to_lowercase()
-            .chars()
-            .filter(|c| {
-                !c.is_whitespace()
-                    && !matches!(
-                        c,
-                        '-' | '_'
-                            | '('
-                            | ')'
-                            | '['
-                            | ']'
-                            | '（'
-                            | '）'
-                            | '【'
-                            | '】'
-                            | '\''
-                            | '"'
-                            | ','
-                            | '.'
-                            | '，'
-                            | '。'
-                            | '!'
-                            | '！'
-                            | '?'
-                            | '？'
-                    )
-            })
-            .collect()
-    }
-    let q = norm(query);
-    let n = norm(song_name);
-    if q.is_empty() || n.is_empty() {
-        return false;
-    }
-    q.contains(&n) || n.contains(&q)
 }
 
 /// 小数位数定单位
@@ -177,78 +104,12 @@ pub fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
     out
 }
 
-fn search_163(title: &str, artist: &str) -> Option<(i64, i64)> {
-    let query = if artist.is_empty() {
-        title.to_string()
-    } else {
-        format!("{title} {artist}")
-    };
-    let url = format!(
-        "https://music.163.com/api/search/get/web?s={}&type=1&offset=0&total=true&limit=10",
-        url_encode(&query)
-    );
-    let json = fetch_json(&url, None)?;
-    let songs = json.get("result")?.get("songs")?.as_array()?;
-    if songs.is_empty() {
-        return None;
-    }
-
-    let id_duration = |s: &serde_json::Value| -> Option<(i64, i64)> {
-        Some((
-            s.get("id")?.as_i64()?,
-            s.get("duration").and_then(|d| d.as_i64()).unwrap_or(0),
-        ))
-    };
-
-    if !artist.is_empty() {
-        for s in songs {
-            let artist_hit = s
-                .get("artists")
-                .and_then(|a| a.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|a| a.get("name").and_then(|n| n.as_str()))
-                        .any(|n| norm_eq(n, artist))
-                })
-                .unwrap_or(false);
-            if artist_hit {
-                return id_duration(s);
-            }
-        }
-    }
-    let first = &songs[0];
-    if let Some(name) = first.get("name").and_then(|n| n.as_str()) {
-        if !query_matches_song(&query, name) {
-            return None;
-        }
-    }
-    id_duration(first)
-}
-
-fn fetch_163_inner(title: &str, artist: &str) -> Option<LyricsData> {
-    let (id, duration_ms) = search_163(title, artist)?;
-    let json = fetch_json(
-        &format!("https://music.163.com/api/song/lyric?id={id}&lv=-1&kv=-1&tv=-1"),
-        None,
-    )?;
-    let lrc = json
-        .get("lrc")
-        .and_then(|l| l.get("lyric"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    Some(LyricsData {
-        lines: parse_lrc(lrc),
-        duration_ms,
-    })
-}
-
-/// 搜索会错配 live
 pub fn fetch_163_by_id(song_id: &str) -> Option<LyricsData> {
     let lyric_url = format!("https://music.163.com/api/song/lyric?id={song_id}&lv=-1&kv=-1&tv=-1");
     let detail_url =
         format!("https://music.163.com/api/song/detail?id={song_id}&ids=%5B{song_id}%5D");
-    let detail_thread = std::thread::spawn(move || fetch_json(&detail_url, None));
-    let lyric = fetch_json(&lyric_url, None);
+    let detail_thread = std::thread::spawn(move || fetch_json(&detail_url));
+    let lyric = fetch_json(&lyric_url);
     let detail = detail_thread.join().ok().flatten();
     let lrc = lyric
         .as_ref()
@@ -274,10 +135,9 @@ pub fn fetch_163_by_id(song_id: &str) -> Option<LyricsData> {
 }
 
 pub fn fetch_163_detail(song_id: &str) -> Option<TrackMeta> {
-    let detail = fetch_json(
-        &format!("https://music.163.com/api/song/detail?id={song_id}&ids=%5B{song_id}%5D"),
-        None,
-    )?;
+    let detail = fetch_json(&format!(
+        "https://music.163.com/api/song/detail?id={song_id}&ids=%5B{song_id}%5D"
+    ))?;
     let song = detail.get("songs")?.as_array()?.first()?;
     let title = song
         .get("name")
@@ -323,223 +183,9 @@ pub fn fetch_163_detail(song_id: &str) -> Option<TrackMeta> {
     })
 }
 
-fn provider_163_fetch(title: &str, artist: &str) -> Option<LyricsData> {
-    let r = fetch_163_inner(title, artist);
-    if r.as_ref()
-        .is_some_and(|r| !r.lines.is_empty() || r.duration_ms > 0)
-    {
-        return r;
-    }
-    // 退化只搜曲名
-    if artist.is_empty() {
-        None
-    } else {
-        fetch_163_inner(title, "")
-    }
-}
-
-const QQ_REFERER: &str = "https://y.qq.com/";
-
-fn search_qq(title: &str, artist: &str) -> Option<(String, i64)> {
-    let query = if artist.is_empty() {
-        title.to_string()
-    } else {
-        format!("{title} {artist}")
-    };
-    let url = format!(
-        "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w={}&format=json&n=10&p=1&cr=1&t=0",
-        url_encode(&query)
-    );
-    let json = fetch_json(&url, Some(QQ_REFERER))?;
-    let songs = json.get("data")?.get("song")?.get("list")?.as_array()?;
-    if songs.is_empty() {
-        return None;
-    }
-
-    let mid_duration = |s: &serde_json::Value| -> Option<(String, i64)> {
-        Some((
-            s.get("songmid")?.as_str()?.to_string(),
-            s.get("interval").and_then(|i| i.as_i64()).unwrap_or(0) * 1000,
-        ))
-    };
-
-    if !artist.is_empty() {
-        for s in songs {
-            let artist_hit = s
-                .get("singer")
-                .and_then(|a| a.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|a| a.get("name").and_then(|n| n.as_str()))
-                        .any(|n| norm_eq(n, artist))
-                })
-                .unwrap_or(false);
-            if artist_hit {
-                return mid_duration(s);
-            }
-        }
-    }
-    let first = &songs[0];
-    if let Some(name) = first.get("songname").and_then(|n| n.as_str()) {
-        if !query_matches_song(&query, name) {
-            return None;
-        }
-    }
-    mid_duration(first)
-}
-
-/// QQ 歌词夹带换行 填充不齐
-const LENIENT_BASE64: GeneralPurpose = GeneralPurpose::new(
-    &base64::alphabet::STANDARD,
-    GeneralPurposeConfig::new()
-        .with_decode_padding_mode(DecodePaddingMode::Indifferent)
-        .with_decode_allow_trailing_bits(true),
-);
-
-fn fetch_qq_inner(title: &str, artist: &str) -> Option<LyricsData> {
-    let (songmid, duration_ms) = search_qq(title, artist)?;
-    let json = fetch_json(
-        &format!(
-            "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid={songmid}&format=json&nobase64=0&g_tk=5381"
-        ),
-        Some(QQ_REFERER),
-    )?;
-    let lrc_b64 = json.get("lyric").and_then(|v| v.as_str()).unwrap_or("");
-    if lrc_b64.is_empty() {
-        return Some(LyricsData {
-            lines: Vec::new(),
-            duration_ms,
-        });
-    }
-    let cleaned: String = lrc_b64.split_ascii_whitespace().collect();
-    let lrc_bytes = LENIENT_BASE64.decode(cleaned).ok()?;
-    let lrc = String::from_utf8_lossy(&lrc_bytes);
-    Some(LyricsData {
-        lines: parse_lrc(&lrc),
-        duration_ms,
-    })
-}
-
-fn provider_qq_fetch(title: &str, artist: &str) -> Option<LyricsData> {
-    let r = fetch_qq_inner(title, artist);
-    if r.as_ref()
-        .is_some_and(|r| !r.lines.is_empty() || r.duration_ms > 0)
-    {
-        return r;
-    }
-    if artist.is_empty() {
-        None
-    } else {
-        fetch_qq_inner(title, "")
-    }
-}
-
-/// 酷狗客户端同源 时长相差超此值视为另一版本
-const KUGOU_DURATION_TOLERANCE_MS: i64 = 3000;
-
-fn search_kugou(
-    title: &str,
-    artist: &str,
-    duration_ms: Option<i64>,
-) -> Option<(String, String, i64)> {
-    let keyword = if artist.is_empty() {
-        title.to_string()
-    } else {
-        format!("{artist} - {title}")
-    };
-    let url = format!(
-        "https://krcs.kugou.com/search?ver=1&man=yes&client=pc&keyword={}&duration={}",
-        url_encode(&keyword),
-        duration_ms.unwrap_or(0)
-    );
-    let json = fetch_json(&url, None)?;
-    let candidates = json.get("candidates")?.as_array()?;
-    let picked = candidates.iter().find(|c| {
-        let d = c.get("duration").and_then(|d| d.as_i64()).unwrap_or(0);
-        match duration_ms {
-            Some(want) => (d - want).abs() <= KUGOU_DURATION_TOLERANCE_MS,
-            None => c
-                .get("song")
-                .and_then(|n| n.as_str())
-                .is_some_and(|n| query_matches_song(title, n)),
-        }
-    })?;
-    Some((
-        picked.get("id")?.as_str()?.to_string(),
-        picked.get("accesskey")?.as_str()?.to_string(),
-        picked.get("duration").and_then(|d| d.as_i64()).unwrap_or(0),
-    ))
-}
-
-fn fetch_kugou(title: &str, artist: &str, duration_ms: Option<i64>) -> Option<LyricsData> {
-    let (id, accesskey, duration_ms) = search_kugou(title, artist, duration_ms)?;
-    let json = fetch_json(
-        &format!(
-            "https://lyrics.kugou.com/download?ver=1&client=pc&id={id}&accesskey={accesskey}&fmt=lrc&charset=utf8"
-        ),
-        None,
-    )?;
-    let content = json.get("content").and_then(|v| v.as_str()).unwrap_or("");
-    let lrc = LENIENT_BASE64.decode(content).ok()?;
-    Some(LyricsData {
-        lines: parse_lrc(&String::from_utf8_lossy(&lrc)),
-        duration_ms,
-    })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LyricSource {
-    Netease,
-    Qq,
-    Kugou,
-}
-
-/// 有行即优 时长兜底
-pub fn fetch_lyrics(
-    title: &str,
-    artist: &str,
-    duration_ms: Option<i64>,
-    sources: &[LyricSource],
-) -> Option<LyricsData> {
-    if title.is_empty() {
-        return None;
-    }
-    let mut best: Option<LyricsData> = None;
-    for source in sources {
-        let r = match source {
-            LyricSource::Netease => provider_163_fetch(title, artist),
-            LyricSource::Qq => provider_qq_fetch(title, artist),
-            LyricSource::Kugou => fetch_kugou(title, artist, duration_ms),
-        };
-        let Some(r) = r else {
-            continue;
-        };
-        if !r.lines.is_empty() {
-            return Some(r);
-        }
-        if best.is_none() && r.duration_ms > 0 {
-            best = Some(r);
-        }
-    }
-    best
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn lenient_base64_accepts_missing_padding() {
-        assert_eq!(LENIENT_BASE64.decode("TWE").unwrap(), b"Ma");
-        assert_eq!(LENIENT_BASE64.decode("TWE=").unwrap(), b"Ma");
-    }
-
-    #[test]
-    fn url_encode_keeps_unreserved_and_percent_encodes_utf8() {
-        assert_eq!(url_encode("a b"), "a%20b");
-        assert_eq!(url_encode("歌"), "%E6%AD%8C");
-        assert_eq!(url_encode("a-b_c.!~*'()"), "a-b_c.!~*'()");
-    }
 
     #[test]
     fn parse_lrc_extracts_time_and_text() {
@@ -576,12 +222,5 @@ mod tests {
     fn parse_lrc_sorts_lines_by_time() {
         let lines = parse_lrc("[00:30.00]后\n[00:01.00]先");
         assert_eq!(lines[0].text, "先");
-    }
-
-    #[test]
-    fn query_matches_song_requires_lexical_overlap() {
-        assert!(query_matches_song("晴天 周杰伦", "晴天"));
-        assert!(query_matches_song("晴天(Live)", "晴天 (Live)"));
-        assert!(!query_matches_song("晴天", "雨天"));
     }
 }

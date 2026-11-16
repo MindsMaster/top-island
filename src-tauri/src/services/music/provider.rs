@@ -59,7 +59,7 @@ pub trait MusicProvider: Send + Sync {
     /// 每帧调用 不得阻塞
     fn snapshot(&self, base: Option<&ProviderState>) -> Option<ProviderState>;
 
-    /// 须属于 state 这首 否则按名搜
+    /// 须属于 state 这首
     fn lyrics(&self, _state: &ProviderState) -> Option<LocalLyrics> {
         None
     }
