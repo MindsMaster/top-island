@@ -1,0 +1,22 @@
+[package]
+name = "island-kugou-bridge"
+description = "Proxy version.dll side-loaded by KuGou Music; reports playback progress and duration to top-island."
+version.workspace = true
+edition.workspace = true
+
+[lib]
+# rlib 仅为单测 部署的是 cdylib
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+retour = "0.3"
+serde_json = "1"
+tungstenite = "0.30"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+] }
+
+[lints]
+workspace = true
