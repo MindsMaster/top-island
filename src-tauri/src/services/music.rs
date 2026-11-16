@@ -16,6 +16,7 @@ mod ncm;
 mod provider;
 mod push;
 mod resolver;
+mod sideload;
 mod smtc;
 
 pub use integration::{GrantResult, IntegrationInfo};
