@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::windows::io::AsRawHandle;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -13,8 +14,14 @@ use serde_json::{json, Value};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Pipes::PeekNamedPipe;
 
+use island_core::{LyricLine, LyricsData};
+
+use super::qrc;
 use crate::error::AppResult;
-use crate::services::music::provider::{now_epoch_ms, Control, MusicProvider, ProviderState};
+use crate::services::music::hash::content_hash;
+use crate::services::music::provider::{
+    now_epoch_ms, Control, LocalLyrics, MusicProvider, ProviderState,
+};
 
 const PIPE: &str = r"\\.\pipe\y.qq.com\QQMusicTransportServer";
 /// 服务端不校验 appKey
@@ -25,6 +32,8 @@ const STATUS_PLAYING: i64 = 3;
 const SOURCE_APP_ID: &str = "Tencent.QQMusic";
 /// 超出即视为拖动或切歌
 const DRIFT_MS: i64 = 1000;
+/// 播放器加载歌词后才写缓存
+const LYRIC_RETRY_MS: i64 = 2000;
 const POLL: Duration = Duration::from_millis(50);
 const RETRY: Duration = Duration::from_secs(2);
 
@@ -44,6 +53,8 @@ struct Shared {
     position_ms: i64,
     anchor_epoch_ms: i64,
     duration_ms: Option<i64>,
+    lyrics: Option<LocalLyrics>,
+    lyrics_tried_ms: i64,
 }
 
 impl Shared {
@@ -87,6 +98,8 @@ impl Shared {
                 }
                 self.song = Some(song);
                 self.duration_ms = None;
+                self.lyrics = None;
+                self.lyrics_tried_ms = 0;
                 true
             }
             Some("status") => {
@@ -190,6 +203,12 @@ impl MusicProvider for QqPipeProvider {
         self.shared().state()
     }
 
+    fn lyrics(&self, state: &ProviderState) -> Option<LocalLyrics> {
+        let s = self.shared();
+        s.song.as_ref().filter(|song| song.title == state.title)?;
+        s.lyrics.clone()
+    }
+
     /// 管道只有切换式命令 播放暂停走 SMTC
     fn control(&self, action: Control) -> AppResult<bool> {
         Ok(match action {
@@ -240,9 +259,13 @@ fn session(
     if pipe.write_all(LOGIN.as_bytes()).is_err() {
         return;
     }
+    let lyric_dir = qrc::cache_dir();
     let mut pending = Vec::new();
     let mut chunk = vec![0u8; 64 * 1024];
     while wanted.load(Ordering::Acquire) {
+        if lyric_dir.as_deref().is_some_and(|d| load_lyrics(shared, d)) {
+            on_change();
+        }
         let queued: Vec<String> = outbox
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -279,6 +302,39 @@ fn session(
             on_change();
         }
     }
+}
+
+fn load_lyrics(shared: &Mutex<Shared>, dir: &Path) -> bool {
+    let now = now_epoch_ms();
+    let (song, duration_ms) = {
+        let mut s = shared.lock().unwrap_or_else(|e| e.into_inner());
+        if s.lyrics.is_some() || now - s.lyrics_tried_ms < LYRIC_RETRY_MS {
+            return false;
+        }
+        let (Some(song), Some(d)) = (s.song.clone(), s.duration_ms) else {
+            return false;
+        };
+        s.lyrics_tried_ms = now;
+        (song, d)
+    };
+    let Some((xml, found)) = qrc::find(dir, &song.title, &song.artist, duration_ms) else {
+        return false;
+    };
+    let lines = found
+        .lines
+        .into_iter()
+        .map(|(time_ms, text)| LyricLine { time_ms, text })
+        .collect();
+    let lyrics = LocalLyrics {
+        key: format!("qqmusic:{}", content_hash(xml.as_bytes())),
+        data: Arc::new(LyricsData { lines, duration_ms }),
+    };
+    let mut s = shared.lock().unwrap_or_else(|e| e.into_inner());
+    if s.song.as_ref() != Some(&song) {
+        return false;
+    }
+    s.lyrics = Some(lyrics);
+    true
 }
 
 fn available(pipe: &File) -> Option<u32> {

@@ -18,13 +18,9 @@ const fn app(needle: &'static str) -> AppProfile {
     }
 }
 
-/// 在表内才按标题搜歌词
+/// 在表内才按标题搜歌词 QQ 音乐只读本地缓存 不在表内
 const KNOWN_APPS: &[AppProfile] = &[
     app("cloudmusic"),
-    AppProfile {
-        needle: "qqmusic",
-        lyric_sources: &[LyricSource::Qq, LyricSource::Netease, LyricSource::Kugou],
-    },
     app("spotify"),
     AppProfile {
         needle: "kugou",
@@ -62,13 +58,13 @@ mod tests {
     #[test]
     fn known_music_players_support_lyric_search() {
         assert!(lyrics_supported("cloudmusic.exe"));
-        assert!(lyrics_supported("QQMusic"));
         assert!(lyrics_supported("Spotify.exe"));
     }
 
     #[test]
     fn unknown_sources_do_not_trigger_lyric_search() {
         assert!(!lyrics_supported("chrome.exe"));
+        assert!(!lyrics_supported("Tencent.QQMusic"));
         assert!(!lyrics_supported(""));
     }
 }

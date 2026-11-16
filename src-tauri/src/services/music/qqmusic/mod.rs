@@ -1,4 +1,5 @@
 mod pipe;
+mod qrc;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
