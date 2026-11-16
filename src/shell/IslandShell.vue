@@ -238,9 +238,6 @@ onBeforeUnmount(() => {
       @mouseleave="onIslandLeave"
       @click="onIslandClick"
       @pointerdown="drag.onPointerDown"
-      @pointermove="drag.onPointerMove"
-      @pointerup="drag.onPointerUp"
-      @pointercancel="drag.onPointerCancel"
       @wheel.passive="deck.onWheel"
     >
       <AlertBar v-if="alertShown" />
